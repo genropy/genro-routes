@@ -88,8 +88,11 @@ html_theme_options = {
     "style_external_links": True,
 }
 
-html_static_path = []  # No static files yet
+html_static_path = ["_static"]
 html_css_files = []  # No custom CSS yet
+
+# Logo configuration
+html_logo = "_static/logo.png"
 
 # HTML context (GitHub integration)
 html_context = {

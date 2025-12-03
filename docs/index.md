@@ -1,5 +1,9 @@
 # Genro Routes
 
+<p align="center">
+  <img src="_static/logo.png" alt="Genro Routes Logo" width="200"/>
+</p>
+
 **Genro Routes** is an instance-scoped routing engine for Python that enables dynamic method dispatch through a plugin-based architecture.
 
 ## What is Genro Routes?

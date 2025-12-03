@@ -1,5 +1,9 @@
 # Genro Routes
 
+<p align="center">
+  <img src="assets/logo.png" alt="Genro Routes Logo" width="200"/>
+</p>
+
 [![PyPI version](https://img.shields.io/pypi/v/genro-routes?cacheSeconds=300)](https://pypi.org/project/genro-routes/)
 [![Tests](https://github.com/genropy/genro-routes/actions/workflows/test.yml/badge.svg)](https://github.com/genropy/genro-routes/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/genropy/genro-routes/branch/main/graph/badge.svg)](https://codecov.io/gh/genropy/genro-routes)
