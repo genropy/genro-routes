@@ -1,0 +1,344 @@
+"""Plugin contract definitions for Genro Routes.
+
+This module defines the base classes and data structures used by the Router
+plugin system.
+
+Objects
+-------
+``MethodEntry``
+    Dataclass capturing handler metadata at registration time. Fields:
+        - ``name``: logical handler name (after prefix stripping)
+        - ``func``: bound callable invoked by the Router
+        - ``router``: Router instance that owns the handler
+        - ``plugins``: list of plugin names applied to the handler
+        - ``metadata``: mutable dict used by plugins to store annotations
+
+``BasePlugin``
+    Abstract base class that every plugin must subclass. Provides:
+        - Configuration helpers that delegate to the router's ``plugin_info`` store
+        - Optional hooks ``on_decore`` and ``wrap_handler`` for the Router pipeline
+
+    Required class attributes:
+        - ``plugin_code``: unique identifier used for registration (e.g. "logging")
+        - ``plugin_description``: human-readable description of the plugin
+
+    Constructor signature: ``BasePlugin(router, **config)``
+
+    Key methods:
+        - ``configure(**config)``: Define accepted configuration parameters
+        - ``configuration(method_name=None)``: Read merged configuration
+        - ``on_decore(router, func, entry)``: Called when handler is registered
+        - ``wrap_handler(router, entry, call_next)``: Build middleware chain
+        - ``allow_entry(router, entry, **filters)``: Control handler visibility
+        - ``entry_metadata(router, entry)``: Provide plugin-specific metadata
+
+Example::
+
+    from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
+
+    class MyPlugin(BasePlugin):
+        plugin_code = "myplugin"
+        plugin_description = "My custom plugin"
+
+        def configure(self, enabled: bool = True, threshold: int = 10):
+            pass  # Storage handled by wrapper
+
+        def wrap_handler(self, router, entry, call_next):
+            def wrapper(*args, **kwargs):
+                print(f"Before {entry.name}")
+                result = call_next(*args, **kwargs)
+                print(f"After {entry.name}")
+                return result
+            return wrapper
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from functools import wraps
+from typing import Any
+
+from pydantic import validate_call
+
+__all__ = ["BasePlugin", "MethodEntry"]
+
+
+@dataclass
+class MethodEntry:
+    """Metadata for a registered route handler.
+
+    Attributes:
+        name: Logical handler name (after prefix stripping).
+        func: Bound callable invoked by the Router.
+        router: Router instance that owns this handler.
+        plugins: List of plugin names applied to this handler.
+        metadata: Mutable dict for plugins to store annotations.
+    """
+
+    name: str
+    func: Callable
+    router: Any
+    plugins: list[str]
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def _wrap_configure(original_configure: Callable) -> Callable:
+    """Wrap a plugin's configure() method to handle flags, _target, validation, and storage."""
+    validated = validate_call(original_configure)
+
+    @wraps(original_configure)
+    def wrapper(
+        self: BasePlugin, *, _target: str = "_all_", flags: str | None = None, **kwargs: Any
+    ) -> None:
+        # Parse flags into boolean kwargs
+        if flags:
+            kwargs.update(self._parse_flags(flags))
+
+        # Handle multiple targets (comma-separated)
+        if "," in _target:
+            targets = [t.strip() for t in _target.split(",") if t.strip()]
+            for t in targets:
+                wrapper(self, _target=t, **kwargs)
+            return
+
+        # Validate kwargs against original configure signature
+        validated(self, **kwargs)
+
+        # Write to store
+        self._write_config(_target, kwargs)
+
+    return wrapper
+
+
+class BasePlugin:
+    """Hook interface and configuration helpers for router plugins.
+
+    Subclass this to create custom plugins. Override the hooks you need
+    and define your configuration schema in ``configure()``.
+    """
+
+    __slots__ = ("name", "_router")
+
+    # Subclasses MUST define these class attributes
+    plugin_code: str = ""
+    plugin_description: str = ""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Wrap configure() if the subclass defines its own
+        if "configure" in cls.__dict__:
+            cls.configure = _wrap_configure(cls.__dict__["configure"])
+
+    def __init__(
+        self,
+        router: Any,
+        **config: Any,
+    ):
+        self.name = self.plugin_code
+        self._router = router
+        self._init_store()
+        # Call configure with initial config
+        self.configure(**config)
+
+    def _init_store(self) -> None:
+        """Initialize plugin bucket in router's store."""
+        store = self._get_store()
+        store.setdefault(self.name, {}).setdefault(
+            "_all_", {"config": {"enabled": True}, "locals": {}}
+        )
+
+    def _write_config(self, target: str, config: dict[str, Any]) -> None:
+        """Write config to the appropriate bucket in the store."""
+        if not config:
+            return
+        store = self._get_store()
+        plugin_bucket = store.setdefault(self.name, {})
+        bucket = plugin_bucket.setdefault(target, {"config": {}, "locals": {}})
+        bucket["config"].update(config)
+        # Notify children about config change
+        self._notify_children(config)
+
+    def configuration(self, method_name: str | None = None) -> dict[str, Any]:
+        """Read merged configuration (base + optional per-handler override).
+
+        Args:
+            method_name: If provided, merge per-handler config with base config.
+
+        Returns:
+            Dict of configuration values.
+        """
+        store = self._get_store()
+        plugin_bucket = store.get(self.name)
+        if not plugin_bucket:
+            return {}
+        base_bucket = plugin_bucket.get("_all_", {})
+        base_config = self._resolve_config(base_bucket.get("config", {}))
+        merged = dict(base_config)
+        if method_name:
+            entry_bucket = plugin_bucket.get(method_name, {})
+            entry_config = self._resolve_config(entry_bucket.get("config", {}))
+            merged.update(entry_config)
+        return merged
+
+    def _resolve_config(self, config: Any) -> dict[str, Any]:
+        """Resolve config value - if callable, call it to get the dict."""
+        if callable(config):
+            return config()
+        if config is None:
+            return {}
+        return config
+
+    def _parse_flags(self, flags: str) -> dict[str, bool]:
+        """Parse flag string like "enabled,before:off" into boolean dict."""
+        mapping: dict[str, bool] = {}
+        for chunk in flags.split(","):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            if ":" in chunk:
+                name, value = chunk.split(":", 1)
+                mapping[name.strip()] = value.strip().lower() != "off"
+            else:
+                mapping[chunk] = True
+        return mapping
+
+    def _get_store(self) -> dict[str, Any]:
+        """Get the router's plugin_info store."""
+        return self._router._plugin_info
+
+    def _notify_children(self, new_config: dict[str, Any]) -> None:
+        """Notify child routers about config change for this plugin."""
+        plugin_children = getattr(self._router, "_plugin_children", {})
+        child_routers = plugin_children.get(self.name, [])
+        for child_router in child_routers:
+            child_plugin = child_router._plugins_by_name.get(self.name)
+            if child_plugin:
+                child_plugin.on_parent_config_changed(new_config)
+
+    # =========================================================================
+    # METHODS TO OVERRIDE IN CUSTOM PLUGINS
+    # =========================================================================
+
+    def configure(self, *, _target: str = "_all_", flags: str | None = None) -> None:
+        """Override to define accepted configuration parameters.
+
+        Define your plugin's configuration options as method parameters.
+        The wrapper added by __init_subclass__ handles:
+            - Parsing ``flags`` (e.g. "enabled,before:off") into booleans
+            - Routing to ``_target`` ("_all_", handler name, or comma-separated)
+            - Pydantic validation via @validate_call
+            - Writing to the router's config store
+
+        Example::
+
+            def configure(self, enabled: bool = True, threshold: int = 10):
+                pass  # Storage is handled by the wrapper
+
+        Args:
+            _target: Where to write config. "_all_" for router-level,
+                     "handler_name" for per-handler, or "h1,h2" for multiple.
+            flags: String like "enabled,before:off" parsed into booleans.
+        """
+        # Base configure just handles flags if provided
+        if flags:
+            kwargs = self._parse_flags(flags)
+            self._write_config(_target, kwargs)
+
+    def on_decore(
+        self, router: Any, func: Callable, entry: MethodEntry
+    ) -> None:  # pragma: no cover - default no-op
+        """Override to run logic when a handler is registered.
+
+        Called once per handler at decoration time. Use this to:
+            - Inspect type hints and store metadata
+            - Pre-compute validation models
+            - Annotate ``entry.metadata`` for later use in wrap_handler
+
+        Args:
+            router: The Router instance registering the handler.
+            func: The original handler function.
+            entry: MethodEntry with name, func, router, plugins, metadata.
+        """
+
+    def wrap_handler(
+        self,
+        router: Any,
+        entry: MethodEntry,
+        call_next: Callable,
+    ) -> Callable:
+        """Override to wrap handler invocation with custom logic.
+
+        Called to build the middleware chain. Return a callable that:
+            - Optionally does pre-processing
+            - Calls ``call_next(*args, **kwargs)``
+            - Optionally does post-processing
+            - Returns the result
+
+        Example::
+
+            def wrap_handler(self, router, entry, call_next):
+                def wrapper(*args, **kwargs):
+                    print(f"Before {entry.name}")
+                    result = call_next(*args, **kwargs)
+                    print(f"After {entry.name}")
+                    return result
+                return wrapper
+
+        Args:
+            router: The Router instance.
+            entry: MethodEntry for the handler being wrapped.
+            call_next: The next callable in the chain.
+
+        Returns:
+            A callable with the same signature as call_next.
+        """
+        return call_next
+
+    def allow_entry(
+        self, router: Any, entry: MethodEntry, **filters: Any
+    ) -> bool | None:  # pragma: no cover - optional hook
+        """Override to control handler visibility during introspection.
+
+        Called by ``router.members()`` to decide if a handler should be
+        included in results. Return True to include, False to exclude,
+        or None to defer the decision to other plugins.
+
+        Args:
+            router: The Router instance.
+            entry: MethodEntry being checked.
+            **filters: All filter criteria passed to ``members()``.
+
+        Returns:
+            True to include, False to exclude, None to defer.
+        """
+        return None
+
+    def entry_metadata(
+        self, router: Any, entry: MethodEntry
+    ) -> dict[str, Any]:  # pragma: no cover - optional hook
+        """Override to provide plugin-specific metadata for a handler.
+
+        Called by ``router.members()`` to gather plugin metadata.
+
+        Args:
+            router: The Router instance.
+            entry: MethodEntry being described.
+
+        Returns:
+            Dict of plugin-specific metadata for this handler.
+        """
+        return {}
+
+    def on_parent_config_changed(
+        self, new_config: dict[str, Any]
+    ) -> None:  # pragma: no cover - optional hook
+        """Override to react when parent router's plugin config changes.
+
+        Called when the parent router modifies its configuration for this
+        plugin type. The child plugin can decide how to handle the change.
+
+        Args:
+            new_config: The new configuration dict from the parent plugin.
+        """
+        pass
