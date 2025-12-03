@@ -128,7 +128,7 @@ class BasePlugin:
         super().__init_subclass__(**kwargs)
         # Wrap configure() if the subclass defines its own
         if "configure" in cls.__dict__:
-            cls.configure = _wrap_configure(cls.__dict__["configure"])
+            cls.configure = _wrap_configure(cls.__dict__["configure"])  # type: ignore[method-assign]
 
     def __init__(
         self,
@@ -184,10 +184,10 @@ class BasePlugin:
     def _resolve_config(self, config: Any) -> dict[str, Any]:
         """Resolve config value - if callable, call it to get the dict."""
         if callable(config):
-            return config()
+            return config()  # type: ignore[no-any-return]
         if config is None:
             return {}
-        return config
+        return config  # type: ignore[no-any-return]
 
     def _parse_flags(self, flags: str) -> dict[str, bool]:
         """Parse flag string like "enabled,before:off" into boolean dict."""
@@ -205,7 +205,7 @@ class BasePlugin:
 
     def _get_store(self) -> dict[str, Any]:
         """Get the router's plugin_info store."""
-        return self._router._plugin_info
+        return self._router._plugin_info  # type: ignore[no-any-return]
 
     def _notify_children(self, new_config: dict[str, Any]) -> None:
         """Notify child routers about config change for this plugin."""

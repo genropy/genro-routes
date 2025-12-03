@@ -197,9 +197,7 @@ class Router(BaseRouter):
             raise AttributeError(f"No plugin named '{name}' attached to router '{self.name}'")
         return plugin
 
-    def _get_plugin_bucket(
-        self, plugin_name: str, create: bool = False
-    ) -> dict[str, Any] | None:
+    def _get_plugin_bucket(self, plugin_name: str, create: bool = False) -> dict[str, Any] | None:
         bucket = self._plugin_info.get(plugin_name)
         if bucket is None and create:
             bucket = {"_all_": {"config": {}, "locals": {}}}

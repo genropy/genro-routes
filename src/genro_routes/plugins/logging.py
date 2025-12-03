@@ -50,7 +50,7 @@ class LoggingPlugin(BasePlugin):
         self._logger = logger or logging.getLogger("genro_routes")
         super().__init__(router, **cfg)
 
-    def configure(
+    def configure(  # type: ignore[override]
         self,
         enabled: bool = True,
         before: bool = True,

@@ -122,6 +122,8 @@ class RoutedClass:
 class _RoutedProxy:
     """Proxy for accessing and configuring routers on a RoutedClass instance."""
 
+    _owner: RoutedClass
+
     def __init__(self, owner: RoutedClass):
         object.__setattr__(self, "_owner", owner)
 
@@ -140,7 +142,7 @@ class _RoutedProxy:
         registry = getattr(owner, ROUTER_REGISTRY_ATTR_NAME, None) or {}
         router = registry.get(name)
         if router:
-            return router
+            return router  # type: ignore[no-any-return]
         candidate = getattr(owner, name, None)
         if safe_is_instance(candidate, "genro_routes.core.base_router.BaseRouter"):
             registry[name] = candidate
@@ -277,4 +279,4 @@ class _RoutedProxy:
 
 def is_routed_class(obj: Any) -> bool:
     """Return True when ``obj`` is a RoutedClass instance."""
-    return safe_is_instance(obj, "genro_routes.core.routed.RoutedClass")
+    return safe_is_instance(obj, "genro_routes.core.routed.RoutedClass")  # type: ignore[no-any-return]

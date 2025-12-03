@@ -62,7 +62,7 @@ class PydanticPlugin(BasePlugin):
     def __init__(self, router, **config: Any):
         super().__init__(router, **config)
 
-    def configure(self, disabled: bool = False):
+    def configure(self, disabled: bool = False):  # type: ignore[override]
         """Configure pydantic plugin options.
 
         Args:

@@ -455,7 +455,7 @@ class BaseRouter:
                 raise ValueError(
                     "attach_instance() requires alias when parent has multiple routers"
                 )  # pragma: no cover
-            alias = tokens[0] if tokens else name or candidates[0][0] or candidates[0][1].name
+            alias: str = tokens[0] if tokens else name or candidates[0][0] or candidates[0][1].name  # type: ignore[assignment]
             orig_attr, _ = candidates[0]
             mapping[orig_attr] = alias
         else:
@@ -492,7 +492,7 @@ class BaseRouter:
 
         attached: BaseRouter | None = None
         for attr_name, router in candidates:
-            alias = mapping.get(attr_name)
+            alias = mapping.get(attr_name)  # type: ignore[assignment]
             if alias is None:
                 continue  # pragma: no cover - unmapped child router is skipped
             if alias in self._children and self._children[alias] is not router:
@@ -520,7 +520,7 @@ class BaseRouter:
             object.__setattr__(routed_child, "_routed_parent", None)
 
         # No hard error if nothing was removed; detach is best-effort.
-        return routed_child  # type: ignore[return-value]
+        return routed_child  # type: ignore[no-any-return]
 
     def _collect_child_routers(
         self, source: Any, *, override_name: str | None = None, seen: set[int] | None = None
