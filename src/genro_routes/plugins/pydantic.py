@@ -11,7 +11,8 @@ Example::
     from genro_routes import Router, RoutedClass, route
 
     class MyService(RoutedClass):
-        api = Router(name="api").plug("pydantic")
+        def __init__(self):
+            self.api = Router(self, name="api").plug("pydantic")
 
         @route("api")
         def get_user(self, user_id: int, name: str = "default"):

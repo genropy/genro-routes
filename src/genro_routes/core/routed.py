@@ -28,7 +28,8 @@ Example::
     from genro_routes import Router, RoutedClass, route
 
     class MyService(RoutedClass):
-        api = Router(name="api")
+        def __init__(self):
+            self.api = Router(self, name="api")
 
         @route("api")
         def hello(self):

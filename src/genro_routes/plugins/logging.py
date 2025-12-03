@@ -16,7 +16,8 @@ Example::
     from genro_routes import Router, RoutedClass, route
 
     class MyService(RoutedClass):
-        api = Router(name="api").plug("logging")
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
 
         @route("api")
         def hello(self):
