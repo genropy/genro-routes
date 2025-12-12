@@ -417,10 +417,6 @@ class BaseRouter:
         handler = self.get(selector)
         return handler(*args, **kwargs)
 
-    def entries(self) -> tuple[str, ...]:
-        """Return a tuple of logical handler names registered on this router."""
-        return tuple(self._handlers.keys())
-
     # ------------------------------------------------------------------
     # Children management (via attach_instance/detach_instance)
     # ------------------------------------------------------------------

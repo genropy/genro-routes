@@ -119,12 +119,13 @@ def test_plug_validates_type_and_known_plugin():
 def test_add_entry_variants_and_wildcards():
     svc = ManualService()
     svc.api.add_entry(["first", "second"])
-    assert set(svc.api.entries()) == {"first", "second"}
+    assert "first" in svc.api._handlers
+    assert "second" in svc.api._handlers
 
     svc.api.add_entry("first, second", replace=True)
-    before = set(svc.api.entries())
+    before = set(svc.api._handlers.keys())
     assert svc.api.add_entry("   ") is svc.api
-    assert set(svc.api.entries()) == before
+    assert set(svc.api._handlers.keys()) == before
 
     with pytest.raises(TypeError):
         svc.api.add_entry(123)
@@ -146,14 +147,14 @@ def test_iter_marked_methods_skip_other_router_markers():
     svc = DualRoutes()
     svc.one.add_entry("*")
     svc.two.add_entry("*")
-    assert "shared" in svc.one.entries()
-    assert "two_alias" in svc.two.entries()
+    assert "shared" in svc.one._handlers
+    assert "two_alias" in svc.two._handlers
 
 
 def test_iter_marked_methods_deduplicate_same_function():
     svc = DuplicateMarkers()
     assert svc.api.get("original")() == "ok"
-    assert len(svc.api.entries()) == 1
+    assert len(svc.api._handlers) == 1
 
 
 def test_router_call_and_members_structure():

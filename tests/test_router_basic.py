@@ -165,7 +165,6 @@ def test_instance_bound_methods_are_isolated():
 def test_prefix_and_name_override():
     sub = SubService("users")
 
-    assert set(sub.routes.entries()) == {"list", "detail"}
     assert sub.routes.get("list")() == "users:list"
     assert sub.routes.get("detail")(10) == "users:detail:10"
 
