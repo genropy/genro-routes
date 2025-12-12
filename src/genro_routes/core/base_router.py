@@ -79,7 +79,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Iterator
-from typing import Any
+from typing import Any, get_type_hints
 
 from genro_toolbox import SmartOptions
 from genro_toolbox.typeutils import safe_is_instance
@@ -651,6 +651,152 @@ class BaseRouter:
             result["routers"] = routers
 
         return result
+
+    def openapi(
+        self,
+        basepath: str | None = None,
+        lazy: bool = False,
+        path_prefix: str = "",
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Return OpenAPI-compatible schema for this router's handlers.
+
+        Args:
+            basepath: Optional path to start from (e.g., "child/grandchild").
+            lazy: If True, child routers are returned as callables.
+            path_prefix: Prefix for generated paths (used internally for recursion).
+            **kwargs: Filter arguments passed to plugins via allow_entry().
+
+        Returns:
+            Dict with "paths" containing OpenAPI path items, and "routers" for children.
+        """
+        if basepath:
+            target = self.get(basepath)
+            if not isinstance(target, BaseRouter):
+                return {"paths": {}, "routers": {}}
+            new_prefix = f"{path_prefix}/{basepath}" if path_prefix else f"/{basepath}"
+            return target.openapi(lazy=lazy, path_prefix=new_prefix, **kwargs)
+
+        filter_args = self._prepare_filter_args(**kwargs)
+
+        paths: dict[str, Any] = {}
+        for entry in self._entries.values():
+            if not self._allow_entry(entry, **filter_args):
+                continue
+            path = f"{path_prefix}/{entry.name}" if path_prefix else f"/{entry.name}"
+            paths[path] = self._entry_to_openapi(entry)
+
+        routers: dict[str, Any]
+        if lazy:
+            routers = {
+                child_name: (
+                    lambda c=child, p=path_prefix, n=child_name: c.openapi(
+                        lazy=True, path_prefix=f"{p}/{n}" if p else f"/{n}", **kwargs
+                    )
+                )
+                for child_name, child in self._children.items()
+            }
+        else:
+            for child_name, child in self._children.items():
+                child_prefix = f"{path_prefix}/{child_name}" if path_prefix else f"/{child_name}"
+                child_schema = child.openapi(lazy=False, path_prefix=child_prefix, **kwargs)
+                paths.update(child_schema.get("paths", {}))
+            routers = {}
+
+        result: dict[str, Any] = {"paths": paths}
+        if routers:
+            result["routers"] = routers
+        return result
+
+    def _entry_to_openapi(self, entry: MethodEntry) -> dict[str, Any]:
+        """Convert a single entry to OpenAPI path item format."""
+        func = entry.func
+        doc = inspect.getdoc(func) or func.__doc__ or ""
+        summary = doc.split("\n")[0] if doc else entry.name
+
+        operation: dict[str, Any] = {
+            "operationId": entry.name,
+            "summary": summary,
+        }
+        if doc:
+            operation["description"] = doc
+
+        # Extract parameters from pydantic metadata if available
+        pydantic_meta = entry.metadata.get("pydantic", {})
+        model = pydantic_meta.get("model")
+        if model and hasattr(model, "model_json_schema"):
+            schema = model.model_json_schema()
+            operation["requestBody"] = {
+                "required": True,
+                "content": {
+                    "application/json": {"schema": schema}
+                },
+            }
+        else:
+            # Fallback: extract from type hints
+            try:
+                hints = get_type_hints(func)
+            except Exception:
+                hints = {}
+            hints.pop("return", None)
+            if hints:
+                parameters = []
+                sig = inspect.signature(func)
+                for param_name, hint in hints.items():
+                    param = sig.parameters.get(param_name)
+                    if param is None:
+                        continue
+                    param_schema: dict[str, Any] = {
+                        "name": param_name,
+                        "in": "query",
+                        "schema": {"type": self._python_type_to_openapi(hint)},
+                    }
+                    if param.default is inspect.Parameter.empty:
+                        param_schema["required"] = True
+                    else:
+                        param_schema["required"] = False
+                    parameters.append(param_schema)
+                if parameters:
+                    operation["parameters"] = parameters
+
+        # Add return type if available
+        try:
+            hints = get_type_hints(func)
+            return_hint = hints.get("return")
+            if return_hint:
+                operation["responses"] = {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {"type": self._python_type_to_openapi(return_hint)}
+                            }
+                        },
+                    }
+                }
+        except Exception:
+            pass
+
+        if "responses" not in operation:
+            operation["responses"] = {"200": {"description": "Successful response"}}
+
+        return {"post": operation}
+
+    @staticmethod
+    def _python_type_to_openapi(python_type: Any) -> str:
+        """Convert Python type to OpenAPI type string."""
+        type_map = {
+            str: "string",
+            int: "integer",
+            float: "number",
+            bool: "boolean",
+            list: "array",
+            dict: "object",
+        }
+        origin = getattr(python_type, "__origin__", None)
+        if origin is not None:
+            python_type = origin
+        return type_map.get(python_type, "object")
 
     def _entry_member_info(self, entry: MethodEntry) -> dict[str, Any]:
         """Build info dict for a single entry."""

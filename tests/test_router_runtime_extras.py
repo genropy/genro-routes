@@ -380,6 +380,111 @@ def test_members_lazy_returns_callables():
     assert "child_action" in child_members["entries"]
 
 
+def test_openapi_returns_schema():
+    """Test openapi() returns OpenAPI-compatible schema."""
+
+    class Child(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def get_user(self, user_id: int, name: str = "default") -> dict:
+            """Get a user by ID."""
+            return {"id": user_id, "name": name}
+
+    class Root(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="users")
+
+        @route("api")
+        def health(self) -> str:
+            """Health check endpoint."""
+            return "ok"
+
+    root = Root()
+
+    # Full schema (non-lazy)
+    schema = root.api.openapi()
+    assert "paths" in schema
+    assert "/health" in schema["paths"]
+    assert "/users/get_user" in schema["paths"]
+
+    # Check health endpoint
+    health_op = schema["paths"]["/health"]["post"]
+    assert health_op["operationId"] == "health"
+    assert health_op["summary"] == "Health check endpoint."
+
+    # Check user endpoint with parameters
+    user_op = schema["paths"]["/users/get_user"]["post"]
+    assert user_op["operationId"] == "get_user"
+    assert "parameters" in user_op or "requestBody" in user_op
+
+
+def test_openapi_lazy_returns_callables():
+    """Test openapi(lazy=True) returns callables for child routers."""
+
+    class Child(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def action(self):
+            return "child"
+
+    class Root(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="child")
+
+        @route("api")
+        def root_action(self):
+            return "root"
+
+    root = Root()
+
+    # Lazy mode
+    lazy_schema = root.api.openapi(lazy=True)
+    assert "/root_action" in lazy_schema["paths"]
+    assert "routers" in lazy_schema
+    assert callable(lazy_schema["routers"]["child"])
+
+    # Expand child
+    child_schema = lazy_schema["routers"]["child"]()
+    assert "/child/action" in child_schema["paths"]
+
+
+def test_openapi_with_basepath():
+    """Test openapi(basepath=...) navigates to child."""
+
+    class Child(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def child_action(self):
+            return "child"
+
+    class Root(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="child")
+
+        @route("api")
+        def root_action(self):
+            return "root"
+
+    root = Root()
+
+    # Get schema starting from child
+    child_schema = root.api.openapi(basepath="child")
+    assert "/child/child_action" in child_schema["paths"]
+    assert "/root_action" not in child_schema["paths"]
+
+
 def test_configure_validates_inputs_and_targets():
     svc = LoggingService()
     with pytest.raises(ValueError):
@@ -460,3 +565,276 @@ def test_is_routed_class_helper():
     svc = ManualService()
     assert is_routed_class(svc) is True
     assert is_routed_class(object()) is False
+
+
+def test_openapi_basepath_to_handler_returns_empty():
+    """Test openapi(basepath=...) returns empty when pointing to handler."""
+
+    class Root(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def action(self):
+            return "ok"
+
+    root = Root()
+
+    # basepath pointing to handler returns empty schema
+    result = root.api.openapi(basepath="action")
+    assert result == {"paths": {}, "routers": {}}
+
+    # basepath pointing to non-existent path also returns empty
+    result = root.api.openapi(basepath="nonexistent")
+    assert result == {"paths": {}, "routers": {}}
+
+
+def test_openapi_with_pydantic_model():
+    """Test openapi() uses pydantic model schema when available."""
+    from genro_routes.plugins.pydantic import PydanticPlugin
+
+    class Service(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("pydantic")
+
+        @route("api")
+        def get_user(self, user_id: int, name: str = "default") -> dict:
+            """Get a user by ID."""
+            return {"id": user_id, "name": name}
+
+    svc = Service()
+    schema = svc.api.openapi()
+
+    # Should have requestBody with pydantic schema
+    path_item = schema["paths"]["/get_user"]
+    assert "post" in path_item
+    operation = path_item["post"]
+    assert "requestBody" in operation
+    assert operation["requestBody"]["required"] is True
+    assert "content" in operation["requestBody"]
+    assert "application/json" in operation["requestBody"]["content"]
+
+
+def test_openapi_entry_filtering():
+    """Test openapi() respects plugin filtering."""
+
+    class FilterPlugin(BasePlugin):
+        plugin_code = "openapi_filter"
+        plugin_description = "Filters entries for testing"
+
+        def allow_entry(self, router, entry, **kwargs):
+            return entry.name != "blocked"
+
+    if "openapi_filter" not in Router.available_plugins():
+        Router.register_plugin(FilterPlugin)
+
+    class Service(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi_filter")
+
+        @route("api")
+        def allowed(self):
+            return "ok"
+
+        @route("api")
+        def blocked(self):
+            return "blocked"
+
+    svc = Service()
+    schema = svc.api.openapi()
+
+    # blocked entry should be filtered out
+    assert "/allowed" in schema["paths"]
+    assert "/blocked" not in schema["paths"]
+
+
+def test_openapi_handler_without_type_hints():
+    """Test openapi() handles handlers without type hints."""
+
+    class Service(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def no_hints(self, arg):
+            """No type hints here."""
+            return arg
+
+    svc = Service()
+    schema = svc.api.openapi()
+
+    path_item = schema["paths"]["/no_hints"]
+    operation = path_item["post"]
+    # Should have default response but no parameters
+    assert "responses" in operation
+    assert "200" in operation["responses"]
+
+
+def test_openapi_type_conversion():
+    """Test _python_type_to_openapi handles various types."""
+
+    class Service(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def typed_params(
+            self, s: str, i: int, f: float, b: bool, items: list, data: dict
+        ) -> str:
+            return "ok"
+
+    svc = Service()
+    schema = svc.api.openapi()
+
+    operation = schema["paths"]["/typed_params"]["post"]
+    params = operation["parameters"]
+
+    # Check all types are converted
+    param_types = {p["name"]: p["schema"]["type"] for p in params}
+    assert param_types["s"] == "string"
+    assert param_types["i"] == "integer"
+    assert param_types["f"] == "number"
+    assert param_types["b"] == "boolean"
+    assert param_types["items"] == "array"
+    assert param_types["data"] == "object"
+
+
+def test_openapi_generic_types():
+    """Test openapi() handles generic types like List[str]."""
+    from typing import List, Dict
+
+    class Service(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def generic_params(self, items: List[str], data: Dict[str, int]) -> List[str]:
+            return items
+
+    svc = Service()
+    schema = svc.api.openapi()
+
+    operation = schema["paths"]["/generic_params"]["post"]
+    params = operation["parameters"]
+
+    # Generic types should map to their origin type
+    param_types = {p["name"]: p["schema"]["type"] for p in params}
+    assert param_types["items"] == "array"
+    assert param_types["data"] == "object"
+
+
+def test_openapi_unknown_type_defaults_to_object():
+    """Test openapi() defaults unknown types to object."""
+
+    class CustomType:
+        pass
+
+    class Service(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def custom_param(self, obj: CustomType) -> CustomType:
+            return obj
+
+    svc = Service()
+    schema = svc.api.openapi()
+
+    operation = schema["paths"]["/custom_param"]["post"]
+    params = operation["parameters"]
+
+    # Unknown type should default to "object"
+    assert params[0]["schema"]["type"] == "object"
+
+
+def test_openapi_required_vs_optional_params():
+    """Test openapi() correctly marks required vs optional parameters."""
+
+    class Service(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def mixed_params(self, required: int, optional: str = "default"):
+            return "ok"
+
+    svc = Service()
+    schema = svc.api.openapi()
+
+    operation = schema["paths"]["/mixed_params"]["post"]
+    params = operation["parameters"]
+
+    required_param = next(p for p in params if p["name"] == "required")
+    optional_param = next(p for p in params if p["name"] == "optional")
+
+    assert required_param["required"] is True
+    assert optional_param["required"] is False
+
+
+def test_openapi_handles_broken_type_hints():
+    """Test openapi() gracefully handles functions with unresolvable type hints."""
+    from genro_routes.core.base_router import BaseRouter
+
+    class Service(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Service()
+
+    # Manually break the function's type hints by adding unresolvable annotation
+    entry = svc.api._entries["handler"]
+    original_func = entry.func
+
+    # Create a wrapper with broken annotations
+    def broken_hints():
+        return "ok"
+
+    broken_hints.__annotations__ = {"arg": "NonExistentType", "return": "AlsoMissing"}
+    entry.func = broken_hints
+
+    # Should not raise, should fall back gracefully
+    schema = svc.api.openapi()
+    assert "/handler" in schema["paths"]
+
+    # Restore
+    entry.func = original_func
+
+
+def test_openapi_handles_hint_param_mismatch():
+    """Test openapi() when type hint references non-existent parameter."""
+    from genro_routes.core.base_router import MethodEntry
+
+    class Service(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self, real_param: int):
+            return "ok"
+
+    svc = Service()
+
+    # Manually modify the entry's func annotations to have a mismatch
+    entry = svc.api._entries["handler"]
+    original_func = entry.func
+
+    # Create a function with mismatched hint/signature
+    def mismatched():
+        pass
+
+    # Add hint for param not in signature (signature has no params)
+    mismatched.__annotations__ = {"ghost_param": int}
+    entry.func = mismatched
+
+    # Should not raise, should skip the mismatched param
+    schema = svc.api.openapi()
+    operation = schema["paths"]["/handler"]["post"]
+    # No parameters should be added since ghost_param isn't in signature
+    assert "parameters" not in operation or len(operation.get("parameters", [])) == 0
+
+    # Restore
+    entry.func = original_func
