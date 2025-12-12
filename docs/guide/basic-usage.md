@@ -166,11 +166,8 @@ assert fb.api.get("known_action")() == "success"
 default_fn = lambda: "fallback"
 assert fb.api.get("missing", default_handler=default_fn)() == "fallback"
 
-# Without default raises NotImplementedError
-try:
-    fb.api.get("missing")()
-except NotImplementedError:
-    pass  # Expected
+# Without default returns None
+assert fb.api.get("missing") is None
 ```
 
 **Use defaults to**:
@@ -178,6 +175,8 @@ except NotImplementedError:
 - Handle optional functionality gracefully
 - Provide "not found" handlers
 - Implement fallback behavior
+
+**Note**: `get()` can also return a child router if the path points to one (see [Hierarchies](hierarchies.md)).
 
 ## Dynamic Handler Registration
 
@@ -273,13 +272,28 @@ insp = Inspectable()
 info = insp.api.members()
 assert "action" in info["entries"]
 assert "sub" in info["routers"]
+
+# Get members starting from a specific path
+sub_info = insp.api.members(basepath="sub")
+assert "list" in sub_info["entries"]
+
+# Use lazy=True for on-demand expansion of children
+lazy_info = insp.api.members(lazy=True)
+assert callable(lazy_info["routers"]["sub"])  # Callable, not expanded
+sub_expanded = lazy_info["routers"]["sub"]()  # Expand on demand
 ```
+
+**`members()` parameters**:
+
+- `basepath`: Start from a specific point in the hierarchy
+- `lazy`: Return callables for child routers instead of expanding recursively
 
 **Use `members()` to**:
 
 - Generate API documentation
 - Debug routing issues
 - Validate configuration
+- Build dynamic UIs that expand on demand (with `lazy=True`)
 
 ## Next Steps
 

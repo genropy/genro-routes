@@ -239,6 +239,147 @@ def test_router_members_include_metadata_tree():
     assert "entries" in info
 
 
+def test_router_members_with_basepath():
+    """Test members() with basepath navigates to child router."""
+
+    class Child(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def child_action(self):
+            return "child"
+
+    class Grandchild(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def grandchild_action(self):
+            return "grandchild"
+
+    class Root(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+            self.child.grandchild = Grandchild()
+            self.api.attach_instance(self.child, name="child")
+            self.child.api.attach_instance(self.child.grandchild, name="grandchild")
+
+        @route("api")
+        def root_action(self):
+            return "root"
+
+    root = Root()
+
+    # Without basepath - returns full tree
+    full = root.api.members()
+    assert "root_action" in full["entries"]
+    assert "child" in full["routers"]
+
+    # With basepath="child" - returns child subtree
+    child_members = root.api.members(basepath="child")
+    assert child_members["name"] == "api"
+    assert "child_action" in child_members["entries"]
+    assert "grandchild" in child_members["routers"]
+    assert "root_action" not in child_members.get("entries", {})
+
+    # With basepath="child/grandchild" - returns grandchild subtree
+    grandchild_members = root.api.members(basepath="child/grandchild")
+    assert grandchild_members["name"] == "api"
+    assert "grandchild_action" in grandchild_members["entries"]
+    assert "routers" not in grandchild_members  # no children
+
+    # With basepath pointing to a handler - returns empty dict
+    handler_members = root.api.members(basepath="root_action")
+    assert handler_members == {}
+
+    # With basepath pointing to non-existent path - returns empty dict
+    missing_members = root.api.members(basepath="nonexistent")
+    assert missing_members == {}
+
+
+def test_get_returns_child_router():
+    """Test get() returns child router when path points to one."""
+
+    class Child(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def child_action(self):
+            return "child"
+
+    class Root(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="child")
+
+        @route("api")
+        def root_action(self):
+            return "root"
+
+    root = Root()
+
+    # get() returns handler when path points to handler
+    handler = root.api.get("root_action")
+    assert callable(handler)
+    assert handler() == "root"
+
+    # get() returns child router when path points to router
+    child_router = root.api.get("child")
+    assert isinstance(child_router, Router)
+    assert child_router.name == "api"
+
+    # get() returns None when path doesn't exist
+    result = root.api.get("nonexistent")
+    assert result is None
+
+    # get() with path into child still works
+    child_handler = root.api.get("child/child_action")
+    assert callable(child_handler)
+    assert child_handler() == "child"
+
+
+def test_members_lazy_returns_callables():
+    """Test members(lazy=True) returns callables for child routers."""
+
+    class Child(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def child_action(self):
+            return "child"
+
+    class Root(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="child")
+
+        @route("api")
+        def root_action(self):
+            return "root"
+
+    root = Root()
+
+    # Without lazy - routers dict contains expanded members
+    full = root.api.members()
+    assert isinstance(full["routers"]["child"], dict)
+    assert "child_action" in full["routers"]["child"]["entries"]
+
+    # With lazy=True - routers dict contains callables
+    lazy_members = root.api.members(lazy=True)
+    assert callable(lazy_members["routers"]["child"])
+
+    # Calling the callable expands the child members
+    child_members = lazy_members["routers"]["child"]()
+    assert isinstance(child_members, dict)
+    assert "child_action" in child_members["entries"]
+
+
 def test_configure_validates_inputs_and_targets():
     svc = LoggingService()
     with pytest.raises(ValueError):

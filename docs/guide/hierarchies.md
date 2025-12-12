@@ -53,6 +53,11 @@ parent.api.attach_instance(parent.child, name="sales")
 # Access through hierarchy
 assert parent.api.get("sales/list")() == "child:list"
 
+# get() can also return the child router directly
+child_router = parent.api.get("sales")
+assert child_router is not None
+assert child_router.name == "api"
+
 # Parent tracking is automatic
 assert parent.child._routed_parent is parent
 
@@ -67,6 +72,12 @@ assert parent.child._routed_parent is None
 - The `name` parameter provides the alias for accessing the child's router
 - Parent tracking is handled automatically
 - Detachment clears the parent reference
+
+**`get()` return values**:
+
+- Returns a **callable** if the path points to a handler
+- Returns a **Router** if the path points to a child router
+- Returns **None** if nothing is found (no exception raised)
 
 ## Multiple Routers: Auto-Mapping
 
@@ -469,7 +480,21 @@ assert "sub" in info["routers"]
 # Child routers included
 child_info = info["routers"]["sub"]
 assert child_info["name"] == "api"
+
+# Get members starting from a child
+sub_only = insp.api.members(basepath="sub")
+assert "list" in sub_only["entries"]
+
+# Lazy mode: children are callables
+lazy = insp.api.members(lazy=True)
+assert callable(lazy["routers"]["sub"])
+sub_expanded = lazy["routers"]["sub"]()  # Expand on demand
 ```
+
+**`members()` parameters**:
+
+- `basepath`: Start from a specific point in the hierarchy (e.g., `"child/grandchild"`)
+- `lazy`: Return callables for child routers instead of expanding recursively
 
 **Introspection provides**:
 
@@ -477,6 +502,7 @@ assert child_info["name"] == "api"
 - Child router names and structure
 - Plugin configuration per level
 - Nested hierarchy representation
+- On-demand expansion with `lazy=True`
 
 ## Real-World Examples
 

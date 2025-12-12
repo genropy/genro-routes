@@ -238,10 +238,10 @@ def test_get_runtime_override_init_default_handler():
     assert handler() == "runtime"
 
 
-def test_get_without_default_raises():
+def test_get_without_default_returns_none():
     svc = PluginService()
-    with pytest.raises(NotImplementedError):
-        svc.api.get("unknown")
+    result = svc.api.get("unknown")
+    assert result is None
 
 
 def test_get_uses_init_smartasync(monkeypatch):

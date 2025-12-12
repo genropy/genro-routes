@@ -383,38 +383,50 @@ class BaseRouter:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def get(self, selector: str, **options: Any) -> Callable:
-        """Resolve and return a handler callable for the given selector.
+    def get(self, selector: str, **options: Any) -> Callable | BaseRouter | None:
+        """Resolve and return a handler, child router, or None for the given selector.
 
-        Dotted selectors traverse attached children. Falls back to
-        ``default_handler`` if provided, otherwise raises NotImplementedError.
-        When ``use_smartasync`` is true, the handler is wrapped accordingly.
+        Path selectors traverse attached children using '/'. Returns:
+        - A callable if the selector points to a handler
+        - A BaseRouter if the selector points to a child router
+        - None if nothing is found and no default_handler is provided
+
+        Falls back to ``default_handler`` if provided and nothing is found.
+        When ``use_smartasync`` is true, handler callables are wrapped accordingly.
         """
         opts = SmartOptions(options, defaults=self._get_defaults)
         default = getattr(opts, "default_handler", None)
         use_smartasync = getattr(opts, "use_smartasync", False)
 
         node, method_name = self._resolve_path(selector)
+
+        # First check if it's a handler
         handler = node._handlers.get(method_name)
-        if handler is None:
-            handler = default
-        if handler is None:
-            raise NotImplementedError(
-                f"Handler '{method_name}' not found for selector '{selector}'"
-            )
+        if handler is not None:
+            if use_smartasync:
+                from smartasync import smartasync  # type: ignore
 
-        if use_smartasync:
-            from smartasync import smartasync  # type: ignore
+                handler = smartasync(handler)
+            return handler
 
-            handler = smartasync(handler)
+        # Then check if it's a child router
+        child_router = node._children.get(method_name)
+        if child_router is not None:
+            return child_router
 
-        return handler
+        # Nothing found - use default or return None
+        if default is not None:
+            return default  # type: ignore[no-any-return]
+
+        return None
 
     __getitem__ = get
 
-    def call(self, selector: str, *args, **kwargs):
+    def call(self, selector: str, *args: Any, **kwargs: Any) -> Any:
         """Fetch and invoke a handler in one step."""
         handler = self.get(selector)
+        if handler is None or isinstance(handler, BaseRouter):
+            raise NotImplementedError(f"No callable handler found for '{selector}'")
         return handler(*args, **kwargs)
 
     # ------------------------------------------------------------------
@@ -582,8 +594,25 @@ class BaseRouter:
     # ------------------------------------------------------------------
     # Introspection helpers
     # ------------------------------------------------------------------
-    def members(self, **kwargs: Any) -> dict[str, Any]:
-        """Return a tree of routers/entries/metadata respecting filters."""
+    def members(
+        self, basepath: str | None = None, lazy: bool = False, **kwargs: Any
+    ) -> dict[str, Any]:
+        """Return a tree of routers/entries/metadata respecting filters.
+
+        Args:
+            basepath: Optional path to start from (e.g., "child/grandchild").
+                      If provided, returns members starting from that point
+                      in the hierarchy instead of from this router.
+            lazy: If True, child routers are returned as callables that
+                  produce their members when invoked, instead of recursing
+                  immediately.
+            **kwargs: Filter arguments passed to plugins via allow_entry().
+        """
+        if basepath:
+            target = self.get(basepath)
+            if not isinstance(target, BaseRouter):
+                return {}
+            return target.members(lazy=lazy, **kwargs)
         filter_args = self._prepare_filter_args(**kwargs)
 
         entries = {
@@ -592,11 +621,19 @@ class BaseRouter:
             if self._allow_entry(entry, **filter_args)
         }
 
-        routers = {
-            child_name: child.members(**kwargs) for child_name, child in self._children.items()
-        }
-        # Remove empty routers
-        routers = {k: v for k, v in routers.items() if v}
+        routers: dict[str, Any]
+        if lazy:
+            routers = {
+                child_name: (lambda c=child: c.members(lazy=True, **kwargs))
+                for child_name, child in self._children.items()
+            }
+        else:
+            routers = {
+                child_name: child.members(**kwargs)
+                for child_name, child in self._children.items()
+            }
+            # Remove empty routers only in non-lazy mode
+            routers = {k: v for k, v in routers.items() if v}
 
         # If nothing, return empty dict
         if not entries and not routers:
