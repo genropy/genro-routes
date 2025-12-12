@@ -334,6 +334,6 @@ def test_dotted_path_and_members_with_attached_child():
             self.api.attach_instance(self.child, name="child")
 
     parent = Parent()
-    assert parent.api.get("child.ping")() == "pong"
+    assert parent.api.get("child/ping")() == "pong"
     tree = parent.api.members()
     assert "child" in tree["routers"]

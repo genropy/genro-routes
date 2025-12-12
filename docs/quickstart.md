@@ -89,9 +89,9 @@ class RootAPI(RoutedClass):
 
 root = RootAPI()
 
-# Access with dotted paths
-assert root.api.get("users.list")() == "users:list"
-assert root.api.get("products.detail")(5) == "products:detail:5"
+# Access with path separator
+assert root.api.get("users/list")() == "users:list"
+assert root.api.get("products/detail")(5) == "products:detail:5"
 ```
 
 ## Adding Plugins

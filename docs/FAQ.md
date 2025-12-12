@@ -145,19 +145,19 @@ class Dashboard(RoutedClass):
         self.api.attach_instance(self.finance, name="finance")
 
 dashboard = Dashboard()
-# Access with dotted path
-dashboard.api.get("sales.report")()
-dashboard.api.get("finance.summary")()
+# Access with path separator
+dashboard.api.get("sales/report")()
+dashboard.api.get("finance/summary")()
 ```
 
 ### How do I access child routers?
 
 **Question**: Once connected, how do I call child handlers?
 
-**Answer**: Use **dotted path**:
+**Answer**: Use **path separator** `/`:
 ```python
-# Dotted path
-dashboard.api.get("sales.report")()
+# Path separator
+dashboard.api.get("sales/report")()
 
 # Or direct access
 dashboard.sales.api.get("report")()
@@ -190,7 +190,7 @@ class Parent(RoutedClass):
 
 # Child automatically inherits logging plugin
 parent = Parent()
-parent.api.get("child.method")()  # Logs with level=debug
+parent.api.get("child/method")()  # Logs with level=debug
 ```
 
 ## Plugin System

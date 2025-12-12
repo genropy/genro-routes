@@ -294,7 +294,7 @@ def test_get_router_skips_empty_segments():
             self.api._children["child"] = self.child.api  # direct attach for test
 
     svc = Parent()
-    router = svc.routedclass.get_router("api.child..")
+    router = svc.routedclass.get_router("api/child//")
     assert router.name == "leaf"
 
 

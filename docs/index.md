@@ -16,7 +16,7 @@ Genro Routes provides:
 
 - **Dynamic method dispatch**: Call methods by string name (`router.get("method_name")`)
 - **Instance isolation**: Instantiate routers inside `__init__` with `Router(self, ...)` so each object tracks its own configuration
-- **Hierarchical routing**: Build nested router trees with dotted path access (`root.api.get("users.list")`)
+- **Hierarchical routing**: Build nested router trees with path access (`root.api.get("users/list")`)
 - **Plugin system**: Extend behavior with composable plugins (logging, validation, etc.)
 - **Plugin inheritance**: Child routers automatically inherit parent plugins
 

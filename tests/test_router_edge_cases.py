@@ -456,9 +456,9 @@ def test_parent_router_creates_hierarchy():
     assert svc.api._children["users"] is svc.users
     assert svc.api._children["orders"] is svc.orders
 
-    # Verify dotted path resolution works
-    assert svc.api.call("users.list_users") == ["alice", "bob"]
-    assert svc.api.call("orders.list_orders") == ["order1", "order2"]
+    # Verify path resolution works
+    assert svc.api.call("users/list_users") == ["alice", "bob"]
+    assert svc.api.call("orders/list_orders") == ["order1", "order2"]
 
 
 def test_parent_router_requires_name():
@@ -637,7 +637,7 @@ def test_routed_proxy_get_router_handles_dotted_path():
             self.api._children["child"] = self.child.api  # direct attach for test
 
     svc = Parent()
-    router = svc.routedclass.get_router("api.child")
+    router = svc.routedclass.get_router("api/child")
     assert router.name == "leaf"
 
 

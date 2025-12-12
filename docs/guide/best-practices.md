@@ -96,12 +96,12 @@ Prefer shallow hierarchies over deeply nested ones:
 
 ```python
 # Good: Shallow, navigable hierarchy
-app.api.get("users.list")
-app.api.get("orders.create")
-app.api.get("reports.sales")
+app.api.get("users/list")
+app.api.get("orders/create")
+app.api.get("reports/sales")
 
 # Bad: Too deep, hard to navigate
-app.api.get("v1.internal.services.users.management.list")
+app.api.get("v1/internal/services/users/management/list")
 ```
 
 ### Use Branch Routers for Organization
@@ -268,7 +268,7 @@ def test_application_hierarchy():
     assert "orders" in members["routers"]
 
     # Verify access
-    users = app.api.get("users.list_users")()
+    users = app.api.get("users/list_users")()
     assert isinstance(users, list)
 ```
 

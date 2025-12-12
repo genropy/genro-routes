@@ -26,7 +26,7 @@ Genro Routes provides a consistent, well-tested foundation for these patterns.
 
 1. **Instance-scoped routers** - Each object instantiates its own routers (`Router(self, ...)`) with isolated state.
 2. **Friendly registration** - `@route(...)` accepts explicit names, auto-strips prefixes, and supports custom metadata.
-3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutedClass instances with dotted path access (`parent.api.get("child.method")`).
+3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutedClass instances with path access (`parent.api.get("child/method")`).
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
 5. **Runtime configuration** - `routedclass.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
 6. **Optional extras** - `logging`, `pydantic` plugins and SmartAsync wrapping are opt-in; the core has minimal dependencies.
@@ -64,7 +64,7 @@ print(overview["entries"].keys())      # dict_keys(['list', 'retrieve', 'create'
 
 ## Hierarchical Routing
 
-Build nested service structures with dotted path access:
+Build nested service structures with path access:
 
 ```python
 class UsersAPI(RoutedClass):
@@ -84,7 +84,7 @@ class Application(RoutedClass):
         self.api.attach_instance(self.users, name="users")
 
 app = Application()
-print(app.api.get("users.list")())  # ["alice", "bob"]
+print(app.api.get("users/list")())  # ["alice", "bob"]
 
 # Introspect hierarchy
 info = app.api.members()

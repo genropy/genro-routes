@@ -1,8 +1,9 @@
 """Plugin-free router runtime for Genro Routes.
 
 This module exposes :class:`BaseRouter`, which binds methods on an object
-instance, resolves dotted selectors, and exposes rich introspection without
-any plugin logic. Subclasses add middleware but must preserve these semantics.
+instance, resolves path selectors (using '/' separator), and exposes rich
+introspection without any plugin logic. Subclasses add middleware but must
+preserve these semantics.
 
 Constructor and slots
 ---------------------
@@ -48,8 +49,8 @@ Handler table and wrapping
 Lookup and execution
 --------------------
 - ``get(selector, **options)`` resolves ``selector`` via ``_resolve_path``.
-  A dotted string traverses children. Missing handlers fall back to
-  ``default_handler`` (if provided) else raise ``NotImplementedError``.
+  A path string (using '/' separator) traverses children. Missing handlers
+  fall back to ``default_handler`` (if provided) else raise ``NotImplementedError``.
 
 - ``__getitem__`` aliases ``get``; ``call`` fetches then invokes the handler.
 
@@ -96,7 +97,7 @@ class BaseRouter:
 
     Responsibilities:
         - Register bound methods/functions with logical names (optionally via markers)
-        - Resolve dotted selectors across child routers
+        - Resolve path selectors (using '/' separator) across child routers
         - Expose handler tables and introspection data
         - Provide hooks for subclasses to wrap handlers or filter introspection
     """
@@ -574,10 +575,10 @@ class BaseRouter:
     # Routing helpers
     # ------------------------------------------------------------------
     def _resolve_path(self, selector: str) -> tuple[BaseRouter, str]:
-        if "." not in selector:
+        if "/" not in selector:
             return self, selector
         node: BaseRouter = self
-        parts = selector.split(".")
+        parts = selector.split("/")
         for segment in parts[:-1]:
             node = node._children[segment]
         return node, parts[-1]

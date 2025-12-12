@@ -129,7 +129,7 @@ class _RoutedProxy:
         object.__setattr__(self, "_owner", owner)
 
     def get_router(self, name: str, path: str | None = None):
-        """Look up a router by name, optionally navigating a dotted path."""
+        """Look up a router by name, optionally navigating a path with '/' separator."""
         owner = self._owner
         base_name, extra_path = self._split_router_spec(name, path)
         router = self._lookup_router(owner, base_name)
@@ -154,13 +154,13 @@ class _RoutedProxy:
     def _split_router_spec(self, name: str, path: str | None) -> tuple[str, str | None]:
         extra_path = path
         base_name = name
-        if not path and "." in name:
-            base_name, extra_path = name.split(".", 1)
+        if not path and "/" in name:
+            base_name, extra_path = name.split("/", 1)
         return base_name, extra_path
 
     def _navigate_router(self, root, path: str):
         node = root
-        for segment in path.split("."):
+        for segment in path.split("/"):
             segment = segment.strip()
             if not segment:
                 continue

@@ -7,7 +7,7 @@ Build complex routing structures with nested routers, dotted path navigation, an
 Genro Routes supports hierarchical router composition where:
 
 - **Parent routers** can have **child routers** attached through explicit instance binding
-- **Dotted paths** navigate the hierarchy (`root.api.get("users.list")`)
+- **Path separator** `/` navigates the hierarchy (`root.api.get("users/list")`)
 - **Plugins propagate** from parent to children automatically
 - **Each level** maintains independent handler registration
 - **Parent tracking** maintains the relationship between parent and child instances
@@ -51,7 +51,7 @@ parent = Parent()
 parent.api.attach_instance(parent.child, name="sales")
 
 # Access through hierarchy
-assert parent.api.get("sales.list")() == "child:list"
+assert parent.api.get("sales/list")() == "child:list"
 
 # Parent tracking is automatic
 assert parent.child._routed_parent is parent
@@ -99,8 +99,8 @@ parent = Parent()
 parent.api.attach_instance(parent.child)
 
 # Both child routers are accessible
-assert parent.api.get("api.get_data")() == "data"
-assert parent.api.get("admin.manage")() == "manage"
+assert parent.api.get("api/get_data")() == "data"
+assert parent.api.get("admin/manage")() == "manage"
 ```
 
 **Auto-mapping rules**:
@@ -127,8 +127,8 @@ assert "admin" not in parent.api._children  # not attached
 
 # Attach both with custom aliases
 parent.api.attach_instance(parent.child, name="api:sales, admin:admin_panel")
-assert parent.api.get("sales.get_data")() == "data"
-assert parent.api.get("admin_panel.manage")() == "manage"
+assert parent.api.get("sales/get_data")() == "data"
+assert parent.api.get("admin_panel/manage")() == "manage"
 ```
 
 **Mapping syntax**:
@@ -187,8 +187,8 @@ class OrganizedService(RoutedClass):
 service = OrganizedService()
 
 # Access through branch
-service.api.get("users.list")()
-service.api.get("products.create")()
+service.api.get("users/list")()
+service.api.get("products/create")()
 ```
 
 **Branch router characteristics**:
@@ -286,9 +286,9 @@ class Application(RoutedClass):
 app = Application()
 
 # All accessible through hierarchy
-app.api.call("users.list_users")      # Direct child
-app.api.call("products.list_products") # Direct child
-app.api.call("auth.login")            # Attached instance
+app.api.call("users/list_users")      # Direct child
+app.api.call("products/list_products") # Direct child
+app.api.call("auth/login")            # Attached instance
 ```
 
 ## Auto-Detachment
@@ -430,14 +430,14 @@ class Parent(RoutedClass):
 parent = Parent()
 
 # Get child router directly
-child_router = parent.routedclass.get_router("api.child")
+child_router = parent.routedclass.get_router("api/child")
 assert child_router.name == "api"
 assert child_router.instance is parent.child
 ```
 
 **Navigation features**:
 
-- `get_router("router.child.grandchild")` traverses hierarchy
+- `get_router("router/child/grandchild")` traverses hierarchy
 - Returns the target router instance
 - Enables programmatic router access
 - Useful for dynamic configuration
@@ -523,8 +523,8 @@ class Application(RoutedClass):
 app = Application()
 
 # Access through hierarchy
-token = app.api.call("auth.login", "alice", "secret123")
-users = app.api.call("users.list_users")
+token = app.api.call("auth/login", "alice", "secret123")
+users = app.api.call("users/list_users")
 
 # Logging applies to all handlers automatically
 ```
@@ -571,9 +571,9 @@ class Application(RoutedClass):
 app = Application()
 
 # Clean hierarchy
-app.api.get("public.list_users")()           # Public access
-app.api.get("admin.users.get_user")(123)     # Admin user access
-app.api.get("admin.reports.sales_report")()  # Admin reports
+app.api.get("public/list_users")()           # Public access
+app.api.get("admin/users/get_user")(123)     # Admin user access
+app.api.get("admin/reports/sales_report")()  # Admin reports
 ```
 
 ### Dynamic Service Replacement
@@ -607,10 +607,10 @@ class Application(RoutedClass):
         self.api.attach_instance(self.service, name="processor")
 
 app = Application()
-assert app.api.get("processor.process")("test") == "v1:test"
+assert app.api.get("processor/process")("test") == "v1:test"
 
 app.upgrade_service()  # Seamless replacement
-assert app.api.get("processor.process")("test") == "v2:test"
+assert app.api.get("processor/process")("test") == "v2:test"
 ```
 
 ## Best Practices
@@ -654,8 +654,8 @@ app.api.attach_instance(self.admin, name="admin")
 admin.api.attach_instance(self.user_admin, name="users")
 admin.api.attach_instance(self.report_admin, name="reports")
 
-# Access: app.api.get("admin.users.create_user")
-#         app.api.get("admin.reports.sales_report")
+# Access: app.api.get("admin/users/create_user")
+#         app.api.get("admin/reports/sales_report")
 ```
 
 ### Store Before Attach
@@ -686,8 +686,8 @@ self.api.attach_instance(self.auth, name="auth_v1")
 self.api.attach_instance(self.new_auth, name="auth_v2")
 
 # Access both versions
-self.api.get("auth_v1.login")
-self.api.get("auth_v2.login")
+self.api.get("auth_v1/login")
+self.api.get("auth_v2/login")
 ```
 
 ## Common Patterns
