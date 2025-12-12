@@ -85,6 +85,7 @@ guide/best-practices
 
 api/reference
 api/plugins
+ARCHITECTURE
 ```
 
 ## Installation
