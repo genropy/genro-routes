@@ -57,12 +57,18 @@ class FilterPlugin(BasePlugin):
     plugin_description = "Filter entries by tags with boolean expressions"
 
     def configure(  # type: ignore[override]
-        self, *, tags: str = "", _target: str = "_all_", flags: str | None = None
+        self,
+        *,
+        tags: str = "",
+        enabled: bool = True,
+        _target: str = "_all_",
+        flags: str | None = None,
     ) -> None:
         """Define tags for this entry/router.
 
         Args:
             tags: Comma-separated tag names (e.g., "admin,internal")
+            enabled: Whether filtering is enabled (default True)
             _target: Internal - target bucket name
             flags: Internal - flag string
         """
