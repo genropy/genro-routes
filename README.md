@@ -29,7 +29,7 @@ Genro Routes provides a consistent, well-tested foundation for these patterns.
 3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutedClass instances with path access (`parent.api.get("child/method")`).
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
 5. **Runtime configuration** - `routedclass.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
-6. **Optional extras** - `logging`, `pydantic` plugins and SmartAsync wrapping are opt-in; the core has minimal dependencies.
+6. **Built-in plugins** - `logging`, `pydantic`, and `filter` plugins are included; SmartAsync wrapping is opt-in.
 7. **Full coverage** - The package ships with a comprehensive test suite and no hidden compatibility layers.
 
 ## Quick Example
@@ -105,12 +105,6 @@ cd genro-routes
 pip install -e ".[all]"
 ```
 
-To use the Pydantic plugin:
-
-```bash
-pip install genro-routes[pydantic]
-```
-
 ## Core Concepts
 
 - **`Router`** - Runtime router bound directly to an object via `Router(self, name="api")`
@@ -155,7 +149,8 @@ genro-routes/
 │   │   └── routed.py       # RoutedClass mixin
 │   └── plugins/            # Built-in plugins
 │       ├── logging.py      # LoggingPlugin
-│       └── pydantic.py     # PydanticPlugin
+│       ├── pydantic.py     # PydanticPlugin
+│       └── filter.py       # FilterPlugin
 ├── tests/                  # Test suite (99% coverage)
 ├── docs/                   # Documentation (Sphinx)
 └── examples/              # Example implementations
@@ -163,7 +158,7 @@ genro-routes/
 
 ## Project Status
 
-Genro Routes is currently in **beta** (v0.9.0). The core API is stable with complete documentation.
+Genro Routes is currently in **beta** (v0.10.0). The core API is stable with complete documentation.
 
 - **Test Coverage**: 99% (100 tests)
 - **Python Support**: 3.10, 3.11, 3.12, 3.13
