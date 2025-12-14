@@ -556,7 +556,11 @@ class BaseRouter(RouterInterface):
     # Introspection helpers
     # ------------------------------------------------------------------
     def nodes(
-        self, basepath: str | None = None, lazy: bool = False, **kwargs: Any
+        self,
+        basepath: str | None = None,
+        lazy: bool = False,
+        mode: str | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Return a tree of routers/entries/metadata respecting filters.
 
@@ -567,8 +571,14 @@ class BaseRouter(RouterInterface):
             lazy: If True, child routers are returned as callables that
                   produce their nodes when invoked, instead of recursing
                   immediately.
+            mode: Output format mode (e.g., "openapi"). If None, returns
+                  standard introspection format.
             **kwargs: Filter arguments passed to plugins via allow_entry().
         """
+        if mode:
+            handler = getattr(self, f"_mode_{mode}", self._mode_missing)
+            return handler(mode=mode, basepath=basepath, lazy=lazy, **kwargs)
+
         if basepath:
             target = self.get(basepath)
             if not isinstance(target, BaseRouter):
@@ -613,7 +623,11 @@ class BaseRouter(RouterInterface):
 
         return result
 
-    def openapi(
+    def _mode_missing(self, mode: str, **kwargs: Any) -> dict[str, Any]:
+        """Handle unknown mode values."""
+        raise ValueError(f"Unknown mode: {mode}")
+
+    def _mode_openapi(
         self,
         basepath: str | None = None,
         lazy: bool = False,
@@ -636,7 +650,7 @@ class BaseRouter(RouterInterface):
             if not isinstance(target, BaseRouter):
                 return {"paths": {}, "routers": {}}
             new_prefix = f"{path_prefix}/{basepath}" if path_prefix else f"/{basepath}"
-            return target.openapi(lazy=lazy, path_prefix=new_prefix, **kwargs)
+            return target._mode_openapi(lazy=lazy, path_prefix=new_prefix, **kwargs)
 
         filter_args = self._prepare_filter_args(**kwargs)
 
@@ -651,7 +665,7 @@ class BaseRouter(RouterInterface):
         if lazy:
             routers = {
                 child_name: (
-                    lambda c=child, p=path_prefix, n=child_name: c.openapi(
+                    lambda c=child, p=path_prefix, n=child_name: c._mode_openapi(
                         lazy=True, path_prefix=f"{p}/{n}" if p else f"/{n}", **kwargs
                     )
                 )
@@ -660,7 +674,7 @@ class BaseRouter(RouterInterface):
         else:
             for child_name, child in self._children.items():
                 child_prefix = f"{path_prefix}/{child_name}" if path_prefix else f"/{child_name}"
-                child_schema = child.openapi(lazy=False, path_prefix=child_prefix, **kwargs)
+                child_schema = child._mode_openapi(lazy=False, path_prefix=child_prefix, **kwargs)
                 paths.update(child_schema.get("paths", {}))
             routers = {}
 

@@ -370,7 +370,7 @@ def test_openapi_returns_schema():
     root = Root()
 
     # Full schema (non-lazy)
-    schema = root.api.openapi()
+    schema = root.api.nodes(mode="openapi")
     assert "paths" in schema
     assert "/health" in schema["paths"]
     assert "/users/get_user" in schema["paths"]
@@ -410,7 +410,7 @@ def test_openapi_lazy_returns_callables():
     root = Root()
 
     # Lazy mode
-    lazy_schema = root.api.openapi(lazy=True)
+    lazy_schema = root.api.nodes(mode="openapi", lazy=True)
     assert "/root_action" in lazy_schema["paths"]
     assert "routers" in lazy_schema
     assert callable(lazy_schema["routers"]["child"])
@@ -444,7 +444,7 @@ def test_openapi_with_basepath():
     root = Root()
 
     # Get schema starting from child
-    child_schema = root.api.openapi(basepath="child")
+    child_schema = root.api.nodes(mode="openapi", basepath="child")
     assert "/child/child_action" in child_schema["paths"]
     assert "/root_action" not in child_schema["paths"]
 
@@ -528,11 +528,11 @@ def test_openapi_basepath_to_handler_returns_empty():
     root = Root()
 
     # basepath pointing to handler returns empty schema
-    result = root.api.openapi(basepath="action")
+    result = root.api.nodes(mode="openapi", basepath="action")
     assert result == {"paths": {}, "routers": {}}
 
     # basepath pointing to non-existent path also returns empty
-    result = root.api.openapi(basepath="nonexistent")
+    result = root.api.nodes(mode="openapi", basepath="nonexistent")
     assert result == {"paths": {}, "routers": {}}
 
 
@@ -550,7 +550,7 @@ def test_openapi_with_pydantic_model():
             return {"id": user_id, "name": name}
 
     svc = Service()
-    schema = svc.api.openapi()
+    schema = svc.api.nodes(mode="openapi")
 
     # Should have requestBody with pydantic schema
     path_item = schema["paths"]["/get_user"]
@@ -588,7 +588,7 @@ def test_openapi_entry_filtering():
             return "blocked"
 
     svc = Service()
-    schema = svc.api.openapi()
+    schema = svc.api.nodes(mode="openapi")
 
     # blocked entry should be filtered out
     assert "/allowed" in schema["paths"]
@@ -608,7 +608,7 @@ def test_openapi_handler_without_type_hints():
             return arg
 
     svc = Service()
-    schema = svc.api.openapi()
+    schema = svc.api.nodes(mode="openapi")
 
     path_item = schema["paths"]["/no_hints"]
     operation = path_item["post"]
@@ -631,7 +631,7 @@ def test_openapi_type_conversion():
             return "ok"
 
     svc = Service()
-    schema = svc.api.openapi()
+    schema = svc.api.nodes(mode="openapi")
 
     operation = schema["paths"]["/typed_params"]["post"]
     params = operation["parameters"]
@@ -659,7 +659,7 @@ def test_openapi_generic_types():
             return items
 
     svc = Service()
-    schema = svc.api.openapi()
+    schema = svc.api.nodes(mode="openapi")
 
     operation = schema["paths"]["/generic_params"]["post"]
     params = operation["parameters"]
@@ -685,7 +685,7 @@ def test_openapi_unknown_type_defaults_to_object():
             return obj
 
     svc = Service()
-    schema = svc.api.openapi()
+    schema = svc.api.nodes(mode="openapi")
 
     operation = schema["paths"]["/custom_param"]["post"]
     params = operation["parameters"]
@@ -706,7 +706,7 @@ def test_openapi_required_vs_optional_params():
             return "ok"
 
     svc = Service()
-    schema = svc.api.openapi()
+    schema = svc.api.nodes(mode="openapi")
 
     operation = schema["paths"]["/mixed_params"]["post"]
     params = operation["parameters"]
@@ -744,7 +744,7 @@ def test_openapi_handles_broken_type_hints():
     entry.func = broken_hints
 
     # Should not raise, should fall back gracefully
-    schema = svc.api.openapi()
+    schema = svc.api.nodes(mode="openapi")
     assert "/handler" in schema["paths"]
 
     # Restore
@@ -778,10 +778,27 @@ def test_openapi_handles_hint_param_mismatch():
     entry.func = mismatched
 
     # Should not raise, should skip the mismatched param
-    schema = svc.api.openapi()
+    schema = svc.api.nodes(mode="openapi")
     operation = schema["paths"]["/handler"]["post"]
     # No parameters should be added since ghost_param isn't in signature
     assert "parameters" not in operation or len(operation.get("parameters", [])) == 0
 
     # Restore
     entry.func = original_func
+
+
+def test_nodes_unknown_mode_raises():
+    """Test that nodes(mode='unknown') raises ValueError."""
+
+    class Svc(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            pass
+
+    svc = Svc()
+
+    with pytest.raises(ValueError, match="Unknown mode: unknown"):
+        svc.api.nodes(mode="unknown")

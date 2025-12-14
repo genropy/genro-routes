@@ -48,13 +48,19 @@ class RouterInterface(ABC):
 
     @abstractmethod
     def nodes(
-        self, basepath: str | None = None, lazy: bool = False, **kwargs: Any
+        self,
+        basepath: str | None = None,
+        lazy: bool = False,
+        mode: str | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Return introspection data for this router.
 
         Args:
             basepath: Optional path to start from.
             lazy: If True, child data returned as callables.
+            mode: Output format mode (e.g., "openapi"). If None, returns
+                  standard introspection format.
             **kwargs: Implementation-specific filters.
 
         Returns:
