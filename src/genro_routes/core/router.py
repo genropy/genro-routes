@@ -168,6 +168,11 @@ class Router(BaseRouter):
             raise ValueError(
                 f"Unknown plugin '{plugin}'. Register it first. Available plugins: {available}"
             )
+        if plugin in self._plugins_by_name:
+            raise ValueError(
+                f"Plugin '{plugin}' is already attached to this router. "
+                "Use configure() to update settings."
+            )
         spec_kwargs = dict(config)
         spec = _PluginSpec(plugin_class, spec_kwargs)
         self._plugin_specs.append(spec)

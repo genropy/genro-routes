@@ -115,6 +115,14 @@ def test_plug_validates_type_and_known_plugin():
         svc.api.plug("missing_plugin")
 
 
+def test_plug_rejects_duplicate_plugin():
+    """Plugging the same plugin twice should raise ValueError."""
+    svc = ManualService()
+    svc.api.plug("logging")
+    with pytest.raises(ValueError, match="already attached"):
+        svc.api.plug("logging")
+
+
 def test_add_entry_variants_and_wildcards():
     svc = ManualService()
     svc.api.add_entry(["first", "second"])
