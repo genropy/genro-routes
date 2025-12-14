@@ -28,7 +28,7 @@ from importlib import import_module
 
 __version__ = "0.9.0"
 
-from .core import RoutedClass, Router, route
+from .core import RoutedClass, Router, RouterInterface, route
 
 # Import plugins to trigger auto-registration (lazy to avoid cycles)
 for _plugin in ("logging", "pydantic"):
@@ -37,6 +37,7 @@ del _plugin
 
 __all__ = [
     "Router",
+    "RouterInterface",
     "RoutedClass",
     "route",
 ]

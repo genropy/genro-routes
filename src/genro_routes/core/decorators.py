@@ -4,7 +4,7 @@ This module contains only marker helpers; no router mutation happens at
 decoration time.
 
 ``route(router, *, name=None, **kwargs)``
-    Returns a decorator storing metadata on the function under ``TARGET_ATTR_NAME``
+    Returns a decorator storing metadata on the function under ``_route_decorator_kw``
     as a list of dicts. Each payload starts with ``{"name": router}``.
 
     - Explicit logical name: if ``name`` is provided, the payload sets ``entry_name``
@@ -24,14 +24,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from .base_router import TARGET_ATTR_NAME
 from .routed import RoutedClass
 from .router import Router
 
 __all__ = ["route", "RoutedClass", "Router"]
 
 
-def route(router: str, *, name: str | None = None, **kwargs: Any) -> Callable:
+def route(
+    router: str, *, name: str | None = None, **kwargs: Any
+) -> Callable[[Callable], Callable]:
     """Mark a bound method for inclusion in the given router.
 
     Args:
@@ -54,14 +55,14 @@ def route(router: str, *, name: str | None = None, **kwargs: Any) -> Callable:
     """
 
     def decorator(func: Callable) -> Callable:
-        markers = list(getattr(func, TARGET_ATTR_NAME, []))
+        markers = list(getattr(func, "_route_decorator_kw", []))
         payload = {"name": router}
         if name is not None:
             payload["entry_name"] = name
         for key, value in kwargs.items():
             payload[key] = value
         markers.append(payload)
-        setattr(func, TARGET_ATTR_NAME, markers)
+        setattr(func, "_route_decorator_kw", markers)  # noqa: B010
         return func
 
     return decorator

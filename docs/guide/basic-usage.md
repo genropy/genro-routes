@@ -78,7 +78,7 @@ assert api.routes.get("alt_name")() == "executed"
 
 ## Calling Handlers
 
-<!-- test: test_router_runtime_extras.py::test_router_call_and_members_structure -->
+<!-- test: test_router_runtime_extras.py::test_router_call_and_nodes_structure -->
 
 Use `get()` to retrieve handlers and `call()` for direct invocation:
 
@@ -209,7 +209,7 @@ assert dyn.api.get("greet")("World") == "Hello, World"
 
 ## Building Hierarchies
 
-<!-- test: test_router_basic.py::test_dotted_path_and_members_with_attached_child -->
+<!-- test: test_router_basic.py::test_dotted_path_and_nodes_with_attached_child -->
 
 Create nested router structures with dotted path access:
 
@@ -251,7 +251,7 @@ assert root.api.get("products/detail")(5) == "products:detail:5"
 
 ## Introspection
 
-<!-- test: test_router_basic.py::test_dotted_path_and_members_with_attached_child -->
+<!-- test: test_router_basic.py::test_dotted_path_and_nodes_with_attached_child -->
 
 Inspect router structure and registered handlers:
 
@@ -268,27 +268,27 @@ class Inspectable(RoutedClass):
 
 insp = Inspectable()
 
-# Get metadata (single source: members)
-info = insp.api.members()
+# Get metadata (single source: nodes)
+info = insp.api.nodes()
 assert "action" in info["entries"]
 assert "sub" in info["routers"]
 
-# Get members starting from a specific path
-sub_info = insp.api.members(basepath="sub")
+# Get nodes starting from a specific path
+sub_info = insp.api.nodes(basepath="sub")
 assert "list" in sub_info["entries"]
 
 # Use lazy=True for on-demand expansion of children
-lazy_info = insp.api.members(lazy=True)
+lazy_info = insp.api.nodes(lazy=True)
 assert callable(lazy_info["routers"]["sub"])  # Callable, not expanded
 sub_expanded = lazy_info["routers"]["sub"]()  # Expand on demand
 ```
 
-**`members()` parameters**:
+**`nodes()` parameters**:
 
 - `basepath`: Start from a specific point in the hierarchy
 - `lazy`: Return callables for child routers instead of expanding recursively
 
-**Use `members()` to**:
+**Use `nodes()` to**:
 
 - Generate API documentation
 - Debug routing issues

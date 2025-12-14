@@ -15,16 +15,16 @@ graph TD
   RC -->|attribute| ChildRC
   ChildRC -->|attribute| ChildRouter
   Router -->|attach_instance(name/mapping)| ChildRouter
-  Router -->|members| M[Members tree]
+  Router -->|nodes| M[Nodes tree]
 ```
 
 - Hierarchies are only via `attach_instance`/`detach_instance` (instance-to-instance).
 - Branch routers (`branch=True`) exist but do not auto-discover handlers.
-- Introspection: `members()` is the sole API; it returns router/instance, handlers (with metadata, doc, signature, plugins, params), children, and `plugin_info`.
+- Introspection: `nodes()` is the sole API; it returns router/instance, handlers (with metadata, doc, signature, plugins, params), children, and `plugin_info`.
 
 ## Plugin store
 
-Single authoritative store per router: `router._plugin_info` (exposed via `members`).
+Single authoritative store per router: `router._plugin_info` (exposed via `nodes`).
 
 ```mermaid
 classDiagram
@@ -77,7 +77,7 @@ plugin_info
 - Per-handler config via `plugin.configuration["handler"].key = value`.
 - Plugins should read config at call time (no baked-in closures) so live updates apply without rebuild.
 
-## Introspection data (`members`)
+## Introspection data (`nodes`)
 
 ```mermaid
 graph LR

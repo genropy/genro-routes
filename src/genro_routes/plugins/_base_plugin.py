@@ -300,14 +300,14 @@ class BasePlugin:
     ) -> bool | None:  # pragma: no cover - optional hook
         """Override to control handler visibility during introspection.
 
-        Called by ``router.members()`` to decide if a handler should be
+        Called by ``router.nodes()`` to decide if a handler should be
         included in results. Return True to include, False to exclude,
         or None to defer the decision to other plugins.
 
         Args:
             router: The Router instance.
             entry: MethodEntry being checked.
-            **filters: All filter criteria passed to ``members()``.
+            **filters: All filter criteria passed to ``nodes()``.
 
         Returns:
             True to include, False to exclude, None to defer.
@@ -319,7 +319,7 @@ class BasePlugin:
     ) -> dict[str, Any]:  # pragma: no cover - optional hook
         """Override to provide plugin-specific metadata for a handler.
 
-        Called by ``router.members()`` to gather plugin metadata.
+        Called by ``router.nodes()`` to gather plugin metadata.
 
         Args:
             router: The Router instance.

@@ -58,7 +58,7 @@ orders = OrdersAPI("acme")
 print(orders.api.get("list")())        # ["order-1", "order-2"]
 print(orders.api.get("retrieve")("42"))  # acme:42
 
-overview = orders.api.members()
+overview = orders.api.nodes()
 print(overview["entries"].keys())      # dict_keys(['list', 'retrieve', 'create'])
 ```
 
@@ -87,7 +87,7 @@ app = Application()
 print(app.api.get("users/list")())  # ["alice", "bob"]
 
 # Introspect hierarchy
-info = app.api.members()
+info = app.api.nodes()
 print(info["routers"].keys())  # dict_keys(['users'])
 ```
 

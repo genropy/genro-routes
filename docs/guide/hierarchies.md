@@ -455,7 +455,7 @@ assert child_router.instance is parent.child
 
 ## Introspection
 
-<!-- test: test_router_basic.py::test_dotted_path_and_members_with_attached_child -->
+<!-- test: test_router_basic.py::test_dotted_path_and_nodes_with_attached_child -->
 
 Inspect the full hierarchy structure:
 
@@ -473,7 +473,7 @@ class Inspectable(RoutedClass):
 insp = Inspectable()
 
 # Get complete hierarchy metadata
-info = insp.api.members()
+info = insp.api.nodes()
 assert "action" in info["entries"]
 assert "sub" in info["routers"]
 
@@ -481,17 +481,17 @@ assert "sub" in info["routers"]
 child_info = info["routers"]["sub"]
 assert child_info["name"] == "api"
 
-# Get members starting from a child
-sub_only = insp.api.members(basepath="sub")
+# Get nodes starting from a child
+sub_only = insp.api.nodes(basepath="sub")
 assert "list" in sub_only["entries"]
 
 # Lazy mode: children are callables
-lazy = insp.api.members(lazy=True)
+lazy = insp.api.nodes(lazy=True)
 assert callable(lazy["routers"]["sub"])
 sub_expanded = lazy["routers"]["sub"]()  # Expand on demand
 ```
 
-**`members()` parameters**:
+**`nodes()` parameters**:
 
 - `basepath`: Start from a specific point in the hierarchy (e.g., `"child/grandchild"`)
 - `lazy`: Return callables for child routers instead of expanding recursively

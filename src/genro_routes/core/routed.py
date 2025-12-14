@@ -46,8 +46,6 @@ from typing import TYPE_CHECKING, Any
 
 from genro_toolbox.typeutils import safe_is_instance
 
-from .base_router import ROUTER_REGISTRY_ATTR_NAME
-
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from .router import Router
 
@@ -63,7 +61,7 @@ class RoutedClass:
     via the ``routedclass`` property.
     """
 
-    __slots__ = (_PROXY_ATTR_NAME, ROUTER_REGISTRY_ATTR_NAME, "_routed_parent")
+    __slots__ = (_PROXY_ATTR_NAME, "__genro_routes_router_registry__", "_routed_parent")
 
     def __setattr__(self, name: str, value: Any) -> None:
         current = self._get_current_routed_attr(name)
@@ -83,11 +81,23 @@ class RoutedClass:
             return None  # pragma: no cover - only detach if bound to this parent
         return current
 
+    @property
+    def _routers(self) -> dict:
+        """Lazy-initialized router registry."""
+        registry = getattr(self, "__genro_routes_router_registry__", None)
+        if registry is None:
+            registry = {}
+            self.__genro_routes_router_registry__ = registry
+        return registry
+
+    @_routers.setter
+    def _routers(self, value: dict) -> None:
+        self.__genro_routes_router_registry__ = value
+
     def _auto_detach_child(self, current: Any) -> None:
-        registry = getattr(self, ROUTER_REGISTRY_ATTR_NAME, {}) or {}
         import contextlib
 
-        for router in registry.values():
+        for router in self._routers.values():
             with contextlib.suppress(Exception):  # best-effort; avoid blocking setattr
                 router.detach_instance(current)  # type: ignore[attr-defined]
 
@@ -96,19 +106,14 @@ class RoutedClass:
 
         Called automatically by Router during initialization.
         """
-        registry = getattr(self, ROUTER_REGISTRY_ATTR_NAME, None)
-        if registry is None:
-            registry = {}
-            setattr(self, ROUTER_REGISTRY_ATTR_NAME, registry)
         if not hasattr(self, "_routed_parent"):
             object.__setattr__(self, "_routed_parent", None)
         if router.name:
-            registry[router.name] = router
+            self._routers[router.name] = router
 
     def _iter_registered_routers(self):
         """Yield (name, router) pairs for all registered routers."""
-        registry = getattr(self, ROUTER_REGISTRY_ATTR_NAME, None) or {}
-        yield from registry.items()
+        yield from self._routers.items()
 
     @property
     def routedclass(self) -> _RoutedProxy:
@@ -140,13 +145,12 @@ class _RoutedProxy:
         return self._navigate_router(router, extra_path)
 
     def _lookup_router(self, owner: RoutedClass, name: str) -> Router | None:
-        registry = getattr(owner, ROUTER_REGISTRY_ATTR_NAME, None) or {}
-        router = registry.get(name)
+        router = owner._routers.get(name)
         if router:
             return router  # type: ignore[no-any-return]
         candidate = getattr(owner, name, None)
         if safe_is_instance(candidate, "genro_routes.core.base_router.BaseRouter"):
-            registry[name] = candidate
+            owner._routers[name] = candidate
             return candidate
         return None
 
@@ -200,8 +204,7 @@ class _RoutedProxy:
     def _describe_all(self) -> dict[str, Any]:
         owner = self._owner
         result: dict[str, Any] = {}
-        registry = getattr(owner, ROUTER_REGISTRY_ATTR_NAME, None) or {}
-        for attr_name, router in registry.items():
+        for attr_name, router in owner._routers.items():
             result[attr_name] = self._describe_router(router)
         return result
 

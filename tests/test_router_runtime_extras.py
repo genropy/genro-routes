@@ -17,7 +17,6 @@
 import pytest
 
 from genro_routes import RoutedClass, Router, route
-from genro_routes.core.base_router import ROUTER_REGISTRY_ATTR_NAME
 from genro_routes.core.routed import is_routed_class
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
 
@@ -157,11 +156,11 @@ def test_iter_marked_methods_deduplicate_same_function():
     assert len(svc.api._handlers) == 1
 
 
-def test_router_call_and_members_structure():
+def test_router_call_and_nodes_structure():
     svc = ManualService()
     svc.api.add_entry(svc.first)
     assert svc.api.call("first") == "first"
-    tree = svc.api.members()
+    tree = svc.api.nodes()
     assert tree["entries"]
     assert "routers" not in tree
 
@@ -197,50 +196,15 @@ def test_inherit_plugins_seed_from_empty_parent_bucket():
     assert "stamp_extra" in child.api._plugins_by_name
 
 
-def test_iter_child_routers_override_deduplicates():
-    root = ManualService()
-    holder = MultiChild()
-    results = root.api._collect_child_routers({"bundle": holder})
-    assert results == []
-
-
-def test_iter_instance_attributes_skip_registry_and_slots():
-    inst = SlotRouted()
-    setattr(inst, ROUTER_REGISTRY_ATTR_NAME, {"slot": inst.slot_router})
-    attrs = list(inst.slot_router._iter_instance_attributes(inst))
-    keys = [name for name, _ in attrs]
-    assert ROUTER_REGISTRY_ATTR_NAME not in keys
-    assert "slot_router" in keys
-
-    class WeirdSlots:
-        __slots__ = ROUTER_REGISTRY_ATTR_NAME
-
-        def __init__(self):
-            setattr(self, ROUTER_REGISTRY_ATTR_NAME, "value")
-
-    weird = WeirdSlots()
-    assert list(inst.slot_router._iter_instance_attributes(weird)) == []
-
-    class RegistryHolder:
-        pass
-
-    holder = RegistryHolder()
-    setattr(holder, ROUTER_REGISTRY_ATTR_NAME, "registry")
-    holder.extra = "value"
-    attrs = list(inst.slot_router._iter_instance_attributes(holder))
-    assert all(name != ROUTER_REGISTRY_ATTR_NAME for name, _ in attrs)
-    assert any(name == "extra" for name, _ in attrs)
-
-
-def test_router_members_include_metadata_tree():
+def test_router_nodes_include_metadata_tree():
     parent = ManualService()
     parent.api.add_entry(parent.first)
-    info = parent.api.members()
+    info = parent.api.nodes()
     assert "entries" in info
 
 
-def test_router_members_with_basepath():
-    """Test members() with basepath navigates to child router."""
+def test_router_nodes_with_basepath():
+    """Test nodes() with basepath navigates to child router."""
 
     class Child(RoutedClass):
         def __init__(self):
@@ -273,30 +237,30 @@ def test_router_members_with_basepath():
     root = Root()
 
     # Without basepath - returns full tree
-    full = root.api.members()
+    full = root.api.nodes()
     assert "root_action" in full["entries"]
     assert "child" in full["routers"]
 
     # With basepath="child" - returns child subtree
-    child_members = root.api.members(basepath="child")
-    assert child_members["name"] == "api"
-    assert "child_action" in child_members["entries"]
-    assert "grandchild" in child_members["routers"]
-    assert "root_action" not in child_members.get("entries", {})
+    child_nodes = root.api.nodes(basepath="child")
+    assert child_nodes["name"] == "api"
+    assert "child_action" in child_nodes["entries"]
+    assert "grandchild" in child_nodes["routers"]
+    assert "root_action" not in child_nodes.get("entries", {})
 
     # With basepath="child/grandchild" - returns grandchild subtree
-    grandchild_members = root.api.members(basepath="child/grandchild")
-    assert grandchild_members["name"] == "api"
-    assert "grandchild_action" in grandchild_members["entries"]
-    assert "routers" not in grandchild_members  # no children
+    grandchild_nodes = root.api.nodes(basepath="child/grandchild")
+    assert grandchild_nodes["name"] == "api"
+    assert "grandchild_action" in grandchild_nodes["entries"]
+    assert "routers" not in grandchild_nodes  # no children
 
     # With basepath pointing to a handler - returns empty dict
-    handler_members = root.api.members(basepath="root_action")
-    assert handler_members == {}
+    handler_nodes = root.api.nodes(basepath="root_action")
+    assert handler_nodes == {}
 
     # With basepath pointing to non-existent path - returns empty dict
-    missing_members = root.api.members(basepath="nonexistent")
-    assert missing_members == {}
+    missing_nodes = root.api.nodes(basepath="nonexistent")
+    assert missing_nodes == {}
 
 
 def test_get_returns_child_router():
@@ -342,8 +306,8 @@ def test_get_returns_child_router():
     assert child_handler() == "child"
 
 
-def test_members_lazy_returns_callables():
-    """Test members(lazy=True) returns callables for child routers."""
+def test_nodes_lazy_returns_callables():
+    """Test nodes(lazy=True) returns callables for child routers."""
 
     class Child(RoutedClass):
         def __init__(self):
@@ -365,19 +329,19 @@ def test_members_lazy_returns_callables():
 
     root = Root()
 
-    # Without lazy - routers dict contains expanded members
-    full = root.api.members()
+    # Without lazy - routers dict contains expanded nodes
+    full = root.api.nodes()
     assert isinstance(full["routers"]["child"], dict)
     assert "child_action" in full["routers"]["child"]["entries"]
 
     # With lazy=True - routers dict contains callables
-    lazy_members = root.api.members(lazy=True)
-    assert callable(lazy_members["routers"]["child"])
+    lazy_nodes = root.api.nodes(lazy=True)
+    assert callable(lazy_nodes["routers"]["child"])
 
-    # Calling the callable expands the child members
-    child_members = lazy_members["routers"]["child"]()
-    assert isinstance(child_members, dict)
-    assert "child_action" in child_members["entries"]
+    # Calling the callable expands the child nodes
+    child_nodes = lazy_nodes["routers"]["child"]()
+    assert isinstance(child_nodes, dict)
+    assert "child_action" in child_nodes["entries"]
 
 
 def test_openapi_returns_schema():
@@ -517,8 +481,7 @@ def test_configure_question_success_and_router_proxy_errors():
     assert "api" in tree
     with pytest.raises(AttributeError):
         svc.routedclass.get_router("missing")
-    registry = getattr(svc, ROUTER_REGISTRY_ATTR_NAME)
-    registry.pop("api")
+    svc._routers.pop("api")
     router = svc.routedclass.get_router("api")
     assert router is svc.api
 
@@ -543,22 +506,6 @@ def test_get_router_skips_empty_segments():
     svc = Parent()
     router = svc.routedclass.get_router("api/child//")
     assert router.name == "leaf"
-
-
-def test_iter_child_routers_handles_repeated_objects():
-    class DummyChild(RoutedClass):
-        def __init__(self):
-            self.routes = Router(self, name="routes")
-
-    class RepeatContainer:
-        def __init__(self):
-            self.api = Router(self, name="api")
-            self.child = DummyChild()
-
-    container = RepeatContainer()
-    # Iterable inputs no longer scanned; expect empty result
-    routes = container.api._collect_child_routers([container.child, container.child])
-    assert routes == []
 
 
 def test_is_routed_class_helper():

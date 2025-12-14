@@ -42,7 +42,7 @@ orders.api.get("create")({"name": "order-3"})  # Calls create()
 - **Plugin system**: add logging, validation, audit without touching handlers
 - **Hierarchies**: organize routers in trees with `attach_instance()`
 - **Metadata**: each handler can have scopes, channels, configurations
-- **Introspection**: `router.members()` and `describe()` to explore structure
+- **Introspection**: `router.nodes()` and `describe()` to explore structure
 - **Isolation**: each instance has its own router with independent plugins
 
 For simple apps, a dictionary may suffice. For complex services, Genro Routes provides structure and extensibility.
@@ -163,7 +163,7 @@ dashboard.api.get("sales/report")()
 dashboard.sales.api.get("report")()
 
 # Introspection
-members = dashboard.api.members()
+nodes = dashboard.api.nodes()
 # {
 #   "handlers": {...},
 #   "children": {
@@ -365,11 +365,11 @@ result = router.get("method", use_smartasync=True)()
 
 <!-- test: test_router_basic.py::test_describe_returns_hierarchy -->
 
-**Answer**: Use `members()` or `describe()`:
+**Answer**: Use `nodes()` or `describe()`:
 
 ```python
 # Structure snapshot
-members = router.members()
+nodes = router.nodes()
 # {
 #   "handlers": {
 #     "list": {"func": <function>, "metadata": {...}},
@@ -391,7 +391,7 @@ description = router.describe()
 # }
 
 # With filters
-internal_only = router.members(scopes="internal")
+internal_only = router.nodes(scopes="internal")
 ```
 
 ## Comparisons

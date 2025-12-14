@@ -263,9 +263,9 @@ def test_application_hierarchy():
     app = Application()
 
     # Verify structure
-    members = app.api.members()
-    assert "users" in members["routers"]
-    assert "orders" in members["routers"]
+    nodes = app.api.nodes()
+    assert "users" in nodes["routers"]
+    assert "orders" in nodes["routers"]
 
     # Verify access
     users = app.api.get("users/list_users")()

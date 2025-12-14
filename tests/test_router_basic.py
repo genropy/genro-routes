@@ -43,7 +43,7 @@ def test_orders_quick_example():
     orders = OrdersAPI("acme")
     assert orders.api.get("list")() == ["order-1", "order-2"]
     assert orders.api.get("retrieve")("42") == "acme:42"
-    overview = orders.api.members()
+    overview = orders.api.nodes()
     assert set(overview["entries"].keys()) == {"list", "retrieve", "create"}
 
 
@@ -317,7 +317,7 @@ def test_plugin_enable_disable_runtime_data():
     assert svc.api.get_runtime_data("touch", "toggle", "last") is True
 
 
-def test_dotted_path_and_members_with_attached_child():
+def test_dotted_path_and_nodes_with_attached_child():
     class Child(RoutedClass):
         def __init__(self):
             self.api = Router(self, name="api")
@@ -334,5 +334,5 @@ def test_dotted_path_and_members_with_attached_child():
 
     parent = Parent()
     assert parent.api.get("child/ping")() == "pong"
-    tree = parent.api.members()
+    tree = parent.api.nodes()
     assert "child" in tree["routers"]

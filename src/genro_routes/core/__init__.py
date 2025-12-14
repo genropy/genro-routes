@@ -17,10 +17,12 @@ from .base_router import BaseRouter
 from .decorators import route
 from .routed import RoutedClass
 from .router import Router
+from .router_interface import RouterInterface
 
 __all__ = [
     "BaseRouter",
     "Router",
+    "RouterInterface",
     "route",
     "RoutedClass",
 ]

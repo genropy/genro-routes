@@ -37,7 +37,7 @@ Registration and naming
 Marker discovery
 ----------------
 ``_iter_marked_methods`` walks the reversed MRO of ``type(owner)`` (child first
-wins), scans ``__dict__`` for plain functions carrying ``TARGET_ATTR_NAME``
+wins), scans ``__dict__`` for plain functions carrying ``_route_decorator_kw``
 markers. Only markers whose ``name`` matches this router's ``name`` are used.
 
 Handler table and wrapping
@@ -64,7 +64,7 @@ Children (instance hierarchies)
 
 Introspection
 -------------
-- ``members(**kwargs)`` builds a nested dict of routers and entries respecting
+- ``nodes(**kwargs)`` builds a nested dict of routers and entries respecting
   filters. Returns dict with ``entries`` and ``routers`` keys only if non-empty.
 
 Hooks for subclasses
@@ -86,13 +86,12 @@ from genro_toolbox.typeutils import safe_is_instance
 
 from genro_routes.plugins._base_plugin import MethodEntry
 
-__all__ = ["BaseRouter", "TARGET_ATTR_NAME", "ROUTER_REGISTRY_ATTR_NAME"]
+from .router_interface import RouterInterface
 
-TARGET_ATTR_NAME = "__genro_routes_targets__"
-ROUTER_REGISTRY_ATTR_NAME = "__genro_routes_router_registry__"
+__all__ = ["BaseRouter"]
 
 
-class BaseRouter:
+class BaseRouter(RouterInterface):
     """Plugin-free router bound to an object instance.
 
     Responsibilities:
@@ -348,7 +347,7 @@ class BaseRouter:
                 if func_id in seen:
                     continue
                 seen.add(func_id)
-                markers = getattr(value, TARGET_ATTR_NAME, None)
+                markers = getattr(value, "_route_decorator_kw", None)
                 if not markers:
                     continue
                 for marker in markers:
@@ -383,12 +382,12 @@ class BaseRouter:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def get(self, selector: str, **options: Any) -> Callable | BaseRouter | None:
+    def get(self, selector: str, **options: Any) -> Callable | RouterInterface | None:
         """Resolve and return a handler, child router, or None for the given selector.
 
         Path selectors traverse attached children using '/'. Returns:
         - A callable if the selector points to a handler
-        - A BaseRouter if the selector points to a child router
+        - A RouterInterface if the selector points to a child router
         - None if nothing is found and no default_handler is provided
 
         Falls back to ``default_handler`` if provided and nothing is found.
@@ -398,10 +397,19 @@ class BaseRouter:
         default = getattr(opts, "default_handler", None)
         use_smartasync = getattr(opts, "use_smartasync", False)
 
-        node, method_name = self._resolve_path(selector)
+        # Handle path with "/" by delegating to child routers
+        if "/" in selector:
+            first, rest = selector.split("/", 1)
+            child = self._children.get(first)
+            if child is None:
+                if default is not None:
+                    return default  # type: ignore[no-any-return]
+                return None
+            # Delegate to child router's get()
+            return child.get(rest, **options)
 
-        # First check if it's a handler
-        handler = node._handlers.get(method_name)
+        # Single segment: check handlers first, then children
+        handler = self._handlers.get(selector)
         if handler is not None:
             if use_smartasync:
                 from smartasync import smartasync  # type: ignore
@@ -409,8 +417,7 @@ class BaseRouter:
                 handler = smartasync(handler)
             return handler
 
-        # Then check if it's a child router
-        child_router = node._children.get(method_name)
+        child_router = self._children.get(selector)
         if child_router is not None:
             return child_router
 
@@ -427,7 +434,7 @@ class BaseRouter:
         handler = self.get(selector)
         if handler is None or isinstance(handler, BaseRouter):
             raise NotImplementedError(f"No callable handler found for '{selector}'")
-        return handler(*args, **kwargs)
+        return handler(*args, **kwargs)  # type: ignore[operator]
 
     # ------------------------------------------------------------------
     # Children management (via attach_instance/detach_instance)
@@ -440,13 +447,6 @@ class BaseRouter:
         if existing_parent is not None and existing_parent is not self.instance:
             raise ValueError("attach_instance() rejected: child already bound to another parent")
 
-        # Require the parent to already reference the child via an attribute.
-        has_attr_reference = any(
-            value is routed_child for _, value in self._iter_instance_attributes(self.instance)
-        )
-        if not has_attr_reference:
-            raise ValueError("attach_instance() requires the child to be stored on the parent")
-
         candidates = self._collect_child_routers(routed_child)
         if not candidates:
             raise TypeError(
@@ -455,8 +455,7 @@ class BaseRouter:
 
         mapping: dict[str, str] = {}
         tokens = [chunk.strip() for chunk in (name.split(",") if name else []) if chunk.strip()]
-        parent_registry = getattr(self.instance, ROUTER_REGISTRY_ATTR_NAME, {}) or {}
-        parent_has_multiple = len(parent_registry) > 1
+        parent_has_multiple = len(self.instance._routers) > 1
 
         if len(candidates) == 1:
             # Single child router: alias optional unless parent has multiple routers.
@@ -532,79 +531,41 @@ class BaseRouter:
         return routed_child  # type: ignore[no-any-return]
 
     def _collect_child_routers(
-        self, source: Any, *, override_name: str | None = None, seen: set[int] | None = None
+        self, source: Any
     ) -> list[tuple[str, BaseRouter]]:
-        """Return all routers found inside ``source`` (attributes only)."""
-        if seen is None:
-            seen = set()
-        obj_id = id(source)
-        if obj_id in seen:
-            return []  # pragma: no cover - defensive cycle guard
-        seen.add(obj_id)
-
-        router_items: list[tuple[str, BaseRouter]] = []
-        for attr_name, value in self._iter_instance_attributes(source):
-            if value is None or value is source:
-                continue
-            if isinstance(value, BaseRouter):
-                router_items.append((attr_name, value))
-
-        if not router_items:
-            return []
-
-        keyed: list[tuple[str, BaseRouter]] = []
-        seen_keys: set[str] = set()
-        for attr_name, router in router_items:
-            key = override_name or attr_name or router.name or "child"
-            if key in seen_keys:
-                continue  # pragma: no cover - duplicate key guard
-            seen_keys.add(key)
-            keyed.append((key, router))
-        return keyed
-
-    @staticmethod
-    def _iter_instance_attributes(obj: Any) -> Iterator[tuple[str, Any]]:
-        inst_dict = getattr(obj, "__dict__", None)
-        if inst_dict:
-            for key, value in inst_dict.items():
-                if key == ROUTER_REGISTRY_ATTR_NAME:
-                    continue
-                yield key, value
-        slots = getattr(type(obj), "__slots__", ())
-        if isinstance(slots, str):
-            slots = (slots,)
-        for slot in slots:
-            if slot == ROUTER_REGISTRY_ATTR_NAME:
-                continue
-            if hasattr(obj, slot):
-                yield slot, getattr(obj, slot)
+        """Return all routers registered in ``source``'s registry."""
+        return list(source._routers.items())
 
     # ------------------------------------------------------------------
     # Routing helpers
     # ------------------------------------------------------------------
-    def _resolve_path(self, selector: str) -> tuple[BaseRouter, str]:
+    def _resolve_path(self, selector: str) -> tuple[RouterInterface, str]:
         if "/" not in selector:
             return self, selector
-        node: BaseRouter = self
+        node: RouterInterface = self
         parts = selector.split("/")
         for segment in parts[:-1]:
-            node = node._children[segment]
+            # Use get() to allow non-BaseRouter children (e.g., StaticRouter)
+            child = node._children.get(segment) if hasattr(node, "_children") else None
+            if child is None:
+                raise KeyError(segment)
+            node = child
         return node, parts[-1]
 
     # ------------------------------------------------------------------
     # Introspection helpers
     # ------------------------------------------------------------------
-    def members(
+    def nodes(
         self, basepath: str | None = None, lazy: bool = False, **kwargs: Any
     ) -> dict[str, Any]:
         """Return a tree of routers/entries/metadata respecting filters.
 
         Args:
             basepath: Optional path to start from (e.g., "child/grandchild").
-                      If provided, returns members starting from that point
+                      If provided, returns nodes starting from that point
                       in the hierarchy instead of from this router.
             lazy: If True, child routers are returned as callables that
-                  produce their members when invoked, instead of recursing
+                  produce their nodes when invoked, instead of recursing
                   immediately.
             **kwargs: Filter arguments passed to plugins via allow_entry().
         """
@@ -612,11 +573,11 @@ class BaseRouter:
             target = self.get(basepath)
             if not isinstance(target, BaseRouter):
                 return {}
-            return target.members(lazy=lazy, **kwargs)
+            return target.nodes(lazy=lazy, **kwargs)
         filter_args = self._prepare_filter_args(**kwargs)
 
         entries = {
-            entry.name: self._entry_member_info(entry)
+            entry.name: self._entry_node_info(entry)
             for entry in self._entries.values()
             if self._allow_entry(entry, **filter_args)
         }
@@ -624,12 +585,12 @@ class BaseRouter:
         routers: dict[str, Any]
         if lazy:
             routers = {
-                child_name: (lambda c=child: c.members(lazy=True, **kwargs))
+                child_name: (lambda c=child: c.nodes(lazy=True, **kwargs))
                 for child_name, child in self._children.items()
             }
         else:
             routers = {
-                child_name: child.members(**kwargs)
+                child_name: child.nodes(**kwargs)
                 for child_name, child in self._children.items()
             }
             # Remove empty routers only in non-lazy mode
@@ -798,7 +759,7 @@ class BaseRouter:
             python_type = origin
         return type_map.get(python_type, "object")
 
-    def _entry_member_info(self, entry: MethodEntry) -> dict[str, Any]:
+    def _entry_node_info(self, entry: MethodEntry) -> dict[str, Any]:
         """Build info dict for a single entry."""
         info: dict[str, Any] = {
             "name": entry.name,

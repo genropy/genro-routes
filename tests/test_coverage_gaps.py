@@ -24,8 +24,8 @@ from genro_routes.plugins._base_plugin import BasePlugin
 # --- base_router.py:682 - _describe_entry_extra returns extra ---
 
 
-def test_members_with_plugin_returns_extra_info():
-    """Test that members() includes plugin info when plugins are attached."""
+def test_nodes_with_plugin_returns_extra_info():
+    """Test that nodes() includes plugin info when plugins are attached."""
 
     class Svc(RoutedClass):
         def __init__(self):
@@ -36,7 +36,7 @@ def test_members_with_plugin_returns_extra_info():
             return text
 
     svc = Svc()
-    tree = svc.api.members()
+    tree = svc.api.nodes()
     # Should have plugins info in entry
     entry_info = tree["entries"]["handler"]
     assert "plugins" in entry_info

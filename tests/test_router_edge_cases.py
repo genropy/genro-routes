@@ -313,24 +313,6 @@ def test_attach_instance_name_collision():
         parent.api.attach_instance(parent.child2, name="sales")
 
 
-def test_attach_instance_requires_child_attribute_on_parent():
-    class Child(RoutedClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-    class Parent(RoutedClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-    parent = Parent()
-    child = Child()
-    with pytest.raises(ValueError):
-        parent.api.attach_instance(child, name="child")
-    # After storing on parent, attach works
-    parent.child = child
-    parent.api.attach_instance(parent.child, name="child")
-
-
 def test_detach_instance_missing_alias():
     class Child(RoutedClass):
         def __init__(self):

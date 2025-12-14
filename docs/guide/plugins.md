@@ -141,8 +141,8 @@ Genro Routes plugins can override these methods:
 | `configure()` | At plugin init and runtime | Define configuration schema | No |
 | `on_decore()` | Handler registration | Add metadata, validate signatures | No |
 | `wrap_handler()` | Handler invocation | Middleware (logging, auth, etc.) | No |
-| `allow_entry()` | `members()` introspection | Filter visible handlers | No |
-| `entry_metadata()` | `members()` introspection | Add plugin metadata to output | No |
+| `allow_entry()` | `nodes()` introspection | Filter visible handlers | No |
+| `entry_metadata()` | `nodes()` introspection | Add plugin metadata to output | No |
 
 **All hooks are optional.** Override only what you need. A minimal plugin can have just `plugin_code` and `plugin_description` with no hooks.
 
@@ -244,9 +244,9 @@ def wrap_handler(self, router, entry, call_next):
 
 ### allow_entry(router, entry, **filters)
 
-Control handler visibility during introspection (`members()`).
+Control handler visibility during introspection (`nodes()`).
 
-The plugin receives all filter arguments passed to `members(**filters)` and is responsible for:
+The plugin receives all filter arguments passed to `nodes(**filters)` and is responsible for:
 
 - Interpreting the filters according to its own logic
 - Validating filter values if needed
@@ -256,7 +256,7 @@ The plugin receives all filter arguments passed to `members(**filters)` and is r
 
 - `router` - The Router instance
 - `entry` - MethodEntry being checked
-- `**filters` - All filter criteria passed to `members()`. The plugin decides which filters to handle and how to interpret them.
+- `**filters` - All filter criteria passed to `nodes()`. The plugin decides which filters to handle and how to interpret them.
 
 **Returns**: `True` to include, `False` to exclude, `None` to defer to other plugins
 
@@ -273,7 +273,7 @@ def allow_entry(self, router, entry, visibility=None, **filters):
 
 ### entry_metadata(router, entry)
 
-Provide plugin-specific metadata for `members()` output.
+Provide plugin-specific metadata for `nodes()` output.
 
 **Parameters**:
 
@@ -293,7 +293,7 @@ def entry_metadata(self, router, entry):
     }
 ```
 
-The result appears in `members()` output:
+The result appears in `nodes()` output:
 
 ```python
 {
@@ -530,7 +530,7 @@ class AuthPlugin(BasePlugin):
         return wrapper
 
     def entry_metadata(self, router, entry):
-        """Expose auth config in members() output."""
+        """Expose auth config in nodes() output."""
         cfg = self.configuration(entry.name)
         return {
             "enabled": cfg.get("enabled", True),

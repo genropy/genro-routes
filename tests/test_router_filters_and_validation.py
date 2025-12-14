@@ -78,7 +78,7 @@ def test_allow_entry_respects_plugins():
     assert len(plugin.calls) == 2
 
 
-def test_members_entry_extra_rejects_non_dict_from_plugin():
+def test_nodes_entry_extra_rejects_non_dict_from_plugin():
     Router.register_plugin(_BadMetadataPlugin)
     router = _make_router().plug("badmetadata")
     entry = MethodEntry("demo", lambda: None, router, plugins=[])
@@ -87,11 +87,11 @@ def test_members_entry_extra_rejects_non_dict_from_plugin():
         router._describe_entry_extra(entry, {})
 
 
-def test_members_respects_plugin_allow_skip():
+def test_nodes_respects_plugin_allow_skip():
     Router.register_plugin(_FilterPlugin)
     router = _make_router().plug("filtertest")
     router.add_entry(lambda: "ok", name="hidden")
 
     # Filter is passed as-is to plugin; plugin decides how to interpret it
-    tree = router.members(scopes="internal")
+    tree = router.nodes(scopes="internal")
     assert tree == {}
