@@ -5,10 +5,7 @@
 
 from __future__ import annotations
 
-import pytest
-
 from genro_routes import Router
-from genro_routes.plugins.filter import FilterPlugin
 
 
 class Owner:
@@ -17,118 +14,6 @@ class Owner:
 
 def _make_router():
     return Router(Owner(), name="api")
-
-
-class TestFilterPluginMatching:
-    """Test the _match_tags algorithm."""
-
-    def test_single_tag_match(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        assert plugin._match_tags("admin", {"admin", "internal"}) is True
-
-    def test_single_tag_no_match(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        assert plugin._match_tags("admin", {"public"}) is False
-
-    def test_or_with_comma(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        # admin,public means admin OR public
-        assert plugin._match_tags("admin,public", {"admin"}) is True
-        assert plugin._match_tags("admin,public", {"public"}) is True
-        assert plugin._match_tags("admin,public", {"internal"}) is False
-
-    def test_or_with_pipe(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        assert plugin._match_tags("admin|public", {"admin"}) is True
-        assert plugin._match_tags("admin|public", {"public"}) is True
-
-    def test_and_with_ampersand(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        assert plugin._match_tags("admin&internal", {"admin", "internal"}) is True
-        assert plugin._match_tags("admin&internal", {"admin"}) is False
-
-    def test_not_operator(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        assert plugin._match_tags("!admin", {"public"}) is True
-        assert plugin._match_tags("!admin", {"admin"}) is False
-
-    def test_not_with_and(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        # public AND NOT internal
-        assert plugin._match_tags("public&!internal", {"public"}) is True
-        assert plugin._match_tags("public&!internal", {"public", "internal"}) is False
-
-    def test_parentheses_grouping(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        # (admin OR public) AND NOT internal
-        expr = "(admin|public)&!internal"
-        assert plugin._match_tags(expr, {"admin"}) is True
-        assert plugin._match_tags(expr, {"public"}) is True
-        assert plugin._match_tags(expr, {"admin", "internal"}) is False
-        assert plugin._match_tags(expr, {"other"}) is False
-
-    def test_empty_tags_match_not(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        # Entry with no tags should match "!admin"
-        assert plugin._match_tags("!admin", set()) is True
-
-    def test_invalid_rule_raises(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        with pytest.raises(ValueError, match="Invalid tag rule"):
-            plugin._match_tags("admin; drop table", {"admin"})
-
-    def test_nested_parentheses(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        # ((admin OR public) AND internal) OR superuser
-        expr = "((admin|public)&internal)|superuser"
-        assert plugin._match_tags(expr, {"admin", "internal"}) is True
-        assert plugin._match_tags(expr, {"public", "internal"}) is True
-        assert plugin._match_tags(expr, {"superuser"}) is True
-        assert plugin._match_tags(expr, {"admin"}) is False  # missing internal
-        assert plugin._match_tags(expr, {"internal"}) is False  # missing admin/public
-
-    def test_multiple_not_operators(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        # NOT admin AND NOT internal
-        expr = "!admin&!internal"
-        assert plugin._match_tags(expr, {"public"}) is True
-        assert plugin._match_tags(expr, {"admin"}) is False
-        assert plugin._match_tags(expr, {"internal"}) is False
-        assert plugin._match_tags(expr, {"admin", "internal"}) is False
-        assert plugin._match_tags(expr, set()) is True
-
-    def test_not_with_or(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        # NOT admin OR NOT internal (true unless both are present)
-        expr = "!admin|!internal"
-        assert plugin._match_tags(expr, {"public"}) is True
-        assert plugin._match_tags(expr, {"admin"}) is True  # !internal is true
-        assert plugin._match_tags(expr, {"internal"}) is True  # !admin is true
-        assert plugin._match_tags(expr, {"admin", "internal"}) is False
-
-    def test_complex_three_tags(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        # (admin AND internal) OR (public AND external)
-        expr = "(admin&internal)|(public&external)"
-        assert plugin._match_tags(expr, {"admin", "internal"}) is True
-        assert plugin._match_tags(expr, {"public", "external"}) is True
-        assert plugin._match_tags(expr, {"admin", "external"}) is False
-        assert plugin._match_tags(expr, {"admin"}) is False
-
-    def test_whitespace_in_tags_ignored(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        # Tags with spaces should still work
-        assert plugin._match_tags("admin", {"admin", "other"}) is True
-
-    def test_single_tag_empty_entry_tags(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        assert plugin._match_tags("admin", set()) is False
-
-    def test_only_not_expression(self):
-        plugin = FilterPlugin.__new__(FilterPlugin)
-        # Just !admin should work
-        assert plugin._match_tags("!admin", {"other", "tags"}) is True
-        assert plugin._match_tags("!admin", {"admin", "other"}) is False
 
 
 class TestFilterPluginIntegration:
@@ -268,3 +153,238 @@ class TestFilterPluginIntegration:
         assert "admin_action" in result.get("entries", {})
         # Child should be pruned (empty after filter)
         assert "child" not in result.get("routers", {})
+
+    def test_filter_tag_inheritance_union(self):
+        """Test that parent tags are merged with child tags via union."""
+        from genro_routes import RoutedClass, route
+
+        class Parent(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter", tags="corporate")
+
+        class Child(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter", tags="internal")
+
+            @route("api", filter_tags="admin")
+            def admin_only(self):
+                return "admin"
+
+        parent = Parent()
+        child = Child()
+        parent.api.attach_instance(child, name="child")
+
+        # Child should now have merged tags: "corporate,internal"
+        child_plugin = child.api._plugins_by_name["filter"]
+        child_tags = child_plugin.configuration().get("tags", "")
+        assert "corporate" in child_tags
+        assert "internal" in child_tags
+
+        # Entry has "admin" tag, but inherits "corporate,internal" from router _all_
+        # Filter by admin should see child entry
+        result = parent.api.nodes(tags="admin")
+        assert "child" in result.get("routers", {})
+
+    def test_filter_tag_runtime_propagation(self):
+        """Test that parent tag changes propagate to children at runtime."""
+        from genro_routes import RoutedClass, route
+
+        class Parent(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter", tags="corporate")
+
+        class Child(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter", tags="internal")
+
+            @route("api", filter_tags="admin")
+            def admin_only(self):
+                return "admin"
+
+        parent = Parent()
+        child = Child()
+        parent.api.attach_instance(child, name="child")
+
+        # Initial state: child has "corporate,internal"
+        child_plugin = child.api._plugins_by_name["filter"]
+        child_tags = child_plugin.configuration().get("tags", "")
+        assert "corporate" in child_tags
+        assert "internal" in child_tags
+
+        # Parent changes tags: "corporate" → "corporate,hr"
+        parent_plugin = parent.api._plugins_by_name["filter"]
+        parent_plugin.configure(tags="corporate,hr")
+
+        # Child should now have "corporate,hr,internal" (own + new parent)
+        child_tags = child_plugin.configuration().get("tags", "")
+        assert "corporate" in child_tags
+        assert "hr" in child_tags
+        assert "internal" in child_tags
+
+    def test_filter_tag_runtime_propagation_removes_old_tags(self):
+        """Test that old parent tags are removed when parent tags change."""
+        from genro_routes import RoutedClass, route
+
+        class Parent(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter", tags="corporate")
+
+        class Child(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter", tags="internal")
+
+            @route("api", filter_tags="admin")
+            def admin_only(self):
+                return "admin"
+
+        parent = Parent()
+        child = Child()
+        parent.api.attach_instance(child, name="child")
+
+        # Initial state: child has "corporate,internal"
+        child_plugin = child.api._plugins_by_name["filter"]
+        child_tags = child_plugin.configuration().get("tags", "")
+        assert "corporate" in child_tags
+        assert "internal" in child_tags
+
+        # Parent changes tags completely: "corporate" → "hr"
+        parent_plugin = parent.api._plugins_by_name["filter"]
+        parent_plugin.configure(tags="hr")
+
+        # Child should now have "hr,internal" (own + new parent, corporate removed)
+        child_tags = child_plugin.configuration().get("tags", "")
+        assert "corporate" not in child_tags  # old parent tag removed
+        assert "hr" in child_tags  # new parent tag added
+        assert "internal" in child_tags  # child's own tag preserved
+
+
+class TestDictLikeInterface:
+    """Test BaseRouter dict-like interface for coverage."""
+
+    def test_iter_keys_values_items(self):
+        """Test __iter__, keys(), values(), items()."""
+        router = _make_router()
+        router.add_entry(lambda: "a", name="entry_a")
+        router.add_entry(lambda: "b", name="entry_b")
+
+        # __iter__
+        names = list(router)
+        assert "entry_a" in names
+        assert "entry_b" in names
+
+        # keys()
+        keys = list(router.keys())
+        assert "entry_a" in keys
+        assert "entry_b" in keys
+
+        # values()
+        values = list(router.values())
+        assert len(values) == 2
+
+        # items()
+        items = list(router.items())
+        assert len(items) == 2
+        item_names = [name for name, _ in items]
+        assert "entry_a" in item_names
+
+    def test_len_and_contains(self):
+        """Test __len__ and __contains__."""
+        router = _make_router()
+        router.add_entry(lambda: "a", name="entry_a")
+
+        assert len(router) == 1
+        assert "entry_a" in router
+        assert "nonexistent" not in router
+
+    def test_dict_interface_with_children(self):
+        """Test dict interface includes children."""
+        from genro_routes import RoutedClass
+
+        class Parent(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        class Child(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        parent = Parent()
+        parent.api.add_entry(lambda: "p", name="parent_entry")
+
+        child = Child()
+        parent.api.attach_instance(child, name="child")
+
+        # Should have both entry and child
+        assert len(parent.api) == 2
+        assert "parent_entry" in parent.api
+        assert "child" in parent.api
+
+        names = list(parent.api.keys())
+        assert "parent_entry" in names
+        assert "child" in names
+
+
+class TestGetWithDefault:
+    """Test get() with default_handler parameter."""
+
+    def test_get_missing_child_with_default_handler(self):
+        """Test get() returns default_handler when child path not found."""
+        router = _make_router()
+        router.add_entry(lambda: "a", name="entry_a")
+
+        fallback = lambda: "fallback"
+        # Path with missing child should return default_handler
+        result = router.get("nonexistent/something", default_handler=fallback)
+        assert result is fallback
+
+    def test_get_missing_child_returns_none(self):
+        """Test get() returns None when child not found and no default."""
+        router = _make_router()
+
+        result = router.get("nonexistent/something")
+        assert result is None
+
+
+class TestFilterPluginAllowNode:
+    """Test allow_node with RouterInterface directly."""
+
+    def test_allow_node_with_router_interface(self):
+        """Test allow_node checks children when passed a RouterInterface."""
+        from genro_routes import RoutedClass, route
+
+        class Child(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter")
+
+            @route("api", filter_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+            @route("api", filter_tags="public")
+            def public_action(self):
+                return "public"
+
+        child = Child()
+        plugin = child.api._plugins_by_name["filter"]
+
+        # Pass router directly to allow_node - should check children
+        # Router has entries with "admin" and "public" tags
+        assert plugin.allow_node(child.api, tags="admin") is True
+        assert plugin.allow_node(child.api, tags="public") is True
+        assert plugin.allow_node(child.api, tags="nonexistent") is False
+
+    def test_allow_node_empty_router(self):
+        """Test allow_node with router that has no matching entries."""
+
+        class Child:
+            pass
+
+        router = Router(Child(), name="api").plug("filter")
+        router.add_entry(lambda: "x", name="only_internal", filter_tags="internal")
+
+        plugin = router._plugins_by_name["filter"]
+
+        # Filter for "admin" - no entries match
+        assert plugin.allow_node(router, tags="admin") is False
+        # Filter for "internal" - one entry matches
+        assert plugin.allow_node(router, tags="internal") is True

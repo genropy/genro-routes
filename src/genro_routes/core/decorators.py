@@ -30,9 +30,7 @@ from .router import Router
 __all__ = ["route", "RoutedClass", "Router"]
 
 
-def route(
-    router: str, *, name: str | None = None, **kwargs: Any
-) -> Callable[[Callable], Callable]:
+def route(router: str, *, name: str | None = None, **kwargs: Any) -> Callable[[Callable], Callable]:
     """Mark a bound method for inclusion in the given router.
 
     Args:

@@ -530,9 +530,7 @@ class BaseRouter(RouterInterface):
         # No hard error if nothing was removed; detach is best-effort.
         return routed_child  # type: ignore[no-any-return]
 
-    def _collect_child_routers(
-        self, source: Any
-    ) -> list[tuple[str, BaseRouter]]:
+    def _collect_child_routers(self, source: Any) -> list[tuple[str, BaseRouter]]:
         """Return all routers registered in ``source``'s registry."""
         return list(source._routers.items())
 
@@ -600,8 +598,7 @@ class BaseRouter(RouterInterface):
             }
         else:
             routers = {
-                child_name: child.nodes(**kwargs)
-                for child_name, child in self._children.items()
+                child_name: child.nodes(**kwargs) for child_name, child in self._children.items()
             }
             # Remove empty routers only in non-lazy mode
             routers = {k: v for k, v in routers.items() if v}
@@ -703,9 +700,7 @@ class BaseRouter(RouterInterface):
             schema = model.model_json_schema()
             operation["requestBody"] = {
                 "required": True,
-                "content": {
-                    "application/json": {"schema": schema}
-                },
+                "content": {"application/json": {"schema": schema}},
             }
         else:
             # Fallback: extract from type hints

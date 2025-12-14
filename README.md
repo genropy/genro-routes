@@ -152,8 +152,7 @@ genro-routes/
 │       ├── pydantic.py     # PydanticPlugin
 │       └── filter.py       # FilterPlugin
 ├── tests/                  # Test suite (99% coverage)
-├── docs/                   # Documentation (Sphinx)
-└── examples/              # Example implementations
+└── docs/                   # Documentation (Sphinx)
 ```
 
 ## Project Status

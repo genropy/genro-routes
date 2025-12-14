@@ -201,9 +201,7 @@ class BasePlugin:
         """Get the router's plugin_info store."""
         return self._router._plugin_info  # type: ignore[no-any-return]
 
-    def _notify_children(
-        self, old_config: dict[str, Any], new_config: dict[str, Any]
-    ) -> None:
+    def _notify_children(self, old_config: dict[str, Any], new_config: dict[str, Any]) -> None:
         """Notify child routers about config change for this plugin."""
         plugin_children = getattr(self._router, "_plugin_children", {})
         child_routers = plugin_children.get(self.name, [])
@@ -310,9 +308,7 @@ class BasePlugin:
         """
         return None
 
-    def allow_node(
-        self, node: Any, **filters: Any
-    ) -> bool:  # pragma: no cover - optional hook
+    def allow_node(self, node: Any, **filters: Any) -> bool:  # pragma: no cover - optional hook
         """Override to control node visibility during introspection.
 
         Called by ``router.nodes()`` to decide if a node (entry or child router)

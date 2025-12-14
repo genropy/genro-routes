@@ -10,6 +10,7 @@ classes without depending on BaseRouter implementation details.
 Required methods:
     - get(selector) -> handler or child router or None
     - nodes() -> introspection data dict
+    - values() -> iterator over entries and children
 """
 
 from __future__ import annotations

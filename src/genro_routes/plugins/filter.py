@@ -39,8 +39,9 @@ Operators:
 
 from __future__ import annotations
 
-import re
 from typing import Any
+
+from genro_toolbox import tags_match
 
 from genro_routes.core.router import Router
 from genro_routes.core.router_interface import RouterInterface
@@ -89,20 +90,48 @@ class FilterPlugin(BasePlugin):
         # Let base class handle common config (enabled, etc.)
         super().on_attached_to_parent(parent_plugin)
 
+        # Store original child tags for later delta calculations
+        my_tags_str = self.configuration().get("tags", "")
+        self._own_tags = {t.strip() for t in my_tags_str.split(",") if t.strip()}
+
         # Then handle tags with union semantics
         parent_tags_str = parent_plugin.configuration().get("tags", "")
-        my_tags_str = self.configuration().get("tags", "")
-
         parent_tags = {t.strip() for t in parent_tags_str.split(",") if t.strip()}
-        my_tags = {t.strip() for t in my_tags_str.split(",") if t.strip()}
 
-        merged = parent_tags | my_tags
+        merged = parent_tags | self._own_tags
         if merged:
             self.configure(tags=",".join(sorted(merged)))
 
-    def allow_node(
-        self, node: MethodEntry | RouterInterface, **filters: Any
-    ) -> bool:
+    def on_parent_config_changed(
+        self, _old_config: dict[str, Any], new_config: dict[str, Any]
+    ) -> None:
+        """Propagate parent tag changes with union semantics.
+
+        When parent tags change, recalculate child's effective tags:
+        - Remove old parent tags
+        - Add new parent tags
+        - Keep child's own tags
+
+        Example:
+            parent: "corporate" → "corporate,hr"
+            child own: "internal"
+            child effective: "corporate,internal" → "corporate,hr,internal"
+        """
+        new_parent_tags_str = new_config.get("tags", "")
+        new_parent_tags = {t.strip() for t in new_parent_tags_str.split(",") if t.strip()}
+
+        # Get child's own tags (stored at attach time)
+        own_tags: set[str] = getattr(self, "_own_tags", set())
+
+        # Calculate new effective tags: own + new parent
+        new_effective = own_tags | new_parent_tags
+
+        if new_effective:
+            self.configure(tags=",".join(sorted(new_effective)))
+        else:
+            self.configure(tags="")
+
+    def allow_node(self, node: MethodEntry | RouterInterface, **filters: Any) -> bool:
         """Filter nodes (entries or routers) based on tag expression.
 
         Args:
@@ -121,47 +150,7 @@ class FilterPlugin(BasePlugin):
         config = self.configuration(node.name)
         tags_str = config.get("tags", "")
         entry_tags = {t.strip() for t in tags_str.split(",") if t.strip()}
-        return self._match_tags(rule, entry_tags)
-
-    def _match_tags(self, rule: str, entry_tags: set[str]) -> bool:
-        """Evaluate tag expression against entry's tags.
-
-        Args:
-            rule: Boolean expression (e.g., "admin+public", "!internal")
-            entry_tags: Set of tags assigned to the entry.
-
-        Returns:
-            True if expression matches, False otherwise.
-
-        Raises:
-            ValueError: If rule syntax is invalid.
-        """
-        # Single regex with named groups for operators, NOT+tag, and tags
-        pattern = r"(?P<op>[&,|])|!(?P<not>[a-zA-Z_]\w*)|(?P<tag>[a-zA-Z_]\w*)"
-        op_map = {"&": "&", ",": "|", "|": "|"}
-
-        def replace_token(m: re.Match[str]) -> str:
-            if m.group("op"):
-                return op_map[m.group("op")]
-            if m.group("not"):
-                return "!1" if m.group("not") in entry_tags else "!0"
-            return "1" if m.group("tag") in entry_tags else "0"
-
-        expr = re.sub(pattern, replace_token, rule)
-
-        # Validate: only 0, 1, !, &, |, (, )
-        if not re.fullmatch(r"[01!&|()]+", expr):
-            raise ValueError(f"Invalid tag rule: {rule}")
-
-        # Check max 6 nesting levels
-        if re.search(r"\({7}", expr):
-            raise ValueError(f"Tag rule too deeply nested (max 6): {rule}")
-
-        # Convert to Python boolean expression
-        py_map = {"!": " not ", "&": " and ", "|": " or ", "0": " False ", "1": " True "}
-        expr = re.sub(r"[!&|01]", lambda m: py_map[m.group()], expr)
-
-        return bool(eval(expr, {"__builtins__": {}}, {}))  # noqa: S307
+        return bool(tags_match(rule, entry_tags))
 
 
 Router.register_plugin(FilterPlugin)

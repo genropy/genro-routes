@@ -156,7 +156,7 @@ class Router(BaseRouter):
 
         Raises:
             TypeError: If plugin is not a string.
-            ValueError: If plugin is not registered.
+            ValueError: If plugin is not registered or already attached.
         """
         if not isinstance(plugin, str):
             raise TypeError(
