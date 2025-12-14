@@ -15,11 +15,11 @@ Required methods:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    pass
+    from genro_routes.core.base_router import MethodEntry
 
 __all__ = ["RouterInterface"]
 
@@ -65,6 +65,14 @@ class RouterInterface(ABC):
 
         Returns:
             Dict with router info, entries, and child routers.
+        """
+        ...
+
+    @abstractmethod
+    def values(self) -> Iterator[MethodEntry | RouterInterface]:
+        """Return all nodes (entries + children).
+
+        Used by plugins for iteration over all contained items.
         """
         ...
 

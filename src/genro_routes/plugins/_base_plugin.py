@@ -155,9 +155,13 @@ class BasePlugin:
         store = self._get_store()
         plugin_bucket = store.setdefault(self.name, {})
         bucket = plugin_bucket.setdefault(target, {"config": {}, "locals": {}})
+        # Capture old config before update (only for _all_ target)
+        old_config = dict(bucket["config"]) if target == "_all_" else None
         bucket["config"].update(config)
-        # Notify children about config change
-        self._notify_children(config)
+        # Notify children about config change (only for _all_ target)
+        if target == "_all_" and old_config is not None:
+            new_config = dict(bucket["config"])
+            self._notify_children(old_config, new_config)
 
     def configuration(self, method_name: str | None = None) -> dict[str, Any]:
         """Read merged configuration (base + optional per-handler override).
@@ -173,21 +177,11 @@ class BasePlugin:
         if not plugin_bucket:
             return {}
         base_bucket = plugin_bucket.get("_all_", {})
-        base_config = self._resolve_config(base_bucket.get("config", {}))
-        merged = dict(base_config)
+        merged = dict(base_bucket.get("config", {}))
         if method_name:
             entry_bucket = plugin_bucket.get(method_name, {})
-            entry_config = self._resolve_config(entry_bucket.get("config", {}))
-            merged.update(entry_config)
+            merged.update(entry_bucket.get("config", {}))
         return merged
-
-    def _resolve_config(self, config: Any) -> dict[str, Any]:
-        """Resolve config value - if callable, call it to get the dict."""
-        if callable(config):
-            return config()  # type: ignore[no-any-return]
-        if config is None:
-            return {}
-        return config  # type: ignore[no-any-return]
 
     def _parse_flags(self, flags: str) -> dict[str, bool]:
         """Parse flag string like "enabled,before:off" into boolean dict."""
@@ -207,14 +201,16 @@ class BasePlugin:
         """Get the router's plugin_info store."""
         return self._router._plugin_info  # type: ignore[no-any-return]
 
-    def _notify_children(self, new_config: dict[str, Any]) -> None:
+    def _notify_children(
+        self, old_config: dict[str, Any], new_config: dict[str, Any]
+    ) -> None:
         """Notify child routers about config change for this plugin."""
         plugin_children = getattr(self._router, "_plugin_children", {})
         child_routers = plugin_children.get(self.name, [])
         for child_router in child_routers:
             child_plugin = child_router._plugins_by_name.get(self.name)
             if child_plugin:
-                child_plugin.on_parent_config_changed(new_config)
+                child_plugin.on_parent_config_changed(old_config, new_config)
 
     # =========================================================================
     # METHODS TO OVERRIDE IN CUSTOM PLUGINS
@@ -314,6 +310,24 @@ class BasePlugin:
         """
         return None
 
+    def allow_node(
+        self, node: Any, **filters: Any
+    ) -> bool:  # pragma: no cover - optional hook
+        """Override to control node visibility during introspection.
+
+        Called by ``router.nodes()`` to decide if a node (entry or child router)
+        should be included in results. For routers, returning True means at least
+        one child matches; returning False prunes the entire branch.
+
+        Args:
+            node: MethodEntry or Router being checked.
+            **filters: All filter criteria passed to ``nodes()``.
+
+        Returns:
+            True to include, False to exclude.
+        """
+        return True
+
     def entry_metadata(
         self, router: Any, entry: MethodEntry
     ) -> dict[str, Any]:  # pragma: no cover - optional hook
@@ -330,15 +344,49 @@ class BasePlugin:
         """
         return {}
 
+    def on_attached_to_parent(self, parent_plugin: BasePlugin) -> None:
+        """Handle attachment to a parent router with this plugin.
+
+        Called when a child router is attached to a parent that has this plugin.
+        The child plugin can decide how to handle the parent's configuration.
+
+        Default behavior:
+        - Copies parent's _all_ config to child's _all_ config
+        - Does NOT overwrite if child already has _all_ config (beyond defaults)
+
+        Override to customize inheritance behavior (e.g., FilterPlugin does
+        union of tags instead of replacement).
+
+        Args:
+            parent_plugin: The parent's plugin instance of the same type.
+        """
+        parent_config = parent_plugin.configuration()
+        my_config = self.configuration()
+        # Only copy if child has just the default config
+        default_config = {"enabled": True}
+        if my_config == default_config and parent_config != default_config:
+            self.configure(**parent_config)
+
     def on_parent_config_changed(
-        self, new_config: dict[str, Any]
-    ) -> None:  # pragma: no cover - optional hook
-        """Override to react when parent router's plugin config changes.
+        self, old_config: dict[str, Any], new_config: dict[str, Any]
+    ) -> None:
+        """React when parent router's plugin config changes.
 
         Called when the parent router modifies its configuration for this
         plugin type. The child plugin can decide how to handle the change.
 
+        Default behavior:
+        - If child's _all_ config equals old_config (was aligned) → update to new_config
+        - If child's _all_ config differs (was customized) → ignore change
+
+        This preserves explicit child customizations while keeping "default"
+        children in sync with parent changes.
+
         Args:
-            new_config: The new configuration dict from the parent plugin.
+            old_config: The parent's previous _all_ configuration.
+            new_config: The parent's new _all_ configuration.
         """
-        pass
+        my_config = self.configuration()
+        if my_config == old_config:
+            # Child was aligned with parent, update to follow
+            self.configure(**new_config)

@@ -806,6 +806,37 @@ class BaseRouter(RouterInterface):
     def iter_plugins(self) -> list[Any]:  # pragma: no cover - base router has no plugins
         return []
 
+    # ------------------------------------------------------------------
+    # Dict-like interface (entries + children as unified namespace)
+    # ------------------------------------------------------------------
+    def __iter__(self) -> Iterator[str]:
+        """Iterate over all node names (entries + children)."""
+        yield from self._entries.keys()
+        yield from self._children.keys()
+
+    def __len__(self) -> int:
+        """Return total count of nodes (entries + children)."""
+        return len(self._entries) + len(self._children)
+
+    def __contains__(self, name: object) -> bool:
+        """Check if name exists in entries or children."""
+        return name in self._entries or name in self._children
+
+    def keys(self) -> Iterator[str]:
+        """Return all node names (entries + children)."""
+        yield from self._entries.keys()
+        yield from self._children.keys()
+
+    def values(self) -> Iterator[MethodEntry | BaseRouter]:
+        """Return all nodes (entries + children)."""
+        yield from self._entries.values()
+        yield from self._children.values()
+
+    def items(self) -> Iterator[tuple[str, MethodEntry | BaseRouter]]:
+        """Return all (name, node) pairs (entries + children)."""
+        yield from self._entries.items()
+        yield from self._children.items()
+
     def _on_attached_to_parent(
         self, parent: BaseRouter
     ) -> None:  # pragma: no cover - hook for subclasses

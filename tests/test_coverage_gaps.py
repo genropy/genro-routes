@@ -79,7 +79,7 @@ def test_register_plugin_empty_name_raises():
 
 
 def test_inherited_plugin_config_lookup():
-    """Test that child router inherits parent plugin config via callable."""
+    """Test that child router inherits parent plugin config."""
 
     class ChildSvc(RoutedClass):
         def __init__(self):
@@ -152,36 +152,6 @@ def test_configure_multi_target():
     assert cfg_b.get("before") is False
     # handler_c should not be affected (uses base)
     assert cfg_c.get("before") is not False or "before" not in cfg_c
-
-
-# --- _base_plugin.py:193,195 - _resolve_config callable/None ---
-
-
-def test_resolve_config_with_callable():
-    """Test that _resolve_config handles callable config."""
-
-    class Svc(RoutedClass):
-        def __init__(self):
-            self.api = Router(self, name="api").plug("logging")
-
-        @route("api")
-        def handler(self):
-            return "ok"
-
-    svc = Svc()
-    plugin = svc.api.logging
-
-    # Test callable resolution
-    result = plugin._resolve_config(lambda: {"key": "value"})
-    assert result == {"key": "value"}
-
-    # Test None resolution
-    result = plugin._resolve_config(None)
-    assert result == {}
-
-    # Test dict passthrough
-    result = plugin._resolve_config({"existing": True})
-    assert result == {"existing": True}
 
 
 # --- _base_plugin.py:240-241 - base configure with flags ---
@@ -490,7 +460,7 @@ def test_parent_config_change_notifies_children():
         def configure(self, value: int = 0):
             pass
 
-        def on_parent_config_changed(self, new_config):
+        def on_parent_config_changed(self, old_config, new_config):
             notifications.append({"router": self._router.name, "config": new_config})
 
     Router.register_plugin(TrackingPlugin)
@@ -524,7 +494,7 @@ def test_parent_config_change_notifies_children():
     # Child should have been notified
     assert len(notifications) == 1
     assert notifications[0]["router"] == "child_api"
-    assert notifications[0]["config"] == {"value": 42}
+    assert notifications[0]["config"]["value"] == 42
 
 
 def test_cascading_notifications():
@@ -535,10 +505,10 @@ def test_cascading_notifications():
         plugin_code = "cascade"
         plugin_description = "Cascades config to children"
 
-        def configure(self, level: int = 0):
+        def configure(self, level: int = 0, enabled: bool = True):
             pass
 
-        def on_parent_config_changed(self, new_config):
+        def on_parent_config_changed(self, old_config, new_config):
             notifications.append({"router": self._router.name, "config": new_config})
             # Apply the config - this should cascade to our children
             self.configure(**new_config)
@@ -599,7 +569,7 @@ def test_child_ignores_parent_config_no_cascade():
         def configure(self, value: int = 0):
             pass
 
-        def on_parent_config_changed(self, new_config):
+        def on_parent_config_changed(self, old_config, new_config):
             notifications.append({"router": self._router.name, "config": new_config})
             # Do NOT call configure - stop the cascade
 

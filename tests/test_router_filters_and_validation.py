@@ -32,8 +32,8 @@ class _FilterPlugin(BasePlugin):
 
     def allow_entry(self, router, entry, **filters):
         self.calls.append(filters)
-        # Hide when scopes filter is present, otherwise keep entry visible.
-        return False if filters.get("scopes") else None
+        # Hide when custom filter is present, otherwise keep entry visible.
+        return False if filters.get("hide") else None
 
 
 class _BadMetadataPlugin(BasePlugin):
@@ -70,9 +70,9 @@ def test_allow_entry_respects_plugins():
     router = _make_router().plug("filtertest")
     entry = MethodEntry("demo", lambda: None, router, plugins=[])
 
-    # scopes filter triggers plugin veto (plugin receives raw filter value)
-    assert router._allow_entry(entry, scopes="internal") is False
-    # without scopes filter plugin returns None and entry passes through
+    # hide filter triggers plugin veto (plugin receives raw filter value)
+    assert router._allow_entry(entry, hide=True) is False
+    # without hide filter plugin returns None and entry passes through
     assert router._allow_entry(entry) is True
     plugin = router._plugins_by_name["filtertest"]
     assert len(plugin.calls) == 2
@@ -93,5 +93,5 @@ def test_nodes_respects_plugin_allow_skip():
     router.add_entry(lambda: "ok", name="hidden")
 
     # Filter is passed as-is to plugin; plugin decides how to interpret it
-    tree = router.nodes(scopes="internal")
+    tree = router.nodes(hide=True)
     assert tree == {}

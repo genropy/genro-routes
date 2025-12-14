@@ -495,6 +495,14 @@ sub_expanded = lazy["routers"]["sub"]()  # Expand on demand
 
 - `basepath`: Start from a specific point in the hierarchy (e.g., `"child/grandchild"`)
 - `lazy`: Return callables for child routers instead of expanding recursively
+- `mode`: Output format mode (e.g., `"openapi"` for OpenAPI schema generation)
+
+```python
+# Generate OpenAPI schema for the hierarchy
+schema = insp.api.nodes(mode="openapi")
+# Or use the shortcut
+schema = insp.api.openapi()
+```
 
 **Introspection provides**:
 
@@ -503,6 +511,7 @@ sub_expanded = lazy["routers"]["sub"]()  # Expand on demand
 - Plugin configuration per level
 - Nested hierarchy representation
 - On-demand expansion with `lazy=True`
+- OpenAPI schema generation with `mode="openapi"`
 
 ## Real-World Examples
 

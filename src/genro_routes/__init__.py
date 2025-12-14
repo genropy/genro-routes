@@ -26,12 +26,12 @@ Example::
 
 from importlib import import_module
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 from .core import RoutedClass, Router, RouterInterface, route
 
 # Import plugins to trigger auto-registration (lazy to avoid cycles)
-for _plugin in ("logging", "pydantic"):
+for _plugin in ("logging", "pydantic", "filter"):
     import_module(f"{__name__}.plugins.{_plugin}")
 del _plugin
 

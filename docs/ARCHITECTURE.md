@@ -63,11 +63,145 @@ plugin_info
   - calls `configure(**config)` which is validated by Pydantic;
   - binds plugin to the router;
   - seeds `plugin_info[name].config` from the provided config.
-- Inheritance (`_on_attached_to_parent`):
-  - child references parent's plugin instances;
-  - creates callable config lookup that resolves from parent;
-  - applies `on_decore` for inherited plugins to child's entries.
+- Inheritance (`_on_attached_to_parent`): see [Plugin Inheritance](#plugin-inheritance) below.
 - Detach of instances leaves plugin store on surviving routers untouched.
+
+## Plugin Inheritance
+
+When a child router is attached to a parent via `attach_instance()`, plugins may be inherited.
+The inheritance behavior is **delegated to the plugin** via hooks, allowing each plugin to
+decide how to handle parent-child relationships.
+
+### Inheritance Rules (Default Behavior)
+
+1. **Child does NOT have the plugin** → plugin is inherited from parent:
+   - A new plugin instance is created on the child (cloned from parent's plugin class)
+   - Plugin's `on_attached_to_parent(parent_plugin)` is called
+   - Default behavior: copy parent's `_all_` config to child
+   - `on_decore` is applied to all child entries
+
+2. **Child already HAS the plugin** → parent does NOT interfere:
+   - Child keeps its own plugin instance and configuration
+   - No config is copied from parent
+   - The child made an explicit choice by having the plugin
+
+### Plugin Hooks for Inheritance
+
+#### `on_attached_to_parent(parent_plugin)`
+
+Called when a child router is attached to a parent that has this plugin.
+The child plugin can decide how to handle the parent's configuration.
+
+```python
+def on_attached_to_parent(self, parent_plugin: BasePlugin) -> None:
+    """Handle attachment to a parent router with this plugin.
+
+    Default behavior: copy parent's _all_ config to child's _all_ config,
+    preserving any entry-specific config the child already has.
+
+    Override to customize inheritance behavior (e.g., FilterPlugin does
+    union of tags instead of replacement).
+    """
+```
+
+**Default implementation:**
+
+- Copies parent's `_all_` config to child's `_all_` config
+- Preserves child's entry-specific configurations (set via decorators)
+- Does NOT overwrite child's `_all_` if child already configured it
+
+#### `on_parent_config_changed(old_config, new_config)`
+
+Called when the parent router modifies its plugin configuration after attachment.
+The child plugin can decide whether to follow the change.
+
+```python
+def on_parent_config_changed(
+    self,
+    old_config: dict[str, Any],
+    new_config: dict[str, Any]
+) -> None:
+    """Handle parent config change notification.
+
+    Default behavior:
+    - If child's config equals old_config (was aligned) → update to new_config
+    - If child's config differs from old_config (was customized) → ignore change
+
+    This preserves explicit child customizations while keeping "default"
+    children in sync with parent changes.
+    """
+```
+
+**Default implementation:**
+
+- Compares child's current `_all_` config with `old_config`
+- If equal (child was following parent) → update to `new_config`
+- If different (child made own choices) → ignore the change
+
+### FilterPlugin Inheritance (Special Case)
+
+FilterPlugin has specific inheritance semantics for tags:
+
+#### Tag Semantics
+
+- **Entry without tags** → always visible (public)
+- **Entry with tags** → visible only if filter matches at least one tag
+
+#### Inheritance via Union
+
+FilterPlugin overrides `on_attached_to_parent` to perform **union** of tags:
+
+```
+parent._all_.tags = "corporate"
+child._all_.tags = "internal"
+→ child._all_.tags effective = "corporate,internal" (union)
+
+child._all_.tags effective = "corporate,internal"
+entry.tags = "admin"
+→ entry.tags effective = "corporate,internal,admin" (union)
+```
+
+The tag chain is:
+
+```
+parent._all_ ∪ child._all_ = child._all_ effective
+child._all_ effective ∪ entry.tags = entry.tags effective
+```
+
+**Why union?** Tags represent "who can see this". A router marked `corporate` means
+all its content requires corporate access. An entry additionally marked `admin`
+requires corporate OR admin access (more permissive, not more restrictive).
+
+#### Example
+
+```python
+class Parent(RoutedClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("filter", tags="corporate")
+        self.child = Child()
+
+class Child(RoutedClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("filter", tags="internal")
+
+    @route("api", filter_tags="admin")
+    def admin_only(self): ...
+
+    @route("api")
+    def general(self): ...
+
+parent = Parent()
+parent.api.attach_instance(parent.child, name="child")
+
+# child.api._all_ effective tags: "corporate,internal"
+# admin_only effective tags: "corporate,internal,admin"
+# general effective tags: "corporate,internal" (inherits from _all_)
+
+# nodes(tags="corporate") → sees both admin_only and general
+# nodes(tags="admin") → sees only admin_only
+# nodes(tags="internal") → sees both
+# nodes() without filter → sees both (no filtering)
+```
 
 ### Plugin API
 - `BasePlugin` requires `plugin_code` and `plugin_description` class attributes.
@@ -88,7 +222,7 @@ graph LR
   C --> Rchild[child router ...]
 ```
 
-- Filters (`scopes`, `channel`) apply to handlers and children; empty children pruned only when filters are active.
+- Filters (e.g., `tags` via FilterPlugin) apply to handlers and children; empty children pruned only when filters are active.
 - `plugin_info` is included for routers; entries can mirror plugin info if desired, but the authoritative store is on the router.
 
 ## Admin/CLI/UI implications

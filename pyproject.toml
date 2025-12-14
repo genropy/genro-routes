@@ -18,7 +18,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "genro-routes"
-version = "0.9.0"
+version = "0.10.0"
 description = "Instance-scoped routing engine for Python with hierarchical handlers and composable plugins"
 readme = "README.md"
 license = "Apache-2.0"

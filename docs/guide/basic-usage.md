@@ -287,10 +287,23 @@ sub_expanded = lazy_info["routers"]["sub"]()  # Expand on demand
 
 - `basepath`: Start from a specific point in the hierarchy
 - `lazy`: Return callables for child routers instead of expanding recursively
+- `mode`: Output format mode (e.g., `"openapi"` for OpenAPI schema generation)
+
+**Output modes**:
+
+- `None` (default): Standard introspection format with entries, routers, plugin_info
+- `"openapi"`: Generate OpenAPI 3.0 schema with paths and operations
+
+```python
+# Generate OpenAPI schema
+schema = insp.api.nodes(mode="openapi")
+# Or use the shortcut method
+schema = insp.api.openapi()
+```
 
 **Use `nodes()` to**:
 
-- Generate API documentation
+- Generate API documentation (with `mode="openapi"`)
 - Debug routing issues
 - Validate configuration
 - Build dynamic UIs that expand on demand (with `lazy=True`)

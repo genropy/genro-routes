@@ -50,7 +50,6 @@ Example::
 
 from __future__ import annotations
 
-import copy
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
@@ -291,31 +290,34 @@ class Router(BaseRouter):
         if parent_id in self._inherited_from:
             return
         self._inherited_from.add(parent_id)
-        # For plugins in parent that child doesn't have:
-        # - Create new plugin instance on child
-        # - Copy parent's config as initial config
-        # - Register child for parent config change notifications
+
         inherited_plugins = []
         for parent_plugin in parent._plugins:
             if parent_plugin.name not in self._plugins_by_name:
-                # Child doesn't have this plugin - create new instance
+                # Child doesn't have this plugin - create new instance and inherit
                 child_plugin = parent_plugin.__class__(self)
-                # Copy parent's config to child
-                parent_config = parent._plugin_info.get(parent_plugin.name, {})
-                if parent_config:
-                    self._plugin_info[parent_plugin.name] = copy.deepcopy(parent_config)
                 # Register child in parent's notification list
                 parent._plugin_children.setdefault(parent_plugin.name, []).append(self)
                 # Add to child's plugin registry
                 self._plugins_by_name[parent_plugin.name] = child_plugin
                 self._plugins.append(child_plugin)
-                inherited_plugins.append(child_plugin)
-        # Apply on_decore for inherited plugins to child's entries
-        for plugin in inherited_plugins:
+                inherited_plugins.append((child_plugin, parent_plugin))
+            else:
+                # Child already has this plugin - let it handle inheritance
+                child_plugin = self._plugins_by_name[parent_plugin.name]
+                # Register for notifications even if child has its own plugin
+                parent._plugin_children.setdefault(parent_plugin.name, []).append(self)
+                # Call hook to let plugin decide what to do
+                child_plugin.on_attached_to_parent(parent_plugin)
+
+        # For inherited plugins: call hook and apply on_decore
+        for child_plugin, parent_plugin in inherited_plugins:
+            child_plugin.on_attached_to_parent(parent_plugin)
             for entry in self._entries.values():
-                if plugin.name not in entry.plugins:
-                    entry.plugins.append(plugin.name)
-                plugin.on_decore(self, entry.func, entry)
+                if child_plugin.name not in entry.plugins:
+                    entry.plugins.append(child_plugin.name)
+                child_plugin.on_decore(self, entry.func, entry)
+
         if inherited_plugins:
             self._rebuild_handlers()
 
@@ -337,6 +339,10 @@ class Router(BaseRouter):
         if not super()._allow_entry(entry, **filters):
             return False  # pragma: no cover - base hook currently always True
         for plugin in self._plugins:
+            # Try allow_node first (unified interface for entries and routers)
+            if not plugin.allow_node(entry, **filters):
+                return False
+            # Also check allow_entry for backward compatibility
             verdict = plugin.allow_entry(self, entry, **filters)
             if verdict is False:
                 return False

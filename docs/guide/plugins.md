@@ -143,6 +143,8 @@ Genro Routes plugins can override these methods:
 | `wrap_handler()` | Handler invocation | Middleware (logging, auth, etc.) | No |
 | `allow_entry()` | `nodes()` introspection | Filter visible handlers | No |
 | `entry_metadata()` | `nodes()` introspection | Add plugin metadata to output | No |
+| `on_attached_to_parent()` | Child attached to parent | Handle plugin inheritance | No |
+| `on_parent_config_changed()` | Parent config changes | React to parent updates | No |
 
 **All hooks are optional.** Override only what you need. A minimal plugin can have just `plugin_code` and `plugin_description` with no hooks.
 
@@ -309,6 +311,143 @@ The result appears in `nodes()` output:
     }
 }
 ```
+
+### on_attached_to_parent(parent_plugin)
+
+Called when a child router is attached to a parent that has this plugin.
+The child plugin can decide how to handle the parent's configuration.
+
+**Parameters**:
+
+- `parent_plugin` - The parent's plugin instance of the same type
+
+**Use for**:
+
+- Inheriting configuration from parent
+- Merging parent and child settings
+- Custom inheritance logic (e.g., union of tags)
+
+**Default behavior**:
+
+- Copies parent's `_all_` config to child's `_all_` config
+- Preserves child's entry-specific configurations (set via decorators)
+- Does NOT overwrite child's `_all_` if child already configured it
+
+**Example - Custom inheritance with union**:
+
+```python
+def on_attached_to_parent(self, parent_plugin):
+    """Merge parent tags with child tags (union)."""
+    parent_tags = parent_plugin.configuration().get("tags", "")
+    my_tags = self.configuration().get("tags", "")
+
+    # Union of tags
+    parent_set = set(t.strip() for t in parent_tags.split(",") if t.strip())
+    my_set = set(t.strip() for t in my_tags.split(",") if t.strip())
+    merged = ",".join(sorted(parent_set | my_set))
+
+    if merged:
+        self.configure(tags=merged)
+```
+
+### on_parent_config_changed(old_config, new_config)
+
+Called when the parent router modifies its plugin configuration after attachment.
+The child plugin can decide whether to follow the change.
+
+**Parameters**:
+
+- `old_config` - The parent's previous `_all_` configuration
+- `new_config` - The parent's new `_all_` configuration
+
+**Use for**:
+
+- Keeping child in sync with parent changes
+- Selective updates based on alignment
+- Custom propagation logic
+
+**Default behavior**:
+
+- Compares child's current `_all_` config with `old_config`
+- If equal (child was following parent) → updates to `new_config`
+- If different (child made own choices) → ignores the change
+
+This preserves explicit child customizations while keeping "default" children in sync with parent changes.
+
+**Example - Always follow parent**:
+
+```python
+def on_parent_config_changed(self, old_config, new_config):
+    """Always update to match parent."""
+    self.configure(**new_config)
+```
+
+**Example - Never follow parent**:
+
+```python
+def on_parent_config_changed(self, old_config, new_config):
+    """Ignore parent changes, keep local config."""
+    pass  # Do nothing
+```
+
+## Plugin Inheritance
+
+When a child router is attached to a parent via `attach_instance()`, plugins are inherited
+based on what the child already has.
+
+### Inheritance Rules
+
+1. **Child does NOT have the plugin** → plugin is inherited from parent:
+   - A new plugin instance is created on the child
+   - `on_attached_to_parent(parent_plugin)` is called
+   - Default behavior copies parent's `_all_` config
+   - `on_decore` is applied to all child entries
+
+2. **Child already HAS the plugin** → parent does NOT interfere:
+   - Child keeps its own plugin instance and configuration
+   - No hooks are called, no config is copied
+   - The child made an explicit choice by having the plugin
+
+### Why This Design?
+
+This approach gives maximum flexibility:
+
+- **Default behavior is sensible**: Children without the plugin inherit it naturally
+- **Explicit choices are respected**: If child has the plugin, it knows what it's doing
+- **Plugins control their inheritance**: Each plugin can customize via hooks
+- **No magic or surprises**: The rules are simple and predictable
+
+### Example: FilterPlugin Inheritance
+
+FilterPlugin has specific inheritance semantics using **union** of tags:
+
+```python
+class Parent(RoutedClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("filter", tags="corporate")
+        self.child = Child()
+
+class Child(RoutedClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("filter", tags="internal")
+
+    @route("api", filter_tags="admin")
+    def admin_only(self): ...
+
+parent = Parent()
+parent.api.attach_instance(parent.child, name="child")
+
+# Result:
+# - child._all_ tags: "corporate,internal" (union from parent + child)
+# - admin_only tags: "corporate,internal,admin" (union with entry tags)
+```
+
+**Tag semantics**:
+
+- Entry without tags → always visible (public)
+- Entry with tags → visible if filter matches at least one tag
+
+See [ARCHITECTURE.md](../ARCHITECTURE.md#plugin-inheritance) for detailed inheritance documentation.
 
 ## Plugin Registration
 

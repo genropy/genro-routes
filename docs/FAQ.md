@@ -41,8 +41,8 @@ orders.api.get("create")({"name": "order-3"})  # Calls create()
 
 - **Plugin system**: add logging, validation, audit without touching handlers
 - **Hierarchies**: organize routers in trees with `attach_instance()`
-- **Metadata**: each handler can have scopes, channels, configurations
-- **Introspection**: `router.nodes()` and `describe()` to explore structure
+- **Metadata**: each handler can have tags, channels, configurations
+- **Introspection**: `router.nodes()` to explore structure
 - **Isolation**: each instance has its own router with independent plugins
 
 For simple apps, a dictionary may suffice. For complex services, Genro Routes provides structure and extensibility.
@@ -365,34 +365,39 @@ result = router.get("method", use_smartasync=True)()
 
 <!-- test: test_router_basic.py::test_describe_returns_hierarchy -->
 
-**Answer**: Use `nodes()` or `describe()`:
+**Answer**: Use `nodes()`:
 
 ```python
 # Structure snapshot
 nodes = router.nodes()
 # {
-#   "handlers": {
-#     "list": {"func": <function>, "metadata": {...}},
+#   "name": "api",
+#   "router": <Router>,
+#   "instance": <owner>,
+#   "plugin_info": {...},
+#   "entries": {
+#     "list": {"callable": <function>, "doc": "...", ...},
 #     "create": {...}
 #   },
-#   "children": {
+#   "routers": {
 #     "sales": {...}
 #   }
 # }
 
-# Full description
-description = router.describe()
-# {
-#   "name": "api",
-#   "prefix": None,
-#   "plugins": ["logging", "pydantic"],
-#   "methods": {...},
-#   "children": {...}
-# }
+# With filters (using FilterPlugin)
+admin_only = router.nodes(tags="admin")
 
-# With filters
-internal_only = router.nodes(scopes="internal")
+# Generate OpenAPI schema
+schema = router.nodes(mode="openapi")
+# Or use the shortcut
+schema = router.openapi()
 ```
+
+**`nodes()` parameters**:
+
+- `basepath`: Start from a specific point in the hierarchy
+- `lazy`: Return callables for child routers instead of expanding
+- `mode`: Output format (`"openapi"` for OpenAPI schema)
 
 ## Comparisons
 
@@ -465,7 +470,7 @@ router.plug("logging")  # Child does NOT inherit
 - You have many handlers to organize dynamically
 - You want to extend behavior with plugins
 - You need hierarchical routing (parent/child)
-- You have multi-channel exposure (CLI/HTTP/WS)
+- You need to expose handlers via multiple interfaces (CLI/HTTP/WS)
 
 ❌ **Don't use Genro Routes when**:
 - You only have 2-3 simple methods (overkill)
