@@ -30,11 +30,14 @@ from .router import Router
 __all__ = ["route", "RoutedClass", "Router"]
 
 
-def route(router: str, *, name: str | None = None, **kwargs: Any) -> Callable[[Callable], Callable]:
+def route(
+    router: str | None = None, *, name: str | None = None, **kwargs: Any
+) -> Callable[[Callable], Callable]:
     """Mark a bound method for inclusion in the given router.
 
     Args:
-        router: Router identifier (e.g. ``"api"``).
+        router: Router identifier (e.g. ``"api"``). If None, uses the class's
+            ``main_router`` attribute at registration time.
         name: Optional explicit entry name (overrides function name/prefix stripping).
         **kwargs: Extra metadata merged into handler entry (e.g. plugin flags).
 
@@ -50,11 +53,19 @@ def route(router: str, *, name: str | None = None, **kwargs: Any) -> Callable[[C
         @route("api", name="custom_name", logging_enabled=False)
         def get_user(self, user_id):
             return {"id": user_id}
+
+        # With main_router class attribute:
+        class Table(RoutedClass):
+            main_router = "table"
+
+            @route()  # Uses main_router automatically
+            def add(self, data):
+                ...
     """
 
     def decorator(func: Callable) -> Callable:
         markers = list(getattr(func, "_route_decorator_kw", []))
-        payload = {"name": router}
+        payload: dict[str, Any] = {"name": router}  # None means "use main_router"
         if name is not None:
             payload["entry_name"] = name
         for key, value in kwargs.items():

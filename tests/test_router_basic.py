@@ -336,3 +336,175 @@ def test_dotted_path_and_nodes_with_attached_child():
     assert parent.api.get("child/ping")() == "pong"
     tree = parent.api.nodes()
     assert "child" in tree["routers"]
+
+
+# ============================================================================
+# main_router class attribute tests
+# ============================================================================
+
+
+class TestMainRouterAttribute:
+    """Test @route() with main_router class attribute."""
+
+    def test_route_without_args_uses_main_router(self):
+        """@route() without arguments uses main_router class attribute."""
+
+        class Table(RoutedClass):
+            main_router = "table"
+
+            def __init__(self):
+                self.api = Router(self, name="table")
+
+            @route()
+            def add(self, data):
+                return f"added:{data}"
+
+            @route()
+            def get(self, key):
+                return f"got:{key}"
+
+        t = Table()
+        assert t.api.get("add")("x") == "added:x"
+        assert t.api.get("get")("y") == "got:y"
+        assert set(t.api.nodes()["entries"].keys()) == {"add", "get"}
+
+    def test_route_with_explicit_name_overrides_main_router(self):
+        """@route('other') ignores main_router."""
+
+        class Mixed(RoutedClass):
+            main_router = "api"
+
+            def __init__(self):
+                self.api = Router(self, name="api")
+                self.admin = Router(self, name="admin")
+
+            @route()  # Uses main_router = "api"
+            def public(self):
+                return "public"
+
+            @route("admin")  # Explicit, ignores main_router
+            def secret(self):
+                return "secret"
+
+        m = Mixed()
+        assert m.api.get("public")() == "public"
+        assert m.admin.get("secret")() == "secret"
+        assert "public" in m.api.nodes()["entries"]
+        assert "secret" not in m.api.nodes()["entries"]
+        assert "secret" in m.admin.nodes()["entries"]
+
+    def test_route_without_main_router_is_ignored(self):
+        """@route() without main_router is not registered anywhere."""
+
+        class NoDefault(RoutedClass):
+            # No main_router defined
+
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+            @route()  # No router specified, no main_router - ignored
+            def orphan(self):
+                return "orphan"
+
+            @route("api")
+            def registered(self):
+                return "registered"
+
+        nd = NoDefault()
+        assert nd.api.get("registered")() == "registered"
+        assert nd.api.get("orphan") is None
+        assert "orphan" not in nd.api.nodes()["entries"]
+
+    def test_main_router_with_custom_entry_name(self):
+        """@route(name='custom') works with main_router."""
+
+        class Table(RoutedClass):
+            main_router = "table"
+
+            def __init__(self):
+                self.api = Router(self, name="table")
+
+            @route(name="custom_add")
+            def add_record(self, data):
+                return f"added:{data}"
+
+        t = Table()
+        assert t.api.get("custom_add")("x") == "added:x"
+        assert "custom_add" in t.api.nodes()["entries"]
+        assert "add_record" not in t.api.nodes()["entries"]
+
+    def test_main_router_inheritance(self):
+        """Subclass inherits main_router from parent."""
+
+        class BaseTable(RoutedClass):
+            main_router = "table"
+
+            @route()
+            def list(self):
+                return "base_list"
+
+        class ExtendedTable(BaseTable):
+            def __init__(self):
+                self.api = Router(self, name="table")
+
+            @route()
+            def add(self):
+                return "extended_add"
+
+        t = ExtendedTable()
+        assert t.api.get("list")() == "base_list"
+        assert t.api.get("add")() == "extended_add"
+        entries = t.api.nodes()["entries"]
+        assert "list" in entries
+        assert "add" in entries
+
+    def test_main_router_override_in_subclass(self):
+        """Subclass can override main_router - affects all methods including inherited."""
+
+        class BaseTable(RoutedClass):
+            main_router = "table"
+
+            @route()
+            def base_method(self):
+                return "base"
+
+        class ChildTable(BaseTable):
+            main_router = "custom"  # Override - affects ALL @route() including inherited
+
+            def __init__(self):
+                self.custom = Router(self, name="custom")
+
+            @route()
+            def child_method(self):
+                return "child"
+
+        t = ChildTable()
+        # Both methods use ChildTable's main_router = "custom"
+        # because main_router is resolved at registration time from instance's class
+        assert t.custom.get("base_method")() == "base"
+        assert t.custom.get("child_method")() == "child"
+        entries = t.custom.nodes()["entries"]
+        assert "base_method" in entries
+        assert "child_method" in entries
+
+    def test_main_router_with_plugin_kwargs(self):
+        """@route() with kwargs works with main_router."""
+
+        class TaggedTable(RoutedClass):
+            main_router = "table"
+
+            def __init__(self):
+                self.api = Router(self, name="table").plug("filter")
+
+            @route(filter_tags="admin")
+            def admin_only(self):
+                return "admin"
+
+            @route(filter_tags="public")
+            def public_action(self):
+                return "public"
+
+        t = TaggedTable()
+        entries = t.api.nodes(tags="admin")["entries"]
+        assert "admin_only" in entries
+        assert "public_action" not in entries

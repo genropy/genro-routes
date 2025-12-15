@@ -69,6 +69,27 @@ assert sub.routes.get("list")() == "users:list"
 assert sub.routes.get("detail")(10) == "users:detail:10"
 ```
 
+## Default Router with `main_router`
+
+<!-- test: test_router_basic.py::TestMainRouterAttribute::test_route_without_args_uses_main_router -->
+
+Avoid repeating the router name with a class attribute:
+
+```python
+class Table(RoutedClass):
+    main_router = "table"
+
+    def __init__(self):
+        self.table = Router(self, name="table")
+
+    @route()  # Uses main_router automatically
+    def add(self, data):
+        return f"added:{data}"
+
+t = Table()
+assert t.table.get("add")("x") == "added:x"
+```
+
 ## Building Hierarchies
 
 <!-- test: test_router_basic.py::test_hierarchical_binding_with_instances -->

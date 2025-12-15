@@ -74,7 +74,7 @@ class PydanticPlugin(BasePlugin):
     def on_decore(self, route: Router, func: Callable, entry: MethodEntry) -> None:
         """Build Pydantic model from handler type hints."""
         try:
-            hints = get_type_hints(func)
+            hints = get_type_hints(func, include_extras=True)
         except Exception:
             # No hints resolvable, no model created
             return

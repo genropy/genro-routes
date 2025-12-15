@@ -76,6 +76,42 @@ assert api.routes.get("alt_name")() == "executed"
 
 **Registration happens automatically** when you inherit from `RoutedClass` and instantiate routers in `__init__`.
 
+## Default Router with `main_router`
+
+<!-- test: test_router_basic.py::TestMainRouterAttribute::test_route_without_args_uses_main_router -->
+
+When a class uses a single router consistently, you can define `main_router` as a class attribute to avoid repeating the router name:
+
+```python
+class Table(RoutedClass):
+    main_router = "table"  # Default router for @route()
+
+    def __init__(self):
+        self.table = Router(self, name="table")
+
+    @route()  # Uses main_router automatically
+    def add(self, data):
+        return f"added:{data}"
+
+    @route()  # Also uses main_router
+    def remove(self, id):
+        return f"removed:{id}"
+
+    @route("other")  # Explicit name overrides main_router
+    def special(self):
+        return "special"
+
+t = Table()
+assert t.table.get("add")("x") == "added:x"
+assert t.table.get("remove")(1) == "removed:1"
+```
+
+**Benefits**:
+
+- Less repetition when all methods target the same router
+- Explicit `@route("name")` still works to override
+- Inheritance works: subclasses can override `main_router`
+
 ## Calling Handlers
 
 <!-- test: test_router_runtime_extras.py::test_router_call_and_nodes_structure -->

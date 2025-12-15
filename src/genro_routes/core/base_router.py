@@ -337,6 +337,7 @@ class BaseRouter(RouterInterface):
 
     def _iter_marked_methods(self) -> Iterator[tuple[Callable, dict[str, Any]]]:
         cls = type(self.instance)
+        main_router = getattr(cls, "main_router", None)
         seen: set[int] = set()
         for base in reversed(cls.__mro__):
             base_dict = vars(base)
@@ -351,7 +352,11 @@ class BaseRouter(RouterInterface):
                 if not markers:
                     continue
                 for marker in markers:
-                    if marker.get("name") != self.name:
+                    marker_name = marker.get("name")
+                    # If marker_name is None, use class's main_router
+                    if marker_name is None:
+                        marker_name = main_router
+                    if marker_name != self.name:
                         continue
                     payload = dict(marker)
                     payload.pop("name", None)
