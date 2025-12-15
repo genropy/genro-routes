@@ -5,10 +5,10 @@
 
 from __future__ import annotations
 
-from genro_routes import Router
+from genro_routes import Router, RoutedClass
 
 
-class Owner:
+class Owner(RoutedClass):
     pass
 
 
@@ -376,7 +376,7 @@ class TestFilterPluginAllowNode:
     def test_allow_node_empty_router(self):
         """Test allow_node with router that has no matching entries."""
 
-        class Child:
+        class Child(RoutedClass):
             pass
 
         router = Router(Child(), name="api").plug("filter")

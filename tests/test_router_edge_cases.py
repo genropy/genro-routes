@@ -446,7 +446,7 @@ def test_parent_router_creates_hierarchy():
 def test_parent_router_requires_name():
     """Test that parent_router raises ValueError if child has no name."""
 
-    class Owner:
+    class Owner(RoutedClass):
         pass
 
     owner = Owner()
@@ -459,7 +459,7 @@ def test_parent_router_requires_name():
 def test_parent_router_detects_collision():
     """Test that parent_router raises ValueError on name collision."""
 
-    class Owner:
+    class Owner(RoutedClass):
         pass
 
     owner = Owner()
@@ -473,7 +473,7 @@ def test_parent_router_detects_collision():
 def _make_router_for_plugin_test():
     """Create a minimal router for testing plugin behavior."""
 
-    class Owner:
+    class Owner(RoutedClass):
         pass
 
     return Router(Owner(), name="test")

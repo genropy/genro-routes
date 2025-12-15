@@ -43,7 +43,7 @@ assert second.api.get("describe")() == "service:beta"
 
 - `Router(self, name="api")` creates instance-scoped router in `__init__`
 - `@route("api")` marks method for registration
-- `RoutedClass` mixin enables automatic router discovery and method registration
+- `RoutedClass` is **required** - all classes using `Router` must inherit from it
 - Each instance has independent routing state
 
 ## Registering Handlers
@@ -111,6 +111,36 @@ assert t.table.get("remove")(1) == "removed:1"
 - Less repetition when all methods target the same router
 - Explicit `@route("name")` still works to override
 - Inheritance works: subclasses can override `main_router`
+
+### Accessing the Default Router
+
+You can also access the default router programmatically via the `default_router` property:
+
+```python
+class SingleAPI(RoutedClass):
+    def __init__(self):
+        self.api = Router(self, name="api")
+
+    @route("api")
+    def ping(self):
+        return "pong"
+
+svc = SingleAPI()
+
+# When there's only one router, it becomes the default
+assert svc.default_router is svc.api
+
+# With main_router defined, it takes priority
+class MultiAPI(RoutedClass):
+    main_router = "admin"
+
+    def __init__(self):
+        self.api = Router(self, name="api")
+        self.admin = Router(self, name="admin")
+
+m = MultiAPI()
+assert m.default_router is m.admin  # main_router takes priority
+```
 
 ## Calling Handlers
 

@@ -508,3 +508,90 @@ class TestMainRouterAttribute:
         entries = t.api.nodes(tags="admin")["entries"]
         assert "admin_only" in entries
         assert "public_action" not in entries
+
+
+# ============================================================================
+# RoutedClass requirement and default_router tests
+# ============================================================================
+
+
+class TestRoutedClassRequirement:
+    """Test that Router requires RoutedClass."""
+
+    def test_router_requires_routed_class(self):
+        """Router raises TypeError if owner is not a RoutedClass."""
+
+        class PlainClass:
+            pass
+
+        with pytest.raises(TypeError, match="must be a RoutedClass"):
+            Router(PlainClass(), name="api")
+
+    def test_router_accepts_routed_class(self):
+        """Router accepts RoutedClass instances."""
+
+        class MyService(RoutedClass):
+            pass
+
+        svc = MyService()
+        router = Router(svc, name="api", auto_discover=False)
+        assert router.instance is svc
+
+
+class TestDefaultRouter:
+    """Test default_router property on RoutedClass."""
+
+    def test_default_router_single_router(self):
+        """default_router returns the only router when there's exactly one."""
+
+        class SingleRouter(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api", auto_discover=False)
+
+        svc = SingleRouter()
+        assert svc.default_router is svc.api
+
+    def test_default_router_multiple_routers_no_main(self):
+        """default_router returns None when multiple routers and no main_router."""
+
+        class MultiRouter(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api", auto_discover=False)
+                self.admin = Router(self, name="admin", auto_discover=False)
+
+        svc = MultiRouter()
+        assert svc.default_router is None
+
+    def test_default_router_uses_main_router_attribute(self):
+        """default_router respects main_router class attribute."""
+
+        class WithMainRouter(RoutedClass):
+            main_router = "admin"
+
+            def __init__(self):
+                self.api = Router(self, name="api", auto_discover=False)
+                self.admin = Router(self, name="admin", auto_discover=False)
+
+        svc = WithMainRouter()
+        assert svc.default_router is svc.admin
+
+    def test_default_router_no_routers(self):
+        """default_router returns None when no routers registered."""
+
+        class NoRouters(RoutedClass):
+            pass
+
+        svc = NoRouters()
+        assert svc.default_router is None
+
+    def test_default_router_main_router_not_found(self):
+        """default_router returns None when main_router name doesn't match any router."""
+
+        class BadMainRouter(RoutedClass):
+            main_router = "nonexistent"
+
+            def __init__(self):
+                self.api = Router(self, name="api", auto_discover=False)
+
+        svc = BadMainRouter()
+        assert svc.default_router is None

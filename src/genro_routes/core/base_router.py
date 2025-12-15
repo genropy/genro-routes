@@ -128,6 +128,11 @@ class BaseRouter(RouterInterface):
     ) -> None:
         if owner is None:
             raise ValueError("Router requires a parent instance")
+        if not safe_is_instance(owner, "genro_routes.core.routed.RoutedClass"):
+            raise TypeError(
+                f"Router owner must be a RoutedClass instance, got {type(owner).__name__}. "
+                "Inherit from RoutedClass to use Router."
+            )
         self.instance = owner
         self.name = name
         self.prefix = prefix or ""

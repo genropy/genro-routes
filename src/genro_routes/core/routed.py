@@ -124,6 +124,33 @@ class RoutedClass:
             setattr(self, _PROXY_ATTR_NAME, proxy)
         return proxy
 
+    @property
+    def default_router(self) -> Any:
+        """Return the default router for this instance.
+
+        Resolution order:
+        1. If class defines ``main_router`` attribute, return that router
+        2. If exactly one router is registered, return it
+        3. Otherwise return None
+
+        This allows ``@route()`` without arguments to work when there's
+        an unambiguous default router.
+
+        Returns:
+            Router | None: The default router or None if ambiguous.
+        """
+        # Check for explicit main_router class attribute
+        main_router_name = getattr(type(self), "main_router", None)
+        if main_router_name:
+            return self._routers.get(main_router_name)
+
+        # If exactly one router, it's the default
+        routers = self._routers
+        if len(routers) == 1:
+            return next(iter(routers.values()))
+
+        return None
+
 
 class _RoutedProxy:
     """Proxy for accessing and configuring routers on a RoutedClass instance."""
