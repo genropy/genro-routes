@@ -13,8 +13,8 @@
 # limitations under the License.
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "genro-routes"
@@ -77,8 +77,8 @@ Documentation = "https://genro-routes.readthedocs.io"
 Repository = "https://github.com/genropy/genro-routes"
 Issues = "https://github.com/genropy/genro-routes/issues"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/genro_routes"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
