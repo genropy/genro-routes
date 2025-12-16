@@ -9,16 +9,18 @@ Constructor and slots
 ---------------------
 Constructor signature::
 
-    BaseRouter(owner, name=None, prefix=None, *,
+    BaseRouter(owner, name=None, prefix=None, *, description=None,
                get_default_handler=None, get_use_smartasync=None,
                get_kwargs=None, branch=False, parent_router=None)
 
 - ``owner`` is required; ``None`` raises ``ValueError``. Routers are bound to
   this instance and never re-bound.
+- ``description``: optional human-readable description of this router's purpose.
+  Included in ``nodes()`` output for documentation/introspection.
 - ``parent_router``: optional parent router. When provided, this router is
   automatically attached as a child using ``name`` as the alias. Requires
   ``name`` to be set; raises ``ValueError`` on name collision.
-- Slots: ``instance``, ``name``, ``prefix`` (string trimmed from function names),
+- Slots: ``instance``, ``name``, ``prefix``, ``description`` (optional router description),
   ``_entries`` (logical name → MethodEntry with handler), ``_children`` (name → child router),
   ``_get_defaults`` (SmartOptions defaults).
 
@@ -60,6 +62,14 @@ Introspection
 -------------
 - ``nodes(**kwargs)`` builds a nested dict of routers and entries respecting
   filters. Returns dict with ``entries`` and ``routers`` keys only if non-empty.
+  Output includes ``description`` (router's description) and ``owner_doc``
+  (owner class docstring) for documentation purposes.
+
+Output modes
+------------
+- ``nodes(mode="openapi")`` returns flat OpenAPI format with all paths merged.
+- ``nodes(mode="h_openapi")`` returns hierarchical OpenAPI format preserving
+  the router tree structure with ``description`` and ``owner_doc`` at each level.
 
 Hooks for subclasses
 --------------------
@@ -99,6 +109,7 @@ class BaseRouter(RouterInterface):
         "instance",
         "name",
         "prefix",
+        "description",
         "__entries_raw",
         "_children",
         "_get_defaults",
@@ -112,6 +123,7 @@ class BaseRouter(RouterInterface):
         name: str | None = None,
         prefix: str | None = None,
         *,
+        description: str | None = None,
         get_default_handler: Callable | None = None,
         get_use_smartasync: bool | None = None,
         get_kwargs: dict[str, Any] | None = None,
@@ -128,6 +140,7 @@ class BaseRouter(RouterInterface):
         self.instance = owner
         self.name = name
         self.prefix = prefix or ""
+        self.description = description
         self._is_branch = bool(branch)
         self._bound = False
         self.__entries_raw: dict[str, MethodEntry] = {}
@@ -611,15 +624,31 @@ class BaseRouter(RouterInterface):
             basepath: Optional path to start from (e.g., "child/grandchild").
                       If provided, returns nodes starting from that point
                       in the hierarchy instead of from this router.
-            lazy: If True, child routers are returned as callables that
-                  produce their nodes when invoked, instead of recursing
-                  immediately.
-            mode: Output format mode (e.g., "openapi"). If None, returns
-                  standard introspection format.
+            lazy: If True, child routers are returned as router references
+                  instead of recursively expanded. Use basepath to navigate
+                  and expand specific children on demand.
+            mode: Output format mode. Supported modes:
+
+                  - None: Standard introspection format with full metadata.
+                  - "openapi": Flat OpenAPI format with all paths merged.
+                  - "h_openapi": Hierarchical OpenAPI format preserving
+                    the router tree structure.
+
             **kwargs: Filter arguments passed to plugins via allow_entry().
 
-        Raises:
-            RuntimeError: If the router has not been bound yet.
+        Returns:
+            A dict containing:
+
+            - ``name``: Router name
+            - ``description``: Router description (if set)
+            - ``owner_doc``: Owner class docstring (for documentation)
+            - ``router``: Reference to this router
+            - ``instance``: Owner instance
+            - ``plugin_info``: Plugin configuration info
+            - ``entries``: Dict of entry names to entry info (if any)
+            - ``routers``: Dict of child names to child nodes (if any)
+
+            When mode is specified, output is translated to that format.
         """
         if basepath:
             target = self.get(basepath)
@@ -636,10 +665,8 @@ class BaseRouter(RouterInterface):
 
         routers: dict[str, Any]
         if lazy:
-            routers = {
-                child_name: (lambda c=child: c.nodes(lazy=True, **kwargs))
-                for child_name, child in self._children.items()
-            }
+            # In lazy mode, just return the router references - use basepath to expand
+            routers = dict(self._children)
         else:
             routers = {
                 child_name: child.nodes(**kwargs) for child_name, child in self._children.items()
@@ -653,6 +680,8 @@ class BaseRouter(RouterInterface):
 
         result: dict[str, Any] = {
             "name": self.name,
+            "description": self.description,
+            "owner_doc": self.instance.__class__.__doc__,
             "router": self,
             "instance": self.instance,
             "plugin_info": self._get_plugin_info(),
@@ -678,15 +707,16 @@ class BaseRouter(RouterInterface):
         lazy: bool = False,
         path_prefix: str = "",
     ) -> dict[str, Any]:
-        """Translate nodes() output to OpenAPI format.
+        """Translate nodes() output to flat OpenAPI format.
 
         Args:
             nodes_data: Output from nodes() in standard format.
-            lazy: If True, child routers are returned as callables.
+            lazy: If True, child routers are returned as router references.
             path_prefix: Prefix for generated paths (used internally for recursion).
 
         Returns:
-            Dict with "paths" containing OpenAPI path items, and "routers" for children.
+            Dict with "paths" containing OpenAPI path items (flat structure),
+            and "routers" for children in lazy mode.
         """
         paths: dict[str, Any] = {}
 
@@ -700,17 +730,8 @@ class BaseRouter(RouterInterface):
         routers_data = nodes_data.get("routers", {})
         routers: dict[str, Any]
         if lazy:
-            # In lazy mode, wrap translation in callable
-            routers = {
-                child_name: (
-                    lambda child_data=child_data, n=child_name: self._translate_openapi(
-                        child_data() if callable(child_data) else child_data,
-                        lazy=True,
-                        path_prefix=f"{path_prefix}/{n}" if path_prefix else f"/{n}",
-                    )
-                )
-                for child_name, child_data in routers_data.items()
-            }
+            # In lazy mode, just pass through router references
+            routers = dict(routers_data)
         else:
             # In eager mode, recursively translate and merge paths
             for child_name, child_data in routers_data.items():
@@ -722,6 +743,56 @@ class BaseRouter(RouterInterface):
             routers = {}
 
         result: dict[str, Any] = {"paths": paths}
+        if routers:
+            result["routers"] = routers
+        return result
+
+    def _translate_h_openapi(
+        self,
+        nodes_data: dict[str, Any],
+        lazy: bool = False,
+    ) -> dict[str, Any]:
+        """Translate nodes() output to hierarchical OpenAPI format.
+
+        Unlike _translate_openapi which flattens all paths, this preserves
+        the router hierarchy while converting entries to OpenAPI format.
+
+        Args:
+            nodes_data: Output from nodes() in standard format.
+            lazy: If True, child routers are returned as router references.
+
+        Returns:
+            Dict with "paths" containing local OpenAPI path items,
+            and "routers" containing nested h_openapi structures for children.
+        """
+        paths: dict[str, Any] = {}
+
+        # Convert local entries to OpenAPI paths (without prefix)
+        entries = nodes_data.get("entries", {})
+        for entry_name, entry_info in entries.items():
+            path = f"/{entry_name}"
+            paths[path] = self._entry_info_to_openapi(entry_name, entry_info)
+
+        # Handle child routers
+        routers_data = nodes_data.get("routers", {})
+        routers: dict[str, Any]
+        if lazy:
+            # In lazy mode, just pass through router references
+            routers = dict(routers_data)
+        else:
+            # In eager mode, recursively translate each child (maintaining hierarchy)
+            routers = {}
+            for child_name, child_data in routers_data.items():
+                child_h_openapi = self._translate_h_openapi(child_data, lazy=False)
+                if child_h_openapi:
+                    routers[child_name] = child_h_openapi
+
+        result: dict[str, Any] = {
+            "description": nodes_data.get("description"),
+            "owner_doc": nodes_data.get("owner_doc"),
+        }
+        if paths:
+            result["paths"] = paths
         if routers:
             result["routers"] = routers
         return result

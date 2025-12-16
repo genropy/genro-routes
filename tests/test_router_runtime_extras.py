@@ -321,8 +321,8 @@ def test_get_returns_child_router():
     assert child_handler() == "child"
 
 
-def test_nodes_lazy_returns_callables():
-    """Test nodes(lazy=True) returns callables for child routers."""
+def test_nodes_lazy_returns_router_references():
+    """Test nodes(lazy=True) returns router references for child routers."""
 
     class Child(RoutedClass):
         def __init__(self):
@@ -349,14 +349,19 @@ def test_nodes_lazy_returns_callables():
     assert isinstance(full["routers"]["child"], dict)
     assert "child_action" in full["routers"]["child"]["entries"]
 
-    # With lazy=True - routers dict contains callables
+    # With lazy=True - routers dict contains router references (not expanded)
     lazy_nodes = root.api.nodes(lazy=True)
-    assert callable(lazy_nodes["routers"]["child"])
+    child_router = lazy_nodes["routers"]["child"]
+    assert isinstance(child_router, Router)
 
-    # Calling the callable expands the child nodes
-    child_nodes = lazy_nodes["routers"]["child"]()
+    # To expand, call nodes() on the router or use basepath
+    child_nodes = child_router.nodes()
     assert isinstance(child_nodes, dict)
     assert "child_action" in child_nodes["entries"]
+
+    # Or use basepath from parent
+    child_via_basepath = root.api.nodes(basepath="child")
+    assert "child_action" in child_via_basepath["entries"]
 
 
 def test_openapi_returns_schema():
@@ -401,8 +406,8 @@ def test_openapi_returns_schema():
     assert "parameters" in user_op or "requestBody" in user_op
 
 
-def test_openapi_lazy_returns_callables():
-    """Test openapi(lazy=True) returns callables for child routers."""
+def test_openapi_lazy_returns_router_references():
+    """Test openapi(lazy=True) returns router references for child routers."""
 
     class Child(RoutedClass):
         def __init__(self):
@@ -424,15 +429,15 @@ def test_openapi_lazy_returns_callables():
 
     root = Root()
 
-    # Lazy mode
+    # Lazy mode - returns router references
     lazy_schema = root.api.nodes(mode="openapi", lazy=True)
     assert "/root_action" in lazy_schema["paths"]
     assert "routers" in lazy_schema
-    assert callable(lazy_schema["routers"]["child"])
+    assert isinstance(lazy_schema["routers"]["child"], Router)
 
-    # Expand child
-    child_schema = lazy_schema["routers"]["child"]()
-    assert "/child/action" in child_schema["paths"]
+    # Expand child via basepath
+    child_schema = root.api.nodes(basepath="child", mode="openapi")
+    assert "/action" in child_schema["paths"]
 
 
 def test_openapi_with_basepath():
@@ -811,3 +816,262 @@ def test_nodes_unknown_mode_raises():
 
     with pytest.raises(ValueError, match="Unknown mode: unknown"):
         svc.api.nodes(mode="unknown")
+
+
+# -----------------------------------------------------------------------------
+# h_openapi mode tests
+# -----------------------------------------------------------------------------
+
+
+def test_h_openapi_returns_hierarchical_schema():
+    """Test h_openapi mode returns nested OpenAPI structure."""
+
+    class Child(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def get_user(self, user_id: int) -> dict:
+            """Get a user by ID."""
+            return {"id": user_id}
+
+    class Root(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="users")
+
+        @route("api")
+        def health(self) -> str:
+            """Health check endpoint."""
+            return "ok"
+
+    root = Root()
+
+    # Hierarchical schema
+    schema = root.api.nodes(mode="h_openapi")
+
+    # Root level has paths for its own entries
+    assert "paths" in schema
+    assert "/health" in schema["paths"]
+    # But NOT the child paths (those are nested)
+    assert "/users/get_user" not in schema["paths"]
+
+    # Child routers are nested, not flattened
+    assert "routers" in schema
+    assert "users" in schema["routers"]
+
+    # Child has its own paths
+    child_schema = schema["routers"]["users"]
+    assert "paths" in child_schema
+    assert "/get_user" in child_schema["paths"]
+
+
+def test_h_openapi_vs_openapi_comparison():
+    """Test difference between h_openapi (hierarchical) and openapi (flat)."""
+
+    class GrandChild(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def deep_action(self):
+            return "deep"
+
+    class Child(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.grandchild = GrandChild()
+            self.api.attach_instance(self.grandchild, name="grand")
+
+        @route("api")
+        def child_action(self):
+            return "child"
+
+    class Root(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="child")
+
+        @route("api")
+        def root_action(self):
+            return "root"
+
+    root = Root()
+
+    # Flat openapi - all paths at top level
+    flat = root.api.nodes(mode="openapi")
+    assert "/root_action" in flat["paths"]
+    assert "/child/child_action" in flat["paths"]
+    assert "/child/grand/deep_action" in flat["paths"]
+    assert "routers" not in flat  # No routers in eager flat mode
+
+    # Hierarchical h_openapi - paths nested
+    hier = root.api.nodes(mode="h_openapi")
+    assert "/root_action" in hier["paths"]
+    assert "/child/child_action" not in hier["paths"]  # Not at root level
+    assert "routers" in hier
+
+    # Navigate the hierarchy
+    child_hier = hier["routers"]["child"]
+    assert "/child_action" in child_hier["paths"]
+    assert "/grand/deep_action" not in child_hier["paths"]  # Not at child level
+    assert "routers" in child_hier
+
+    grand_hier = child_hier["routers"]["grand"]
+    assert "/deep_action" in grand_hier["paths"]
+
+
+def test_h_openapi_lazy_returns_router_references():
+    """Test h_openapi lazy=True returns router references."""
+
+    class Child(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def action(self):
+            return "child"
+
+    class Root(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="child")
+
+        @route("api")
+        def root_action(self):
+            return "root"
+
+    root = Root()
+
+    # Lazy h_openapi
+    lazy = root.api.nodes(mode="h_openapi", lazy=True)
+    assert "/root_action" in lazy["paths"]
+    assert "routers" in lazy
+    # In lazy mode, child is a Router reference
+    assert isinstance(lazy["routers"]["child"], Router)
+
+    # Can expand via basepath
+    child_schema = root.api.nodes(basepath="child", mode="h_openapi")
+    assert "/action" in child_schema["paths"]
+
+
+def test_h_openapi_preserves_openapi_format():
+    """Test h_openapi produces valid OpenAPI format for entries."""
+
+    class Svc(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def create_item(self, name: str, count: int = 1) -> dict:
+            """Create a new item."""
+            return {"name": name, "count": count}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="h_openapi")
+
+    # Check OpenAPI structure
+    path_item = schema["paths"]["/create_item"]
+    assert "post" in path_item
+    operation = path_item["post"]
+    assert operation["operationId"] == "create_item"
+    assert operation["summary"] == "Create a new item."
+    assert "parameters" in operation
+
+
+def test_h_openapi_empty_routers_excluded():
+    """Test h_openapi excludes empty routers dict."""
+
+    class Svc(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def action(self):
+            return "ok"
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="h_openapi")
+
+    # No children, so no routers key
+    assert "paths" in schema
+    assert "routers" not in schema
+
+
+def test_nodes_includes_description_and_owner_doc():
+    """Test nodes() includes router description and owner docstring."""
+
+    class ArticleService(RoutedClass):
+        """Service for managing articles."""
+
+        def __init__(self):
+            self.api = Router(self, name="api", description="API for articles")
+
+        @route("api")
+        def list_articles(self):
+            return []
+
+    svc = ArticleService()
+    nodes = svc.api.nodes()
+
+    assert nodes["description"] == "API for articles"
+    assert nodes["owner_doc"] == "Service for managing articles."
+
+
+def test_nodes_description_none_when_not_set():
+    """Test nodes() returns None for description when not set."""
+
+    class SimpleService(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def action(self):
+            pass
+
+    svc = SimpleService()
+    nodes = svc.api.nodes()
+
+    assert nodes["description"] is None
+    assert nodes["owner_doc"] is None  # No docstring on class
+
+
+def test_h_openapi_includes_description_and_owner_doc():
+    """Test h_openapi mode includes description and owner_doc at each level."""
+
+    class ChildService(RoutedClass):
+        """Child service for users."""
+
+        def __init__(self):
+            self.api = Router(self, name="api", description="User management")
+
+        @route("api")
+        def get_user(self):
+            return {}
+
+    class RootService(RoutedClass):
+        """Main API service."""
+
+        def __init__(self):
+            self.api = Router(self, name="api", description="Main API")
+            self.users = ChildService()
+            self.api.attach_instance(self.users, name="users")
+
+        @route("api")
+        def health(self):
+            return "ok"
+
+    root = RootService()
+    schema = root.api.nodes(mode="h_openapi")
+
+    # Root level
+    assert schema["description"] == "Main API"
+    assert schema["owner_doc"] == "Main API service."
+
+    # Child level
+    child_schema = schema["routers"]["users"]
+    assert child_schema["description"] == "User management"
+    assert child_schema["owner_doc"] == "Child service for users."
