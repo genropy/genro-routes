@@ -639,7 +639,7 @@ def test_openapi_handler_without_type_hints():
 
 
 def test_openapi_type_conversion():
-    """Test _python_type_to_openapi handles various types."""
+    """Test pydantic schema handles various types in requestBody."""
 
     class Service(RoutedClass):
         def __init__(self):
@@ -652,21 +652,22 @@ def test_openapi_type_conversion():
     svc = Service()
     schema = svc.api.nodes(mode="openapi")
 
+    # POST uses requestBody with pydantic schema
     operation = schema["paths"]["/typed_params"]["post"]
-    params = operation["parameters"]
+    json_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    props = json_schema["properties"]
 
-    # Check all types are converted
-    param_types = {p["name"]: p["schema"]["type"] for p in params}
-    assert param_types["s"] == "string"
-    assert param_types["i"] == "integer"
-    assert param_types["f"] == "number"
-    assert param_types["b"] == "boolean"
-    assert param_types["items"] == "array"
-    assert param_types["data"] == "object"
+    # Check all types are in schema properties
+    assert props["s"]["type"] == "string"
+    assert props["i"]["type"] == "integer"
+    assert props["f"]["type"] == "number"
+    assert props["b"]["type"] == "boolean"
+    assert props["items"]["type"] == "array"
+    assert props["data"]["type"] == "object"
 
 
 def test_openapi_generic_types():
-    """Test openapi() handles generic types like List[str]."""
+    """Test pydantic schema handles generic types like list[str]."""
 
     class Service(RoutedClass):
         def __init__(self):
@@ -679,17 +680,18 @@ def test_openapi_generic_types():
     svc = Service()
     schema = svc.api.nodes(mode="openapi")
 
+    # POST uses requestBody with pydantic schema
     operation = schema["paths"]["/generic_params"]["post"]
-    params = operation["parameters"]
+    json_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    props = json_schema["properties"]
 
-    # Generic types should map to their origin type
-    param_types = {p["name"]: p["schema"]["type"] for p in params}
-    assert param_types["items"] == "array"
-    assert param_types["data"] == "object"
+    # Generic types should be properly typed by pydantic
+    assert props["items"]["type"] == "array"
+    assert props["data"]["type"] == "object"
 
 
-def test_openapi_unknown_type_defaults_to_object():
-    """Test openapi() defaults unknown types to object."""
+def test_openapi_unknown_type_graceful_fallback():
+    """Test openapi gracefully handles types pydantic can't process."""
 
     class CustomType:
         pass
@@ -705,15 +707,16 @@ def test_openapi_unknown_type_defaults_to_object():
     svc = Service()
     schema = svc.api.nodes(mode="openapi")
 
+    # Pydantic can't handle arbitrary types without special config
+    # So operation won't have requestBody, but should still work
     operation = schema["paths"]["/custom_param"]["post"]
-    params = operation["parameters"]
-
-    # Unknown type should default to "object"
-    assert params[0]["schema"]["type"] == "object"
+    assert operation["operationId"] == "custom_param"
+    # No requestBody because pydantic failed, but we have default response
+    assert "responses" in operation
 
 
 def test_openapi_required_vs_optional_params():
-    """Test openapi() correctly marks required vs optional parameters."""
+    """Test pydantic schema correctly marks required vs optional in requestBody."""
 
     class Service(RoutedClass):
         def __init__(self):
@@ -726,15 +729,14 @@ def test_openapi_required_vs_optional_params():
     svc = Service()
     schema = svc.api.nodes(mode="openapi")
 
-    # Has params → POST
+    # Has params → POST with requestBody
     operation = schema["paths"]["/mixed_params"]["post"]
-    params = operation["parameters"]
+    json_schema = operation["requestBody"]["content"]["application/json"]["schema"]
 
-    required_param = next(p for p in params if p["name"] == "required")
-    optional_param = next(p for p in params if p["name"] == "optional")
-
-    assert required_param["required"] is True
-    assert optional_param["required"] is False
+    # Check required fields in pydantic schema
+    required_fields = json_schema.get("required", [])
+    assert "required" in required_fields
+    assert "optional" not in required_fields
 
 
 def test_openapi_handles_broken_type_hints():
@@ -977,13 +979,13 @@ def test_h_openapi_preserves_openapi_format():
     svc = Svc()
     schema = svc.api.nodes(mode="h_openapi")
 
-    # Check OpenAPI structure - has params means POST
+    # Check OpenAPI structure - has params means POST with requestBody
     path_item = schema["paths"]["/create_item"]
     assert "post" in path_item
     operation = path_item["post"]
     assert operation["operationId"] == "create_item"
     assert operation["summary"] == "Create a new item."
-    assert "parameters" in operation
+    assert "requestBody" in operation
 
 
 def test_h_openapi_empty_routers_excluded():

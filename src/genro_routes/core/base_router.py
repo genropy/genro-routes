@@ -909,43 +909,30 @@ class BaseRouter(RouterInterface):
         if tags:
             operation["tags"] = tags if isinstance(tags, list) else [tags]
 
-        # Extract parameters from pydantic metadata if available
+        # Extract parameters from pydantic metadata if available, otherwise create model on-the-fly
         pydantic_meta = metadata.get("pydantic", {})
         model = pydantic_meta.get("model")
+
+        if not model and func:
+            # Create pydantic model on-the-fly (pydantic is a required dependency)
+            model = self._create_pydantic_model_for_func(func)
+
         if model and hasattr(model, "model_json_schema"):
             schema = model.model_json_schema()
-            operation["requestBody"] = {
-                "required": True,
-                "content": {"application/json": {"schema": schema}},
-            }
-        elif func:
-            # Fallback: extract from type hints
-            try:
-                hints = get_type_hints(func)
-            except Exception:
-                hints = {}
-            hints.pop("return", None)
-            if hints:
-                parameters = []
-                sig = inspect.signature(func)
-                for param_name, hint in hints.items():
-                    param = sig.parameters.get(param_name)
-                    if param is None:
-                        continue
-                    param_schema: dict[str, Any] = {
-                        "name": param_name,
-                        "in": "query",
-                        "schema": {"type": self._python_type_to_openapi(hint)},
-                    }
-                    if param.default is inspect.Parameter.empty:
-                        param_schema["required"] = True
-                    else:
-                        param_schema["required"] = False
-                    parameters.append(param_schema)
+            # GET uses query parameters, POST/PUT/PATCH use requestBody
+            if http_method == "get":
+                # Convert schema properties to OpenAPI parameters
+                parameters = self._schema_to_parameters(schema)
                 if parameters:
                     operation["parameters"] = parameters
+            else:
+                operation["requestBody"] = {
+                    "required": True,
+                    "content": {"application/json": {"schema": schema}},
+                }
 
-            # Add return type if available
+        # Add return type if available
+        if func:
             try:
                 hints = get_type_hints(func)
                 return_hint = hints.get("return")
@@ -969,61 +956,88 @@ class BaseRouter(RouterInterface):
         return {http_method: operation}
 
     @staticmethod
-    def _python_type_to_openapi(python_type: Any) -> str:
-        """Convert Python type to OpenAPI type string."""
-        type_map = {
-            str: "string",
-            int: "integer",
-            float: "number",
-            bool: "boolean",
-            list: "array",
-            dict: "object",
-        }
-        origin = getattr(python_type, "__origin__", None)
-        if origin is not None:
-            python_type = origin
-        return type_map.get(python_type, "object")
+    def _create_pydantic_model_for_func(func: Callable) -> Any | None:
+        """Create a pydantic model from function type hints.
+
+        This is used when the pydantic plugin is not active but we still
+        want to extract parameter schema for OpenAPI.
+
+        Args:
+            func: The callable to analyze.
+
+        Returns:
+            A pydantic model class, or None if no type hints available.
+        """
+        from pydantic import create_model
+
+        try:
+            hints = get_type_hints(func, include_extras=True)
+        except Exception:
+            return None
+
+        hints.pop("return", None)
+        if not hints:
+            return None
+
+        sig = inspect.signature(func)
+        fields: dict[str, Any] = {}
+        for param_name, hint in hints.items():
+            param = sig.parameters.get(param_name)
+            if param is None:
+                continue
+            if param.default is inspect.Parameter.empty:
+                fields[param_name] = (hint, ...)
+            else:
+                fields[param_name] = (hint, param.default)
+
+        if not fields:
+            return None
+
+        try:
+            return create_model(f"{func.__name__}_Model", **fields)
+        except Exception:
+            # Pydantic can't handle some types (e.g., arbitrary classes without config)
+            return None
+
+    @staticmethod
+    def _schema_to_parameters(schema: dict[str, Any]) -> list[dict[str, Any]]:
+        """Convert pydantic JSON schema to OpenAPI query parameters.
+
+        Args:
+            schema: Pydantic model JSON schema.
+
+        Returns:
+            List of OpenAPI parameter objects for query string.
+        """
+        properties = schema.get("properties", {})
+        required_fields = set(schema.get("required", []))
+        parameters: list[dict[str, Any]] = []
+
+        for prop_name, prop_schema in properties.items():
+            param: dict[str, Any] = {
+                "name": prop_name,
+                "in": "query",
+                "required": prop_name in required_fields,
+                "schema": prop_schema,
+            }
+            parameters.append(param)
+
+        return parameters
 
     @staticmethod
     def _python_type_to_openapi_schema(python_type: Any) -> dict[str, Any]:
-        """Convert Python type to OpenAPI schema dict.
+        """Convert Python type to OpenAPI schema dict using pydantic.
 
-        Handles TypedDict specially by extracting field definitions.
-        For other types, returns a simple {"type": "..."} schema.
+        Uses pydantic's TypeAdapter to generate JSON schema for any type.
         """
-        # Check if it's a TypedDict
+        from pydantic import TypeAdapter
+
         try:
-            from typing import is_typeddict
-        except ImportError:
-            from typing_extensions import is_typeddict
-
-        if is_typeddict(python_type):
-            # Extract TypedDict fields
-            try:
-                type_hints = get_type_hints(python_type)
-            except Exception:
-                type_hints = getattr(python_type, "__annotations__", {})
-
-            properties: dict[str, Any] = {}
-            for field_name, field_type in type_hints.items():
-                properties[field_name] = {
-                    "type": BaseRouter._python_type_to_openapi(field_type)
-                }
-
-            # Get required fields (TypedDict with total=True has all required)
-            required_keys: frozenset[str] = getattr(
-                python_type, "__required_keys__", frozenset()
-            )
-            schema: dict[str, Any] = {
-                "type": "object",
-                "properties": properties,
-            }
-            if required_keys:
-                schema["required"] = list(required_keys)
-            return schema
-
-        # Fallback to simple type
-        return {"type": BaseRouter._python_type_to_openapi(python_type)}
+            adapter = TypeAdapter(python_type)
+            return adapter.json_schema()
+        except Exception:
+            # Fallback for types pydantic can't handle
+            return {"type": "object"}
 
     @staticmethod
     def _guess_http_method(func: Callable) -> str:
