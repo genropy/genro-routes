@@ -798,11 +798,26 @@ class BaseRouter(RouterInterface):
         return result
 
     def _entry_info_to_openapi(self, name: str, entry_info: dict[str, Any]) -> dict[str, Any]:
-        """Convert entry info dict to OpenAPI path item format."""
+        """Convert entry info dict to OpenAPI path item format.
+
+        HTTP method determination priority:
+        1. Explicit override via openapi plugin config (openapi_method in metadata)
+        2. Guessed from function signature (_guess_http_method)
+        """
         func = entry_info.get("callable")
         doc = entry_info.get("doc", "")
         summary = doc.split("\n")[0] if doc else name
         metadata = entry_info.get("metadata", {})
+
+        # Determine HTTP method: check for explicit override first
+        openapi_config = metadata.get("plugin_config", {}).get("openapi", {})
+        explicit_method = openapi_config.get("method")
+        if explicit_method:
+            http_method = explicit_method.lower()
+        elif func:
+            http_method = self._guess_http_method(func)
+        else:
+            http_method = "post"
 
         operation: dict[str, Any] = {
             "operationId": name,
@@ -810,6 +825,11 @@ class BaseRouter(RouterInterface):
         }
         if doc:
             operation["description"] = doc
+
+        # Add tags if specified in openapi config
+        tags = openapi_config.get("tags")
+        if tags:
+            operation["tags"] = tags if isinstance(tags, list) else [tags]
 
         # Extract parameters from pydantic metadata if available
         pydantic_meta = metadata.get("pydantic", {})
@@ -868,7 +888,7 @@ class BaseRouter(RouterInterface):
         if "responses" not in operation:
             operation["responses"] = {"200": {"description": "Successful response"}}
 
-        return {"post": operation}
+        return {http_method: operation}
 
     @staticmethod
     def _python_type_to_openapi(python_type: Any) -> str:
@@ -885,6 +905,67 @@ class BaseRouter(RouterInterface):
         if origin is not None:
             python_type = origin
         return type_map.get(python_type, "object")
+
+    @staticmethod
+    def _guess_http_method(func: Callable) -> str:
+        """Guess HTTP method from function signature.
+
+        Returns "get" if all parameters are simple scalar types (str, int, float, bool).
+        Returns "post" if any parameter is a complex type (dict, list, Pydantic model, etc.).
+
+        Args:
+            func: The callable to analyze.
+
+        Returns:
+            "get" or "post" based on parameter analysis.
+        """
+        import types
+
+        simple_types = (str, int, float, bool, type(None))
+
+        try:
+            hints = get_type_hints(func)
+        except Exception:
+            # If we can't get type hints, default to POST (safer)
+            return "post"
+
+        hints.pop("return", None)
+
+        if not hints:
+            # No parameters at all - could be GET
+            return "get"
+
+        for hint in hints.values():
+            # Handle Optional types (Union[X, None]) - both typing.Union and types.UnionType
+            origin = getattr(hint, "__origin__", None)
+
+            # Python 3.10+ uses types.UnionType for X | Y syntax
+            if isinstance(hint, types.UnionType):
+                args = hint.__args__
+                non_none_args = [a for a in args if a is not type(None)]
+                if not all(a in simple_types for a in non_none_args):
+                    return "post"
+                continue
+
+            if origin is not None:
+                # Check typing.Union (including Optional from typing module)
+                args = getattr(hint, "__args__", ())
+                origin_name = getattr(origin, "__name__", "") or getattr(origin, "_name", "")
+                if origin_name == "Union":
+                    # For Union, check if all non-None args are simple
+                    non_none_args = [a for a in args if a is not type(None)]
+                    if not all(a in simple_types for a in non_none_args):
+                        return "post"
+                    continue
+                # Other generic types (list, dict, etc.) are complex
+                return "post"
+
+            # Check if it's a simple type
+            if hint not in simple_types:
+                # Could be a Pydantic model or other complex type
+                return "post"
+
+        return "get"
 
     def _entry_node_info(self, entry: MethodEntry) -> dict[str, Any]:
         """Build info dict for a single entry."""

@@ -31,7 +31,7 @@ __version__ = "0.10.0"
 from .core import RoutedClass, Router, RouterInterface, route
 
 # Import plugins to trigger auto-registration (lazy to avoid cycles)
-for _plugin in ("logging", "pydantic", "filter"):
+for _plugin in ("logging", "pydantic", "filter", "openapi"):
     import_module(f"{__name__}.plugins.{_plugin}")
 del _plugin
 

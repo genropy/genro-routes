@@ -395,13 +395,13 @@ def test_openapi_returns_schema():
     assert "/health" in schema["paths"]
     assert "/users/get_user" in schema["paths"]
 
-    # Check health endpoint
-    health_op = schema["paths"]["/health"]["post"]
+    # Check health endpoint - no params means GET
+    health_op = schema["paths"]["/health"]["get"]
     assert health_op["operationId"] == "health"
     assert health_op["summary"] == "Health check endpoint."
 
-    # Check user endpoint with parameters
-    user_op = schema["paths"]["/users/get_user"]["post"]
+    # Check user endpoint with parameters - scalar params means GET
+    user_op = schema["paths"]["/users/get_user"]["get"]
     assert user_op["operationId"] == "get_user"
     assert "parameters" in user_op or "requestBody" in user_op
 
@@ -572,9 +572,10 @@ def test_openapi_with_pydantic_model():
     schema = svc.api.nodes(mode="openapi")
 
     # Should have requestBody with pydantic schema
+    # Method is GET because pydantic model creates requestBody but params are scalar
     path_item = schema["paths"]["/get_user"]
-    assert "post" in path_item
-    operation = path_item["post"]
+    assert "get" in path_item
+    operation = path_item["get"]
     assert "requestBody" in operation
     assert operation["requestBody"]["required"] is True
     assert "content" in operation["requestBody"]
@@ -630,7 +631,8 @@ def test_openapi_handler_without_type_hints():
     schema = svc.api.nodes(mode="openapi")
 
     path_item = schema["paths"]["/no_hints"]
-    operation = path_item["post"]
+    # Without type hints, no hints to analyze → GET (no complex types detected)
+    operation = path_item["get"]
     # Should have default response but no parameters
     assert "responses" in operation
     assert "200" in operation["responses"]
@@ -724,7 +726,8 @@ def test_openapi_required_vs_optional_params():
     svc = Service()
     schema = svc.api.nodes(mode="openapi")
 
-    operation = schema["paths"]["/mixed_params"]["post"]
+    # Scalar params only → GET
+    operation = schema["paths"]["/mixed_params"]["get"]
     params = operation["parameters"]
 
     required_param = next(p for p in params if p["name"] == "required")
@@ -793,7 +796,8 @@ def test_openapi_handles_hint_param_mismatch():
 
     # Should not raise, should skip the mismatched param
     schema = svc.api.nodes(mode="openapi")
-    operation = schema["paths"]["/handler"]["post"]
+    # No hints to analyze → GET
+    operation = schema["paths"]["/handler"]["get"]
     # No parameters should be added since ghost_param isn't in signature
     assert "parameters" not in operation or len(operation.get("parameters", [])) == 0
 
@@ -973,10 +977,10 @@ def test_h_openapi_preserves_openapi_format():
     svc = Svc()
     schema = svc.api.nodes(mode="h_openapi")
 
-    # Check OpenAPI structure
+    # Check OpenAPI structure - scalar params means GET
     path_item = schema["paths"]["/create_item"]
-    assert "post" in path_item
-    operation = path_item["post"]
+    assert "get" in path_item
+    operation = path_item["get"]
     assert operation["operationId"] == "create_item"
     assert operation["summary"] == "Create a new item."
     assert "parameters" in operation
@@ -1075,3 +1079,222 @@ def test_h_openapi_includes_description_and_owner_doc():
     child_schema = schema["routers"]["users"]
     assert child_schema["description"] == "User management"
     assert child_schema["owner_doc"] == "Child service for users."
+
+
+# -----------------------------------------------------------------------------
+# HTTP method guessing tests
+# -----------------------------------------------------------------------------
+
+
+def test_guess_http_method_no_params_is_get():
+    """Test _guess_http_method returns GET for no-param functions."""
+    from genro_routes.core.base_router import BaseRouter
+
+    def no_params():
+        return "ok"
+
+    assert BaseRouter._guess_http_method(no_params) == "get"
+
+
+def test_guess_http_method_scalar_params_is_get():
+    """Test _guess_http_method returns GET for scalar-only params."""
+    from genro_routes.core.base_router import BaseRouter
+
+    def scalar_params(name: str, count: int, price: float, active: bool) -> str:
+        return "ok"
+
+    assert BaseRouter._guess_http_method(scalar_params) == "get"
+
+
+def test_guess_http_method_complex_params_is_post():
+    """Test _guess_http_method returns POST for complex params."""
+    from genro_routes.core.base_router import BaseRouter
+
+    def list_param(items: list) -> list:
+        return items
+
+    def dict_param(data: dict) -> dict:
+        return data
+
+    assert BaseRouter._guess_http_method(list_param) == "post"
+    assert BaseRouter._guess_http_method(dict_param) == "post"
+
+
+def test_guess_http_method_generic_types_is_post():
+    """Test _guess_http_method returns POST for generic collection types."""
+    from genro_routes.core.base_router import BaseRouter
+
+    def generic_list(items: list[str]) -> list[str]:
+        return items
+
+    def generic_dict(data: dict[str, int]) -> dict[str, int]:
+        return data
+
+    assert BaseRouter._guess_http_method(generic_list) == "post"
+    assert BaseRouter._guess_http_method(generic_dict) == "post"
+
+
+def test_guess_http_method_optional_scalar_is_get():
+    """Test _guess_http_method returns GET for Optional[scalar]."""
+    from genro_routes.core.base_router import BaseRouter
+
+    def optional_str(name: str | None) -> str:
+        return name or "default"
+
+    def optional_int(count: int | None = None) -> int:
+        return count or 0
+
+    assert BaseRouter._guess_http_method(optional_str) == "get"
+    assert BaseRouter._guess_http_method(optional_int) == "get"
+
+
+def test_guess_http_method_pydantic_model_is_post():
+    """Test _guess_http_method returns POST for Pydantic models."""
+    from pydantic import BaseModel
+
+    from genro_routes.core.base_router import BaseRouter
+
+    class UserModel(BaseModel):
+        name: str
+        age: int
+
+    def with_model(user: UserModel) -> dict:
+        return user.model_dump()
+
+    assert BaseRouter._guess_http_method(with_model) == "post"
+
+
+def test_guess_http_method_broken_hints_is_post():
+    """Test _guess_http_method returns POST when hints can't be resolved."""
+    from genro_routes.core.base_router import BaseRouter
+
+    def broken():
+        return "ok"
+
+    # Manually break annotations
+    broken.__annotations__ = {"arg": "NonExistentType"}
+
+    # Should default to POST (safer)
+    assert BaseRouter._guess_http_method(broken) == "post"
+
+
+def test_openapi_uses_guessed_http_method():
+    """Test openapi output uses guessed HTTP method from signature."""
+
+    class Svc(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def get_item(self, item_id: int) -> dict:
+            """Get an item - should be GET (scalar params only)."""
+            return {"id": item_id}
+
+        @route("api")
+        def create_item(self, data: dict) -> dict:
+            """Create an item - should be POST (complex param)."""
+            return data
+
+        @route("api")
+        def list_items(self) -> list:
+            """List items - should be GET (no params)."""
+            return []
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi")
+
+    # GET for scalar params
+    assert "get" in schema["paths"]["/get_item"]
+    assert "post" not in schema["paths"]["/get_item"]
+
+    # POST for complex params
+    assert "post" in schema["paths"]["/create_item"]
+    assert "get" not in schema["paths"]["/create_item"]
+
+    # GET for no params
+    assert "get" in schema["paths"]["/list_items"]
+    assert "post" not in schema["paths"]["/list_items"]
+
+
+# -----------------------------------------------------------------------------
+# OpenAPI plugin tests
+# -----------------------------------------------------------------------------
+
+
+def test_openapi_plugin_method_override():
+    """Test openapi plugin allows explicit HTTP method override."""
+
+    class Svc(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi")
+
+        @route("api", openapi_method="delete")
+        def remove_item(self, item_id: int) -> dict:
+            """Delete an item - explicitly DELETE despite scalar params."""
+            return {"deleted": item_id}
+
+        @route("api", openapi_method="PUT")
+        def update_item(self, item_id: int, name: str) -> dict:
+            """Update an item - explicitly PUT."""
+            return {"id": item_id, "name": name}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi")
+
+    # Override to DELETE
+    assert "delete" in schema["paths"]["/remove_item"]
+    assert "get" not in schema["paths"]["/remove_item"]
+
+    # Override to PUT (case insensitive)
+    assert "put" in schema["paths"]["/update_item"]
+
+
+def test_openapi_plugin_tags():
+    """Test openapi plugin adds tags to operations."""
+
+    class Svc(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi")
+
+        @route("api", openapi_tags=["users", "admin"])
+        def admin_action(self) -> str:
+            return "ok"
+
+        @route("api", openapi_tags="public")
+        def public_action(self) -> str:
+            return "ok"
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi")
+
+    # List of tags
+    admin_op = schema["paths"]["/admin_action"]["get"]
+    assert admin_op["tags"] == ["users", "admin"]
+
+    # Single tag (converted to list)
+    public_op = schema["paths"]["/public_action"]["get"]
+    assert public_op["tags"] == ["public"]
+
+
+def test_openapi_plugin_no_effect_without_config():
+    """Test openapi plugin doesn't change anything without explicit config."""
+
+    class Svc(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi")
+
+        @route("api")
+        def get_item(self, item_id: int) -> dict:
+            """Should still use guessed method (GET)."""
+            return {"id": item_id}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi")
+
+    # Method should be guessed as GET (not overridden)
+    assert "get" in schema["paths"]["/get_item"]
+
+
+def test_openapi_plugin_available():
+    """Test openapi plugin is registered and available."""
+    assert "openapi" in Router.available_plugins()
