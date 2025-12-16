@@ -81,6 +81,7 @@ Hooks for subclasses
 
 from __future__ import annotations
 
+import functools
 import inspect
 from collections.abc import Callable, Iterator
 from typing import Any, get_type_hints
@@ -443,23 +444,53 @@ class BaseRouter(RouterInterface):
         Falls back to ``default_handler`` if provided and nothing is found.
         When ``use_smartasync`` is true, handler callables are wrapped accordingly.
 
+        When ``partial=True`` and the path cannot be fully resolved, returns a
+        ``functools.partial`` wrapping the last valid target's ``call()`` method
+        with the unconsumed path segments as positional arguments. This enables
+        catch-all routing patterns::
+
+            # Given: alfa/beta exists, gamma/delta does not
+            result = router.get("alfa/beta/gamma/delta", partial=True)
+            # Returns: partial(beta_router.call, "gamma/delta")
+            # Call with kwargs:
+            result(x=12, y=14)  # executes beta.call("gamma/delta", x=12, y=14)
+
         Raises:
             RuntimeError: If the router has not been bound yet.
         """
         opts = SmartOptions(options, defaults=self._get_defaults)
         default = getattr(opts, "default_handler", None)
         use_smartasync = getattr(opts, "use_smartasync", False)
+        use_partial = getattr(opts, "partial", False)
 
         # Handle path with "/" by delegating to child routers
         if "/" in selector:
             first, rest = selector.split("/", 1)
             child = self._children.get(first)
             if child is None:
+                # Child not found - check if partial resolution is requested
+                if use_partial:
+                    # Check if first segment is an entry (catch-all pattern)
+                    entry = self._entries.get(first)
+                    if entry is not None:
+                        handler = entry.handler
+                        if use_smartasync:
+                            from smartasync import smartasync  # type: ignore
+
+                            handler = smartasync(handler)
+                        # Return partial with unconsumed path as args
+                        return functools.partial(handler, *rest.split("/"))
+                    # No entry either, return partial on this router's call
+                    return functools.partial(self.call, selector)
                 if default is not None:
                     return default  # type: ignore[no-any-return]
                 return None
             # Delegate to child router's get()
-            return child.get(rest, **options)
+            result = child.get(rest, **options)
+            if result is None and use_partial:
+                # Child couldn't resolve rest - return partial on child's call
+                return functools.partial(child.call, rest)
+            return result
 
         # Single segment: check entries first, then children
         entry = self._entries.get(selector)
@@ -476,6 +507,9 @@ class BaseRouter(RouterInterface):
             return child_router
 
         # Nothing found - use default or return None
+        if use_partial:
+            # Return partial on this router's call with the selector
+            return functools.partial(self.call, selector)
         if default is not None:
             return default  # type: ignore[no-any-return]
 

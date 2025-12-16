@@ -595,3 +595,168 @@ class TestDefaultRouter:
 
         svc = BadMainRouter()
         assert svc.default_router is None
+
+
+# -----------------------------------------------------------------------------
+# get() with partial=True tests
+# -----------------------------------------------------------------------------
+
+
+class TestGetWithPartial:
+    """Tests for get() with partial=True option."""
+
+    def test_partial_returns_functools_partial_for_unresolved_path(self):
+        """get(partial=True) returns a functools.partial for unresolved paths."""
+        import functools
+
+        class Child(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+            @route("api")
+            def action(self, *args):
+                return f"action called with: {args}"
+
+        class Root(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+                self.child = Child()
+                self.api.attach_instance(self.child, name="child")
+
+        root = Root()
+        # "child" exists, but "gamma/delta" doesn't
+        result = root.api.get("child/gamma/delta", partial=True)
+
+        assert isinstance(result, functools.partial)
+        # The partial should call child.api.call with "gamma/delta"
+        assert result.func == root.child.api.call
+        assert result.args == ("gamma/delta",)
+
+    def test_partial_can_be_called_later(self):
+        """partial result can be invoked later with bound args."""
+
+        class Service(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+            @route("api")
+            def catch_all(self, *args):
+                return list(args)
+
+        svc = Service()
+        # "catch_all" exists, "extra/path" doesn't - should return partial on catch_all
+        result = svc.api.get("catch_all/extra/path", partial=True)
+
+        # Call the partial - args are already bound
+        output = result()
+        assert output == ["extra", "path"]
+
+    def test_partial_with_nested_hierarchy(self):
+        """partial works correctly with deeply nested router hierarchies."""
+        import functools
+
+        class GrandChild(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+            @route("api")
+            def deep_action(self):
+                return "deep"
+
+        class Child(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+                self.grandchild = GrandChild()
+                self.api.attach_instance(self.grandchild, name="grandchild")
+
+        class Root(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+                self.child = Child()
+                self.api.attach_instance(self.child, name="child")
+
+        root = Root()
+        # Path "child/grandchild" exists, but "nonexistent/path" doesn't
+        result = root.api.get("child/grandchild/nonexistent/path", partial=True)
+
+        assert isinstance(result, functools.partial)
+        # Should be partial on grandchild's call
+        assert result.func == root.child.grandchild.api.call
+        assert result.args == ("nonexistent/path",)
+
+    def test_partial_false_returns_none_for_unresolved(self):
+        """Without partial=True, get() returns None for unresolved paths."""
+
+        class Service(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+            @route("api")
+            def action(self):
+                return "ok"
+
+        svc = Service()
+        # Default behavior - no partial
+        result = svc.api.get("nonexistent/path")
+        assert result is None
+
+        # Explicit partial=False
+        result = svc.api.get("nonexistent/path", partial=False)
+        assert result is None
+
+    def test_partial_with_single_segment_unresolved(self):
+        """partial works for single-segment unresolved paths."""
+        import functools
+
+        class Service(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+            @route("api")
+            def action(self):
+                return "ok"
+
+        svc = Service()
+        result = svc.api.get("nonexistent", partial=True)
+
+        assert isinstance(result, functools.partial)
+        assert result.func == svc.api.call
+        assert result.args == ("nonexistent",)
+
+    def test_partial_resolved_path_returns_normal_result(self):
+        """When path is fully resolved, partial=True doesn't change behavior."""
+
+        class Service(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+            @route("api")
+            def action(self, x=None):
+                return f"x={x}"
+
+        svc = Service()
+        # Path exists - should return the handler directly
+        result = svc.api.get("action", partial=True)
+
+        # Should be the actual handler, not a partial
+        assert callable(result)
+        assert result(x=42) == "x=42"
+
+    def test_partial_entry_with_extra_path_segments(self):
+        """When entry exists but has extra path, return partial with segments as args."""
+
+        class Service(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+            @route("api")
+            def handler(self, *args):
+                return list(args)
+
+        svc = Service()
+        # "handler" exists, "extra/segments" are unconsumed
+        result = svc.api.get("handler/extra/segments", partial=True)
+
+        # Should be partial with extra segments as args
+        output = result()
+        assert output == ["extra", "segments"]
