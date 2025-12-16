@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from genro_routes import Router, RoutedClass
+from genro_routes import RoutedClass, Router
 
 
 class Owner(RoutedClass):
@@ -21,8 +21,8 @@ class TestFilterPluginIntegration:
 
     def test_nodes_filters_by_single_tag(self):
         router = _make_router().plug("filter")
-        router.add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
-        router.add_entry(lambda: "public", name="public_action", filter_tags="public")
+        router._add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
+        router._add_entry(lambda: "public", name="public_action", filter_tags="public")
 
         entries = router.nodes(tags="admin").get("entries", {})
         assert "admin_action" in entries
@@ -30,9 +30,9 @@ class TestFilterPluginIntegration:
 
     def test_nodes_filters_by_or(self):
         router = _make_router().plug("filter")
-        router.add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
-        router.add_entry(lambda: "public", name="public_action", filter_tags="public")
-        router.add_entry(lambda: "internal", name="internal_action", filter_tags="internal")
+        router._add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
+        router._add_entry(lambda: "public", name="public_action", filter_tags="public")
+        router._add_entry(lambda: "internal", name="internal_action", filter_tags="internal")
 
         entries = router.nodes(tags="admin,public").get("entries", {})
         assert "admin_action" in entries
@@ -41,8 +41,8 @@ class TestFilterPluginIntegration:
 
     def test_nodes_filters_by_and(self):
         router = _make_router().plug("filter")
-        router.add_entry(lambda: "both", name="both_action", filter_tags="admin,internal")
-        router.add_entry(lambda: "admin", name="admin_only", filter_tags="admin")
+        router._add_entry(lambda: "both", name="both_action", filter_tags="admin,internal")
+        router._add_entry(lambda: "admin", name="admin_only", filter_tags="admin")
 
         entries = router.nodes(tags="admin&internal").get("entries", {})
         assert "both_action" in entries
@@ -50,8 +50,8 @@ class TestFilterPluginIntegration:
 
     def test_nodes_filters_by_not(self):
         router = _make_router().plug("filter")
-        router.add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
-        router.add_entry(lambda: "public", name="public_action", filter_tags="public")
+        router._add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
+        router._add_entry(lambda: "public", name="public_action", filter_tags="public")
 
         entries = router.nodes(tags="!admin").get("entries", {})
         assert "admin_action" not in entries
@@ -59,8 +59,8 @@ class TestFilterPluginIntegration:
 
     def test_nodes_without_tags_filter_returns_all(self):
         router = _make_router().plug("filter")
-        router.add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
-        router.add_entry(lambda: "public", name="public_action", filter_tags="public")
+        router._add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
+        router._add_entry(lambda: "public", name="public_action", filter_tags="public")
 
         entries = router.nodes().get("entries", {})
         assert "admin_action" in entries
@@ -68,8 +68,8 @@ class TestFilterPluginIntegration:
 
     def test_entry_without_tags_matches_not_expressions(self):
         router = _make_router().plug("filter")
-        router.add_entry(lambda: "tagged", name="tagged_action", filter_tags="admin")
-        router.add_entry(lambda: "untagged", name="untagged_action")
+        router._add_entry(lambda: "tagged", name="tagged_action", filter_tags="admin")
+        router._add_entry(lambda: "untagged", name="untagged_action")
 
         entries = router.nodes(tags="!admin").get("entries", {})
         assert "tagged_action" not in entries
@@ -77,10 +77,10 @@ class TestFilterPluginIntegration:
 
     def test_complex_expression(self):
         router = _make_router().plug("filter")
-        router.add_entry(lambda: "a", name="a", filter_tags="admin")
-        router.add_entry(lambda: "b", name="b", filter_tags="public")
-        router.add_entry(lambda: "c", name="c", filter_tags="admin,internal")
-        router.add_entry(lambda: "d", name="d", filter_tags="public,internal")
+        router._add_entry(lambda: "a", name="a", filter_tags="admin")
+        router._add_entry(lambda: "b", name="b", filter_tags="public")
+        router._add_entry(lambda: "c", name="c", filter_tags="admin,internal")
+        router._add_entry(lambda: "d", name="d", filter_tags="public,internal")
 
         # (admin OR public) AND NOT internal
         entries = router.nodes(tags="(admin|public)&!internal").get("entries", {})
@@ -110,7 +110,7 @@ class TestFilterPluginIntegration:
                 return "child_public"
 
         parent = Parent()
-        parent.api.add_entry(lambda: "parent_admin", name="parent_admin", filter_tags="admin")
+        parent.api._add_entry(lambda: "parent_admin", name="parent_admin", filter_tags="admin")
 
         child = Child()
         # Attach child - plugin is inherited from parent
@@ -143,7 +143,7 @@ class TestFilterPluginIntegration:
                 return "public"
 
         parent = Parent()
-        parent.api.add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
+        parent.api._add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
 
         child = Child()
         parent.api.attach_instance(child, name="child")
@@ -264,8 +264,8 @@ class TestDictLikeInterface:
     def test_iter_keys_values_items(self):
         """Test __iter__, keys(), values(), items()."""
         router = _make_router()
-        router.add_entry(lambda: "a", name="entry_a")
-        router.add_entry(lambda: "b", name="entry_b")
+        router._add_entry(lambda: "a", name="entry_a")
+        router._add_entry(lambda: "b", name="entry_b")
 
         # __iter__
         names = list(router)
@@ -290,7 +290,7 @@ class TestDictLikeInterface:
     def test_len_and_contains(self):
         """Test __len__ and __contains__."""
         router = _make_router()
-        router.add_entry(lambda: "a", name="entry_a")
+        router._add_entry(lambda: "a", name="entry_a")
 
         assert len(router) == 1
         assert "entry_a" in router
@@ -309,7 +309,7 @@ class TestDictLikeInterface:
                 self.api = Router(self, name="api")
 
         parent = Parent()
-        parent.api.add_entry(lambda: "p", name="parent_entry")
+        parent.api._add_entry(lambda: "p", name="parent_entry")
 
         child = Child()
         parent.api.attach_instance(child, name="child")
@@ -330,9 +330,11 @@ class TestGetWithDefault:
     def test_get_missing_child_with_default_handler(self):
         """Test get() returns default_handler when child path not found."""
         router = _make_router()
-        router.add_entry(lambda: "a", name="entry_a")
+        router._add_entry(lambda: "a", name="entry_a")
 
-        fallback = lambda: "fallback"
+        def fallback():
+            return "fallback"
+
         # Path with missing child should return default_handler
         result = router.get("nonexistent/something", default_handler=fallback)
         assert result is fallback
@@ -380,7 +382,7 @@ class TestFilterPluginAllowNode:
             pass
 
         router = Router(Child(), name="api").plug("filter")
-        router.add_entry(lambda: "x", name="only_internal", filter_tags="internal")
+        router._add_entry(lambda: "x", name="only_internal", filter_tags="internal")
 
         plugin = router._plugins_by_name["filter"]
 

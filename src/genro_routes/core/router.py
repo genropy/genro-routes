@@ -179,8 +179,11 @@ class Router(BaseRouter):
         instance = spec.instantiate(self)
         self._plugins.append(instance)
         self._plugins_by_name[instance.name] = instance
-        self._apply_plugin_to_entries(instance)
-        self._rebuild_handlers()
+        # Plugin will be applied to entries during lazy binding (_bind)
+        # If already bound, apply now
+        if self._bound:
+            self._apply_plugin_to_entries(instance)
+            self._rebuild_handlers()
         return self
 
     def iter_plugins(self) -> list[BasePlugin]:  # type: ignore[override]
@@ -285,7 +288,8 @@ class Router(BaseRouter):
         return wrapper
 
     def _apply_plugin_to_entries(self, plugin: BasePlugin) -> None:
-        for entry in self._entries.values():
+        # Access raw dict to avoid triggering lazy binding
+        for entry in self._BaseRouter__entries_raw.values():  # type: ignore[attr-defined]
             if plugin.name not in entry.plugins:
                 entry.plugins.append(plugin.name)
             plugin.on_decore(self, entry.func, entry)

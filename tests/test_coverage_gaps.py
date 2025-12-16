@@ -239,17 +239,17 @@ def test_pydantic_hint_not_in_signature_raises():
     # Add annotation for parameter not in signature
     handler.__annotations__["phantom"] = int
 
+    class Svc(RoutedClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("pydantic")
+
+    # Assign decorated handler - this triggers on_decore
+    Svc.handler = route("api")(handler)
+
+    # Error is raised at first use (lazy binding)
+    svc = Svc()
     with pytest.raises(ValueError, match="type hint for 'phantom'.*not in the function signature"):
-
-        class Svc(RoutedClass):
-            def __init__(self):
-                self.api = Router(self, name="api").plug("pydantic")
-
-        # Assign decorated handler - this triggers on_decore
-        Svc.handler = route("api")(handler)
-
-        # Creating instance triggers finalization and on_decore
-        Svc()
+        svc.api.get("handler")
 
 
 # --- pydantic.py:159-167 - get_model disabled/no model ---
@@ -267,6 +267,7 @@ def test_pydantic_get_model_disabled():
             return text
 
     svc = Svc()
+    svc.api.nodes()  # Trigger lazy binding
     entry = svc.api._entries["handler"]
 
     # Initially should return model
@@ -292,6 +293,7 @@ def test_pydantic_get_model_no_model():
             return f"{x}:{y}"
 
     svc = Svc()
+    svc.api.nodes()  # Trigger lazy binding
     entry = svc.api._entries["no_hints"]
 
     # No model was created
@@ -314,6 +316,7 @@ def test_pydantic_entry_metadata_no_meta():
             return f"{x}:{y}"
 
     svc = Svc()
+    svc.api.nodes()  # Trigger lazy binding
     entry = svc.api._entries["no_hints"]
 
     result = svc.api.pydantic.entry_metadata(svc.api, entry)
@@ -332,6 +335,7 @@ def test_pydantic_entry_metadata_with_meta():
             return f"{text}:{num}"
 
     svc = Svc()
+    svc.api.nodes()  # Trigger lazy binding
     entry = svc.api._entries["with_hints"]
 
     result = svc.api.pydantic.entry_metadata(svc.api, entry)

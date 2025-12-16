@@ -70,7 +70,8 @@ class MethodEntry:
 
     Attributes:
         name: Logical handler name (after prefix stripping).
-        func: Bound callable invoked by the Router.
+        func: Bound callable (original method).
+        handler: Wrapped callable after plugin processing.
         router: Router instance that owns this handler.
         plugins: List of plugin names applied to this handler.
         metadata: Mutable dict for plugins to store annotations.
@@ -81,6 +82,12 @@ class MethodEntry:
     router: Any
     plugins: list[str]
     metadata: dict[str, Any] = field(default_factory=dict)
+    handler: Callable = field(default=None)  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        """Set handler to func if not provided."""
+        if self.handler is None:
+            self.handler = self.func
 
 
 def _wrap_configure(original_configure: Callable) -> Callable:

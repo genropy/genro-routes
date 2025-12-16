@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from genro_routes import Router, RoutedClass
+from genro_routes import RoutedClass, Router
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
 
 
@@ -90,7 +90,7 @@ def test_nodes_entry_extra_rejects_non_dict_from_plugin():
 def test_nodes_respects_plugin_allow_skip():
     Router.register_plugin(_FilterPlugin)
     router = _make_router().plug("filtertest")
-    router.add_entry(lambda: "ok", name="hidden")
+    router._add_entry(lambda: "ok", name="hidden")
 
     # Filter is passed as-is to plugin; plugin decides how to interpret it
     tree = router.nodes(hide=True)

@@ -141,9 +141,9 @@ class ToggleService(RoutedClass):
 
 class DynamicRouterService(RoutedClass):
     def __init__(self):
-        self.dynamic = Router(self, name="dynamic", auto_discover=False)
-        self.dynamic.add_entry(self.dynamic_alpha)
-        self.dynamic.add_entry("dynamic_beta")
+        self.dynamic = Router(self, name="dynamic")
+        self.dynamic._add_entry(self.dynamic_alpha)
+        self.dynamic._add_entry("dynamic_beta")
 
     def dynamic_alpha(self):
         return "alpha"
@@ -185,7 +185,7 @@ def test_dynamic_router_add_entry_runtime():
     assert svc.dynamic.get("dynamic_alpha")() == "alpha"
     assert svc.dynamic.get("dynamic_beta")() == "beta"
     # Adding via string
-    svc.dynamic.add_entry("dynamic_alpha", name="alpha_alias")
+    svc.dynamic._add_entry("dynamic_alpha", name="alpha_alias")
     assert svc.dynamic.get("alpha_alias")() == "alpha"
 
 
@@ -534,7 +534,7 @@ class TestRoutedClassRequirement:
             pass
 
         svc = MyService()
-        router = Router(svc, name="api", auto_discover=False)
+        router = Router(svc, name="api")
         assert router.instance is svc
 
 
@@ -546,7 +546,7 @@ class TestDefaultRouter:
 
         class SingleRouter(RoutedClass):
             def __init__(self):
-                self.api = Router(self, name="api", auto_discover=False)
+                self.api = Router(self, name="api")
 
         svc = SingleRouter()
         assert svc.default_router is svc.api
@@ -556,8 +556,8 @@ class TestDefaultRouter:
 
         class MultiRouter(RoutedClass):
             def __init__(self):
-                self.api = Router(self, name="api", auto_discover=False)
-                self.admin = Router(self, name="admin", auto_discover=False)
+                self.api = Router(self, name="api")
+                self.admin = Router(self, name="admin")
 
         svc = MultiRouter()
         assert svc.default_router is None
@@ -569,8 +569,8 @@ class TestDefaultRouter:
             main_router = "admin"
 
             def __init__(self):
-                self.api = Router(self, name="api", auto_discover=False)
-                self.admin = Router(self, name="admin", auto_discover=False)
+                self.api = Router(self, name="api")
+                self.admin = Router(self, name="admin")
 
         svc = WithMainRouter()
         assert svc.default_router is svc.admin
@@ -591,7 +591,7 @@ class TestDefaultRouter:
             main_router = "nonexistent"
 
             def __init__(self):
-                self.api = Router(self, name="api", auto_discover=False)
+                self.api = Router(self, name="api")
 
         svc = BadMainRouter()
         assert svc.default_router is None

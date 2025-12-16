@@ -25,7 +25,7 @@ class ManualService(RoutedClass):
     """Service with manual router registration."""
 
     def __init__(self):
-        self.api = Router(self, name="api", auto_discover=False)
+        self.api = Router(self, name="api")
 
     def first(self):
         return "first"
@@ -40,8 +40,8 @@ class ManualService(RoutedClass):
 
 class DualRoutes(RoutedClass):
     def __init__(self):
-        self.one = Router(self, name="one", auto_discover=False)
-        self.two = Router(self, name="two", auto_discover=False)
+        self.one = Router(self, name="one")
+        self.two = Router(self, name="two")
 
     @route("one")
     @route("two", name="two_alias")
@@ -51,15 +51,15 @@ class DualRoutes(RoutedClass):
 
 class MultiChild(RoutedClass):
     def __init__(self):
-        self.router_a = Router(self, name="router_a", auto_discover=False)
-        self.router_b = Router(self, name="router_b", auto_discover=False)
+        self.router_a = Router(self, name="router_a")
+        self.router_b = Router(self, name="router_b")
 
 
 class SlotRouted(RoutedClass):
     __slots__ = ("slot_router",)
 
     def __init__(self):
-        self.slot_router = Router(self, name="slot", auto_discover=False)
+        self.slot_router = Router(self, name="slot")
 
 
 class DuplicateMarkers(RoutedClass):
@@ -125,19 +125,20 @@ def test_plug_rejects_duplicate_plugin():
 
 def test_add_entry_variants_and_wildcards():
     svc = ManualService()
-    svc.api.add_entry(["first", "second"])
-    assert "first" in svc.api._handlers
-    assert "second" in svc.api._handlers
+    svc.api._add_entry(["first", "second"])
+    assert "first" in svc.api._entries
+    assert "second" in svc.api._entries
 
-    svc.api.add_entry("first, second", replace=True)
-    before = set(svc.api._handlers.keys())
-    assert svc.api.add_entry("   ") is svc.api
-    assert set(svc.api._handlers.keys()) == before
+    svc.api._add_entry("first, second", replace=True)
+    before = set(svc.api._entries.keys())
+    assert svc.api._add_entry("   ") is svc.api
+    assert set(svc.api._entries.keys()) == before
 
     with pytest.raises(TypeError):
-        svc.api.add_entry(123)
+        svc.api._add_entry(123)
 
-    svc.api.add_entry("*", metadata={"source": "wild"})
+    # Use replace=True since "auto" was already registered by lazy binding
+    svc.api._add_entry("*", metadata={"source": "wild"}, replace=True)
     entry = svc.api._entries["auto"]
     assert entry.metadata["marker"] == "yes"
     assert entry.metadata["source"] == "wild"
@@ -146,28 +147,34 @@ def test_add_entry_variants_and_wildcards():
 def test_plugin_on_decore_runs_for_existing_entries():
     svc = ManualService()
     svc.api.plug("stamp_extra")
-    svc.api.add_entry(svc.first, name="alias_first")
+    svc.api._add_entry(svc.first, name="alias_first")
     assert svc.api._entries["alias_first"].metadata["stamped"] is True
 
 
 def test_iter_marked_methods_skip_other_router_markers():
+    """Test that each router only registers handlers marked for it."""
     svc = DualRoutes()
-    svc.one.add_entry("*")
-    svc.two.add_entry("*")
-    assert "shared" in svc.one._handlers
-    assert "two_alias" in svc.two._handlers
+    # Access via public API - get() triggers lazy binding
+    assert svc.one.get("shared") is not None
+    assert svc.two.get("two_alias") is not None
+    # Verify routing isolation - shared is only in "one"
+    assert svc.two.get("shared") is None
 
 
 def test_iter_marked_methods_deduplicate_same_function():
+    """Test that duplicate markers on same function don't cause double registration."""
     svc = DuplicateMarkers()
     assert svc.api.get("original")() == "ok"
-    assert len(svc.api._handlers) == 1
+    # Verify only one entry via nodes()
+    info = svc.api.nodes()
+    assert len(info.get("entries", {})) == 1
 
 
 def test_router_call_and_nodes_structure():
+    """Test call() and nodes() work correctly."""
     svc = ManualService()
-    svc.api.add_entry(svc.first)
-    assert svc.api.call("first") == "first"
+    # auto is marked with @route, so it's available
+    assert svc.api.call("auto") == "auto"
     tree = svc.api.nodes()
     assert tree["entries"]
     assert "routers" not in tree
@@ -206,7 +213,7 @@ def test_inherit_plugins_seed_from_empty_parent_bucket():
 
 def test_router_nodes_include_metadata_tree():
     parent = ManualService()
-    parent.api.add_entry(parent.first)
+    parent.api._add_entry(parent.first)
     info = parent.api.nodes()
     assert "entries" in info
 
@@ -451,10 +458,10 @@ def test_openapi_with_basepath():
 
     root = Root()
 
-    # Get schema starting from child
+    # Get schema starting from child (paths are relative to child)
     child_schema = root.api.nodes(mode="openapi", basepath="child")
-    assert "/child/child_action" in child_schema["paths"]
-    assert "/root_action" not in child_schema["paths"]
+    assert "/child_action" in child_schema["paths"]
+    assert "/root_action" not in child_schema.get("paths", {})
 
 
 def test_configure_validates_inputs_and_targets():
@@ -503,7 +510,7 @@ def test_iter_registered_routers_lists_entries():
 def test_get_router_skips_empty_segments():
     class Leaf(RoutedClass):
         def __init__(self):
-            self.api = Router(self, name="leaf", auto_discover=False)
+            self.api = Router(self, name="leaf")
 
     class Parent(RoutedClass):
         def __init__(self):
@@ -535,18 +542,17 @@ def test_openapi_basepath_to_handler_returns_empty():
 
     root = Root()
 
-    # basepath pointing to handler returns empty schema
+    # basepath pointing to handler returns empty (handler is not a router)
     result = root.api.nodes(mode="openapi", basepath="action")
-    assert result == {"paths": {}, "routers": {}}
+    assert result == {}
 
     # basepath pointing to non-existent path also returns empty
     result = root.api.nodes(mode="openapi", basepath="nonexistent")
-    assert result == {"paths": {}, "routers": {}}
+    assert result == {}
 
 
 def test_openapi_with_pydantic_model():
     """Test openapi() uses pydantic model schema when available."""
-    from genro_routes.plugins.pydantic import PydanticPlugin
 
     class Service(RoutedClass):
         def __init__(self):
@@ -633,9 +639,7 @@ def test_openapi_type_conversion():
             self.api = Router(self, name="api")
 
         @route("api")
-        def typed_params(
-            self, s: str, i: int, f: float, b: bool, items: list, data: dict
-        ) -> str:
+        def typed_params(self, s: str, i: int, f: float, b: bool, items: list, data: dict) -> str:
             return "ok"
 
     svc = Service()
@@ -656,14 +660,13 @@ def test_openapi_type_conversion():
 
 def test_openapi_generic_types():
     """Test openapi() handles generic types like List[str]."""
-    from typing import List, Dict
 
     class Service(RoutedClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
         @route("api")
-        def generic_params(self, items: List[str], data: Dict[str, int]) -> List[str]:
+        def generic_params(self, items: list[str], data: dict[str, int]) -> list[str]:
             return items
 
     svc = Service()
@@ -728,7 +731,6 @@ def test_openapi_required_vs_optional_params():
 
 def test_openapi_handles_broken_type_hints():
     """Test openapi() gracefully handles functions with unresolvable type hints."""
-    from genro_routes.core.base_router import BaseRouter
 
     class Service(RoutedClass):
         def __init__(self):
@@ -761,7 +763,6 @@ def test_openapi_handles_broken_type_hints():
 
 def test_openapi_handles_hint_param_mismatch():
     """Test openapi() when type hint references non-existent parameter."""
-    from genro_routes.core.base_router import MethodEntry
 
     class Service(RoutedClass):
         def __init__(self):

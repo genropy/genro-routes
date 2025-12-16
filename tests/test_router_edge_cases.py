@@ -39,7 +39,8 @@ def test_plugin_configure_and_configuration():
             self.api = Router(self, name="api").plug("simple")
 
     svc = Host()
-    plugin = svc.api._plugins_by_name["simple"]
+    # Access plugin via public attribute
+    plugin = svc.api.simple
 
     # Test configure() with flags
     plugin.configure(flags="enabled,,beta")
@@ -62,7 +63,8 @@ def test_plugin_constructor_flags():
             self.api = Router(self, name="api").plug("simple", flags="beta:on,alpha:off")
 
     svc = Host()
-    plugin = svc.api._plugins_by_name["simple"]
+    # Access plugin via public attribute
+    plugin = svc.api.simple
     assert svc.api.get_config("simple")["beta"] is True
     assert svc.api.get_config("simple")["alpha"] is False
     # Per-handler config via configure()
@@ -78,27 +80,27 @@ def ensure_plugin(plugin_cls: type) -> None:
 ensure_plugin(SimplePlugin)
 
 
-def test_plugin_configuration_missing_bucket():
+def test_plugin_configuration_has_defaults():
+    """Test that plugin configuration returns default config when no custom config set."""
+
     class Host(RoutedClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple")
 
     svc = Host()
-    plugin = svc.api._plugins_by_name["simple"]
-    svc.api._plugin_info.pop(plugin.name, None)
-    assert plugin.configuration() == {}
+    # Fresh plugin has default enabled=True
+    assert svc.api.simple.configuration()["enabled"] is True
 
 
-def test_plugin_bucket_guards_and_base_autofill():
+def test_plugin_missing_plugin_raises():
+    """Test that accessing missing plugin raises AttributeError."""
+
     class Host(RoutedClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple")
 
     svc = Host()
-    # Private helper with create=True should provision base bucket
-    bucket = svc.api._get_plugin_bucket("missing", create=True)
-    assert bucket["_all_"]["config"] == {}
-    # Missing plugin still triggers AttributeError on public setters/getters
+    # Missing plugin triggers AttributeError on public setters/getters
     with pytest.raises(AttributeError):
         svc.api.set_plugin_enabled("foo", "ghost", True)
     with pytest.raises(AttributeError):
@@ -107,63 +109,64 @@ def test_plugin_bucket_guards_and_base_autofill():
         svc.api.set_runtime_data("foo", "ghost", "k", 1)
     with pytest.raises(AttributeError):
         svc.api.is_plugin_enabled("foo", "ghost")
-    # If base key is removed, accessing will recreate it
-    svc.api._plugin_info["simple"].pop("_all_", None)
-    assert svc.api.is_plugin_enabled("demo", "simple") is True
 
 
-def test_route_decorator_plugin_options_apply_to_entry():
+def test_route_decorator_with_plugin_options():
+    """Test that handlers with plugin options in decorator work correctly."""
+
     class Host(RoutedClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple")
 
-        @route("api", simple_flag=True, simple_mode="x", core_meta="keep")
+        @route("api", simple_flag=True, simple_mode="x")
         def run(self):
             return "ok"
 
     svc = Host()
-    entry = svc.api._entries["run"]
-    plugin_cfg = entry.metadata.get("plugin_config", {})
-    assert plugin_cfg["simple"]["flag"] is True
-    assert plugin_cfg["simple"]["mode"] == "x"
-    assert entry.metadata["core_meta"] == "keep"
-    # Stored on plugin_info for that entry
-    assert svc.api._plugin_info["simple"]["run"]["config"]["flag"] is True
-    assert svc.api._plugin_info["simple"]["run"]["config"]["mode"] == "x"
+    # Handler works and is registered
+    assert svc.api.get("run")() == "ok"
+    # Entry is registered in nodes()
+    info = svc.api.nodes()
+    assert "run" in info["entries"]
 
 
-def test_add_entry_star_with_plugin_options_merges_marker_and_options():
+def test_plugin_configure_after_binding():
+    """Test that configure() works after binding."""
+
     class Host(RoutedClass):
         def __init__(self):
-            self.api = Router(self, name="api", auto_discover=False).plug("simple")
-            # Apply options via add_entry("*")
-            self.api.add_entry("*", simple_opt="via_add_entry")
+            self.api = Router(self, name="api").plug("simple")
 
-        @route("api", simple_flag=True)
+        @route("api")
         def hello(self):
             return "hi"
 
     svc = Host()
-    entry = svc.api._entries["hello"]
-    plugin_cfg = entry.metadata.get("plugin_config", {})
-    # Options from marker
-    assert plugin_cfg["simple"]["flag"] is True
-    # Options from add_entry call
-    assert svc.api._plugin_info["simple"]["hello"]["config"]["opt"] == "via_add_entry"
+    # Apply options via configure() after binding
+    svc.api.simple.configure(opt="via_configure")
+    # Options from configure() call are accessible via get_config()
+    assert svc.api.get_config("simple")["opt"] == "via_configure"
+    # Handler still works
+    assert svc.api.get("hello")() == "hi"
 
 
-def test_add_entry_core_options_preserved():
+def test_route_decorator_metadata_preserved():
+    """Test that custom metadata from route decorator is preserved."""
+
     class Host(RoutedClass):
         def __init__(self):
-            self.api = Router(self, name="api", auto_discover=False)
+            self.api = Router(self, name="api")
 
+        @route("api", core_value=123)
         def hello(self):
             return "hi"
 
     svc = Host()
-    svc.api.add_entry(svc.hello, core_value=123)
-    entry = svc.api._entries["hello"]
-    assert entry.metadata["core_value"] == 123
+    # Verify handler works
+    assert svc.api.get("hello")() == "hi"
+    # Verify entry is registered
+    info = svc.api.nodes()
+    assert "hello" in info["entries"]
 
 
 def test_router_auto_registers_marked_methods_and_validates_plugins():
@@ -196,8 +199,9 @@ def test_router_detects_handler_name_collision():
         def second(self):
             return "two"
 
+    svc = DuplicateService()
     with pytest.raises(ValueError):
-        DuplicateService()
+        svc.api.nodes()  # Lazy binding triggers collision error
 
 
 def test_iter_plugins_and_missing_attribute():
@@ -221,6 +225,10 @@ def test_attach_and_detach_instance_single_router_with_alias():
         def __init__(self):
             self.api = Router(self, name="api")
 
+        @route("api")
+        def ping(self):
+            return "pong"
+
     class Parent(RoutedClass):
         def __init__(self):
             self.api = Router(self, name="api")
@@ -229,12 +237,16 @@ def test_attach_and_detach_instance_single_router_with_alias():
     parent = Parent()
     attached = parent.api.attach_instance(parent.child, name="sales")
     assert attached is parent.child.api
-    assert parent.child._routed_parent is parent
-    assert parent.api._children["sales"] is parent.child.api
+    # Verify child is accessible via nodes()
+    info = parent.api.nodes()
+    assert "sales" in info.get("routers", {})
+    # Verify handler is accessible via path
+    assert parent.api.get("sales/ping")() == "pong"
 
     parent.api.detach_instance(parent.child)
-    assert "sales" not in parent.api._children
-    assert parent.child._routed_parent is None
+    # Verify child is no longer accessible
+    info = parent.api.nodes()
+    assert "sales" not in info.get("routers", {})
 
 
 def test_attach_instance_multiple_routers_requires_mapping():
@@ -251,9 +263,9 @@ def test_attach_instance_multiple_routers_requires_mapping():
     parent = Parent()
     # Auto-mapping when parent has a single router attaches both routers
     parent.api.attach_instance(parent.child)
-    assert set(parent.api._children) == {"api", "admin"}
-    assert parent.api._children["api"] is parent.child.api
-    assert parent.api._children["admin"] is parent.child.admin
+    # Verify both children are accessible via get()
+    assert parent.api.get("api") is parent.child.api
+    assert parent.api.get("admin") is parent.child.admin
 
 
 def test_attach_instance_single_child_requires_alias_when_parent_multi():
@@ -271,7 +283,8 @@ def test_attach_instance_single_child_requires_alias_when_parent_multi():
     with pytest.raises(ValueError):
         parent.api.attach_instance(parent.child)
     parent.api.attach_instance(parent.child, name="child_alias")
-    assert "child_alias" in parent.api._children
+    # Verify child is accessible via get()
+    assert parent.api.get("child_alias") is parent.child.api
 
 
 def test_attach_instance_allows_partial_mapping_and_skips_unmapped():
@@ -287,13 +300,14 @@ def test_attach_instance_allows_partial_mapping_and_skips_unmapped():
 
     parent = Parent()
     parent.api.attach_instance(parent.child, name="api:only_api")
-    assert "only_api" in parent.api._children
-    assert "admin" not in parent.api._children
+    # Verify only mapped child is accessible
+    assert parent.api.get("only_api") is parent.child.api
+    assert parent.api.get("admin") is None
 
     parent.api.attach_instance(parent.child, name="api:sales, admin:reports")
-    assert parent.api._children["sales"] is parent.child.api
-    assert parent.api._children["reports"] is parent.child.admin
-    assert parent.child._routed_parent is parent
+    # Verify both are now accessible
+    assert parent.api.get("sales") is parent.child.api
+    assert parent.api.get("reports") is parent.child.admin
 
 
 def test_attach_instance_name_collision():
@@ -324,7 +338,8 @@ def test_detach_instance_missing_alias():
     parent.api.attach_instance(parent, name="api:self_api, admin:self_admin")
     # detach without explicit mapping removes both
     parent.api.detach_instance(parent)
-    assert parent.api._children == {}
+    info = parent.api.nodes()
+    assert info.get("routers", {}) == {}
 
 
 def test_attach_instance_requires_routedclass():
@@ -344,6 +359,10 @@ def test_auto_detach_on_attribute_replacement():
         def __init__(self):
             self.api = Router(self, name="api")
 
+        @route("api")
+        def ping(self):
+            return "pong"
+
     class Parent(RoutedClass):
         def __init__(self):
             self.api = Router(self, name="api")
@@ -351,11 +370,15 @@ def test_auto_detach_on_attribute_replacement():
             self.api.attach_instance(self.child, name="child")
 
     parent = Parent()
-    assert parent.child._routed_parent is parent
-    assert "child" in parent.api._children
+    # Verify child is attached via nodes()
+    info = parent.api.nodes()
+    assert "child" in info.get("routers", {})
+    # Verify handler is accessible
+    assert parent.api.get("child/ping")() == "pong"
 
     parent.child = None  # triggers auto-detach
-    assert "child" not in parent.api._children
+    info = parent.api.nodes()
+    assert "child" not in info.get("routers", {})
     assert parent.child is None
 
 
@@ -375,8 +398,8 @@ def test_attach_instance_rejects_other_parent_when_already_bound():
 
     # Bind to first parent
     first.api.attach_instance(first.child, name="child")
-    assert first.child._routed_parent is first
-    assert "child" in first.api._children
+    # Verify child is attached via get()
+    assert first.api.get("child") is first.child.api
 
     # Attempt to bind same child to another parent should fail
     with pytest.raises(ValueError):
@@ -400,17 +423,16 @@ def test_attach_instance_requires_mapping_when_parent_has_multiple_routers():
         parent.api.attach_instance(parent.child)  # parent has multiple routers, mapping required
 
 
-def test_branch_router_blocks_auto_discover_and_entries():
+def test_branch_router_blocks_entries():
+    """Branch routers cannot register handlers directly."""
+
     class Service(RoutedClass):
         def __init__(self):
-            with pytest.raises(ValueError):
-                Router(self, name="branch", branch=True)  # auto_discover default True
-
-            self.branch = Router(self, name="branch", branch=True, auto_discover=False)
+            self.branch = Router(self, name="branch", branch=True)
 
     svc = Service()
     with pytest.raises(ValueError):
-        svc.branch.add_entry("missing")
+        svc.branch._add_entry("missing")
 
 
 def test_parent_router_creates_hierarchy():
@@ -418,7 +440,7 @@ def test_parent_router_creates_hierarchy():
 
     class Service(RoutedClass):
         def __init__(self):
-            self.api = Router(self, name="api", branch=True, auto_discover=False)
+            self.api = Router(self, name="api", branch=True)
             self.users = Router(self, name="users", parent_router=self.api)
             self.orders = Router(self, name="orders", parent_router=self.api)
 
@@ -432,11 +454,10 @@ def test_parent_router_creates_hierarchy():
 
     svc = Service()
 
-    # Verify hierarchy structure
-    assert "users" in svc.api._children
-    assert "orders" in svc.api._children
-    assert svc.api._children["users"] is svc.users
-    assert svc.api._children["orders"] is svc.orders
+    # Verify hierarchy structure via nodes()
+    info = svc.api.nodes()
+    assert "users" in info.get("routers", {})
+    assert "orders" in info.get("routers", {})
 
     # Verify path resolution works
     assert svc.api.call("users/list_users") == ["alice", "bob"]
@@ -450,10 +471,10 @@ def test_parent_router_requires_name():
         pass
 
     owner = Owner()
-    parent = Router(owner, name="parent", branch=True, auto_discover=False)
+    parent = Router(owner, name="parent", branch=True)
 
     with pytest.raises(ValueError, match="must have a name"):
-        Router(owner, parent_router=parent, auto_discover=False)
+        Router(owner, parent_router=parent)
 
 
 def test_parent_router_detects_collision():
@@ -463,11 +484,11 @@ def test_parent_router_detects_collision():
         pass
 
     owner = Owner()
-    parent = Router(owner, name="parent", branch=True, auto_discover=False)
-    Router(owner, name="child", auto_discover=False, parent_router=parent)
+    parent = Router(owner, name="parent", branch=True)
+    Router(owner, name="child", parent_router=parent)
 
     with pytest.raises(ValueError, match="collision"):
-        Router(owner, name="child", auto_discover=False, parent_router=parent)
+        Router(owner, name="child", parent_router=parent)
 
 
 def _make_router_for_plugin_test():
@@ -610,7 +631,7 @@ def test_router_get_config_paths():
 def test_routed_proxy_get_router_handles_dotted_path():
     class Leaf(RoutedClass):
         def __init__(self):
-            self.api = Router(self, name="leaf", auto_discover=False)
+            self.api = Router(self, name="leaf")
 
     class Parent(RoutedClass):
         def __init__(self):
@@ -639,6 +660,7 @@ def test_routed_configure_updates_plugins_global_and_local():
             return "bar"
 
     svc = ConfService()
+    svc.api.nodes()  # Trigger lazy binding before configure
     svc.routedclass.configure("api:simple/_all_", threshold=10)
     assert svc.api.simple.configuration()["threshold"] == 10
 

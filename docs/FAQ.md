@@ -295,28 +295,6 @@ router = Router(self, name="api").plug("audit")
 
 ## Advanced Use Cases
 
-### How do I register handlers dynamically?
-
-**Question**: I want to add handlers at runtime, not just with decorators.
-
-<!-- test: test_router_basic.py::test_dynamic_router_add_entry_runtime -->
-
-**Answer**: Use `router.add_entry()`:
-
-```python
-# Lambda handler
-router.add_entry(lambda: "dynamic", name="dynamic_handler")
-
-# External function
-def external_func():
-    return "external"
-
-router.add_entry(external_func, name="external")
-
-# Register all marked methods (lazy registration)
-router.add_entry("*")
-```
-
 ### How do I handle errors and defaults?
 
 **Question**: What happens if I call a non-existent handler?

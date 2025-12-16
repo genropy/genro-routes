@@ -181,12 +181,7 @@ Create pure organizational nodes with branch routers:
 class OrganizedService(RoutedClass):
     def __init__(self):
         # Branch router: pure container, no handlers
-        self.api = Router(
-            self,
-            name="api",
-            branch=True,
-            auto_discover=False
-        )
+        self.api = Router(self, name="api", branch=True)
 
         # Add handler routers as children
         self.users = UserService()
@@ -204,8 +199,7 @@ service.api.get("products/create")()
 
 **Branch router characteristics**:
 
-- **Cannot register handlers** - `add_entry()` raises `ValueError`
-- **Cannot auto-discover** - Must use `auto_discover=False`
+- **Cannot register handlers** - No `@route` methods allowed
 - **Pure containers** - Only for organizing child routers
 - **Useful for** - API namespacing and logical grouping
 
@@ -213,7 +207,7 @@ service.api.get("products/create")()
 
 ```python
 # Good: Organize related services under /api namespace
-self.api = Router(self, branch=True, auto_discover=False)
+self.api = Router(self, name="api", branch=True)
 self.api.attach_instance(self.auth, name="auth")
 self.api.attach_instance(self.users, name="users")
 # Routes: api.auth.login, api.users.list
@@ -232,7 +226,7 @@ Create router hierarchies directly without separate `RoutedClass` instances usin
 class Service(RoutedClass):
     def __init__(self):
         # Parent branch router
-        self.api = Router(self, name="api", branch=True, auto_discover=False)
+        self.api = Router(self, name="api", branch=True)
 
         # Child routers attached via parent_router parameter
         self.users = Router(self, name="users", parent_router=self.api)
@@ -276,7 +270,7 @@ assert svc.api.call("orders.list_orders") == ["order1", "order2"]
 class Application(RoutedClass):
     def __init__(self):
         # Root branch
-        self.api = Router(self, name="api", branch=True, auto_discover=False)
+        self.api = Router(self, name="api", branch=True)
 
         # Direct children via parent_router
         self.users = Router(self, name="users", parent_router=self.api)
@@ -582,7 +576,7 @@ class ReportsAPI(RoutedClass):
 class AdminAPI(RoutedClass):
     def __init__(self):
         # Branch for organization
-        self.api = Router(self, name="api", branch=True, auto_discover=False)
+        self.api = Router(self, name="api", branch=True)
 
         self.users = UserService()
         self.reports = ReportsAPI()
@@ -592,7 +586,7 @@ class AdminAPI(RoutedClass):
 
 class Application(RoutedClass):
     def __init__(self):
-        self.api = Router(self, name="api", branch=True, auto_discover=False)
+        self.api = Router(self, name="api", branch=True)
 
         # Public API
         self.public = UserService()  # Simplified public interface
@@ -656,7 +650,7 @@ assert app.api.get("processor/process")("test") == "v2:test"
 # Use branch routers for pure organization
 class API(RoutedClass):
     def __init__(self):
-        self.root = Router(self, name="root", branch=True, auto_discover=False)
+        self.root = Router(self, name="root", branch=True)
 
         # Group related services
         self.auth = AuthService()

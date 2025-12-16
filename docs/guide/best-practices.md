@@ -112,7 +112,7 @@ Branch routers provide namespace organization without handlers:
 class Application(RoutedClass):
     def __init__(self):
         # Branch router as namespace container
-        self.api = Router(self, name="api", branch=True, auto_discover=False)
+        self.api = Router(self, name="api", branch=True)
 
         # Attach actual services
         self.api.attach_instance(self.users, name="users")
@@ -286,28 +286,21 @@ def test_logging_plugin_called(caplog):
 
 ## Performance
 
-### Avoid Rebuilding Handlers
+### Attach Plugins Early
 
-Handler tables rebuild on plugin attachment. Attach plugins before adding handlers:
+Attach plugins during router creation for optimal handler wrapping:
 
 ```python
-# Good: Plugins first
+# Good: Plugins attached during construction
 class Service(RoutedClass):
     def __init__(self):
         self.api = Router(self, name="api")\
             .plug("logging")\
             .plug("pydantic")
-        # Handlers auto-discovered after plugins
 
-
-# Bad: Adding plugins after runtime entries
-class Service(RoutedClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    def late_init(self):
-        self.api.add_entry(handler, name="late")
-        self.api.plug("logging")  # Rebuilds all handlers!
+    @route("api")
+    def action(self):
+        return "done"
 ```
 
 ### Cache Handler References

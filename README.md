@@ -117,10 +117,10 @@ pip install -e ".[all]"
 
 - **Explicit naming + prefixes** - `@route("api", name="detail")` and `Router(self, prefix="handle_")` separate method names from public route names.
 - **Explicit instance hierarchies** - `self.api.attach_instance(self.child, name="alias")` connects RoutedClass instances with parent tracking and auto-detachment.
-- **Branch routers** - `Router(self, branch=True, auto_discover=False)` creates pure organizational nodes without handlers.
+- **Branch routers** - `Router(self, branch=True)` creates pure organizational nodes without handlers.
 - **Built-in and custom plugins** - `Router(self, ...).plug("logging")`, `Router(self, ...).plug("pydantic")`, or custom plugins.
 - **Runtime configuration** - `routedclass.configure("api:logging/_all_", enabled=False)` applies targeted overrides with wildcards or batch updates.
-- **Dynamic registration** - `router.add_entry(handler)` or `router.add_entry("*")` allow publishing handlers computed at runtime.
+- **Lazy binding** - Routers auto-bind on first use; no explicit `bind()` call needed.
 
 ## Documentation
 
@@ -130,7 +130,7 @@ pip install -e ".[all]"
 
 ## Testing
 
-Genro Routes achieves 99% test coverage with 100 comprehensive tests:
+Genro Routes achieves 96% test coverage with 146 comprehensive tests:
 
 ```bash
 PYTHONPATH=src pytest --cov=src/genro_routes --cov-report=term-missing
@@ -151,7 +151,7 @@ genro-routes/
 │       ├── logging.py      # LoggingPlugin
 │       ├── pydantic.py     # PydanticPlugin
 │       └── filter.py       # FilterPlugin
-├── tests/                  # Test suite (99% coverage)
+├── tests/                  # Test suite (96% coverage)
 └── docs/                   # Documentation (Sphinx)
 ```
 
@@ -159,7 +159,7 @@ genro-routes/
 
 Genro Routes is currently in **beta** (v0.10.0). The core API is stable with complete documentation.
 
-- **Test Coverage**: 99% (100 tests)
+- **Test Coverage**: 96% (146 tests)
 - **Python Support**: 3.10, 3.11, 3.12, 3.13
 - **License**: Apache 2.0
 

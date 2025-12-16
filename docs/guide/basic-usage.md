@@ -244,35 +244,6 @@ assert fb.api.get("missing") is None
 
 **Note**: `get()` can also return a child router if the path points to one (see [Hierarchies](hierarchies.md)).
 
-## Dynamic Handler Registration
-
-<!-- test: test_router_basic.py::test_dynamic_router_add_entry_runtime -->
-
-Add handlers programmatically at runtime:
-
-```python
-class Dynamic(RoutedClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-        # Register a lambda
-        self.api.add_entry("greet", name="greet")
-
-dyn = Dynamic()
-
-# Add handler at runtime
-dyn.api.add_entry(lambda name: f"Hello, {name}", name="greet", replace=True)
-
-# Dynamic handler works immediately
-assert dyn.api.get("greet")("World") == "Hello, World"
-```
-
-**Use cases**:
-
-- Plugin-provided handlers
-- Configuration-driven routing
-- Runtime service composition
-
 ## Building Hierarchies
 
 <!-- test: test_router_basic.py::test_dotted_path_and_nodes_with_attached_child -->

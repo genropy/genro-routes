@@ -11,8 +11,7 @@ Constructor signature::
 
     BaseRouter(owner, name=None, prefix=None, *,
                get_default_handler=None, get_use_smartasync=None,
-               get_kwargs=None, branch=False, auto_discover=True,
-               auto_selector="*", parent_router=None)
+               get_kwargs=None, branch=False, parent_router=None)
 
 - ``owner`` is required; ``None`` raises ``ValueError``. Routers are bound to
   this instance and never re-bound.
@@ -20,19 +19,14 @@ Constructor signature::
   automatically attached as a child using ``name`` as the alias. Requires
   ``name`` to be set; raises ``ValueError`` on name collision.
 - Slots: ``instance``, ``name``, ``prefix`` (string trimmed from function names),
-  ``_entries`` (logical name → MethodEntry), ``_handlers`` (name → callable),
-  ``_children`` (name → child router), ``_get_defaults`` (SmartOptions defaults).
+  ``_entries`` (logical name → MethodEntry with handler), ``_children`` (name → child router),
+  ``_get_defaults`` (SmartOptions defaults).
 
-Registration and naming
------------------------
-``add_entry(target, *, name=None, metadata=None, replace=False, **options)``
-
-- Accepts a callable or string/iterable of attribute names. Comma-separated
-  strings are split and each processed. Empty/whitespace-only strings are
-  ignored. ``replace=False`` raises on logical name collision.
-
-- Special markers ``"*"``, ``"_all_"``, ``"__all__"`` trigger marker discovery
-  via ``_register_marked``.
+Lazy binding
+------------
+Routers use lazy binding: methods decorated with ``@route`` are discovered and
+registered automatically on first use (get/call/nodes). No explicit bind() call
+is needed.
 
 Marker discovery
 ----------------
@@ -43,7 +37,7 @@ markers. Only markers whose ``name`` matches this router's ``name`` are used.
 Handler table and wrapping
 --------------------------
 - ``_register_callable`` creates a ``MethodEntry`` and stores it in ``_entries``.
-- ``_rebuild_handlers`` recreates ``_handlers`` by passing each entry through
+- ``_rebuild_handlers`` updates each entry's ``handler`` attribute by passing through
   ``_wrap_handler`` (default: passthrough). Subclasses may inject middleware.
 
 Lookup and execution
@@ -105,11 +99,11 @@ class BaseRouter(RouterInterface):
         "instance",
         "name",
         "prefix",
-        "_entries",
-        "_handlers",
+        "__entries_raw",
         "_children",
         "_get_defaults",
         "_is_branch",
+        "_bound",
     )
 
     def __init__(
@@ -122,8 +116,6 @@ class BaseRouter(RouterInterface):
         get_use_smartasync: bool | None = None,
         get_kwargs: dict[str, Any] | None = None,
         branch: bool = False,
-        auto_discover: bool = True,
-        auto_selector: str = "*",
         parent_router: BaseRouter | None = None,
     ) -> None:
         if owner is None:
@@ -137,8 +129,8 @@ class BaseRouter(RouterInterface):
         self.name = name
         self.prefix = prefix or ""
         self._is_branch = bool(branch)
-        self._entries: dict[str, MethodEntry] = {}
-        self._handlers: dict[str, Callable] = {}
+        self._bound = False
+        self.__entries_raw: dict[str, MethodEntry] = {}
         self._children: dict[str, BaseRouter] = {}
         defaults: dict[str, Any] = dict(get_kwargs or {})
         if get_default_handler is not None:
@@ -147,10 +139,6 @@ class BaseRouter(RouterInterface):
             defaults.setdefault("use_smartasync", get_use_smartasync)
         self._get_defaults: dict[str, Any] = defaults
         self._register_with_owner()
-        if self._is_branch and auto_discover:
-            raise ValueError("Branch routers cannot auto-discover handlers")
-        if auto_discover:
-            self.add_entry(auto_selector)
 
         # Attach to parent router if specified
         if parent_router is not None:
@@ -161,6 +149,20 @@ class BaseRouter(RouterInterface):
                 raise ValueError(f"Child name collision: {alias!r}")
             parent_router._children[alias] = self
             self._on_attached_to_parent(parent_router)
+
+    # ------------------------------------------------------------------
+    # Lazy binding property
+    # ------------------------------------------------------------------
+    @property
+    def _entries(self) -> dict[str, MethodEntry]:
+        """Access entries dict, triggering lazy binding if needed."""
+        if not self._bound:
+            self._bind()
+        return self.__entries_raw
+
+    @_entries.setter
+    def _entries(self, value: dict[str, MethodEntry]) -> None:
+        self.__entries_raw = value
 
     def _is_known_plugin(self, prefix: str) -> bool:
         try:
@@ -177,7 +179,7 @@ class BaseRouter(RouterInterface):
         if callable(hook):
             hook(self)
 
-    def add_entry(
+    def _add_entry(
         self,
         target: Any,
         *,
@@ -219,7 +221,7 @@ class BaseRouter(RouterInterface):
 
         if isinstance(target, (list, tuple, set)):
             for entry in target:
-                self.add_entry(
+                self._add_entry(
                     entry,
                     name=entry_name,
                     metadata=dict(metadata or {}),
@@ -240,12 +242,13 @@ class BaseRouter(RouterInterface):
                     extra=core_options,
                     plugin_options=plugin_options,
                 )
+                self._bound = True  # Mark as bound after marker discovery
                 return self
             if "," in target:
                 for chunk in target.split(","):
                     chunk = chunk.strip()
                     if chunk:
-                        self.add_entry(
+                        self._add_entry(
                             chunk,
                             name=entry_name,
                             metadata=dict(metadata or {}),
@@ -261,7 +264,7 @@ class BaseRouter(RouterInterface):
                 else target.__get__(self.instance, type(self.instance))
             )
         else:
-            raise TypeError(f"Unsupported add_entry target: {target!r}")
+            raise TypeError(f"Unsupported entry target: {target!r}")
 
         entry_meta = dict(metadata or {})
         entry_meta.update(core_options)
@@ -380,14 +383,38 @@ class BaseRouter(RouterInterface):
         return call_next
 
     # ------------------------------------------------------------------
-    # Handler execution
+    # Binding (finalization)
+    # ------------------------------------------------------------------
+    def _bind(self) -> None:
+        """Finalize router configuration and trigger route discovery.
+
+        Internal method called automatically on first use (lazy binding).
+        Discovers @route decorated methods and registers them.
+        """
+        if self._bound:
+            return  # Already bound, no-op
+        self._bound = True  # Set BEFORE work to avoid recursion via properties
+        if not self._is_branch:
+            self._add_entry("*")
+
+    def _require_bound(self, operation: str) -> None:
+        """Ensure the router is bound, auto-binding if needed.
+
+        Args:
+            operation: Name of the operation being attempted (unused, kept for API).
+
+        This implements lazy binding: the router auto-binds on first use.
+        """
+        if not self._bound:
+            self._bind()
+
+    # ------------------------------------------------------------------
+    # Handler rebuilding
     # ------------------------------------------------------------------
     def _rebuild_handlers(self) -> None:
-        handlers: dict[str, Callable] = {}
-        for logical_name, entry in self._entries.items():
-            wrapped = self._wrap_handler(entry, entry.func)
-            handlers[logical_name] = wrapped
-        self._handlers = handlers
+        """Rebuild wrapped handlers for all entries."""
+        for entry in self.__entries_raw.values():
+            entry.handler = self._wrap_handler(entry, entry.func)
 
     # ------------------------------------------------------------------
     # Public API
@@ -402,6 +429,9 @@ class BaseRouter(RouterInterface):
 
         Falls back to ``default_handler`` if provided and nothing is found.
         When ``use_smartasync`` is true, handler callables are wrapped accordingly.
+
+        Raises:
+            RuntimeError: If the router has not been bound yet.
         """
         opts = SmartOptions(options, defaults=self._get_defaults)
         default = getattr(opts, "default_handler", None)
@@ -418,9 +448,10 @@ class BaseRouter(RouterInterface):
             # Delegate to child router's get()
             return child.get(rest, **options)
 
-        # Single segment: check handlers first, then children
-        handler = self._handlers.get(selector)
-        if handler is not None:
+        # Single segment: check entries first, then children
+        entry = self._entries.get(selector)
+        if entry is not None:
+            handler = entry.handler
             if use_smartasync:
                 from smartasync import smartasync  # type: ignore
 
@@ -440,7 +471,11 @@ class BaseRouter(RouterInterface):
     __getitem__ = get
 
     def call(self, selector: str, *args: Any, **kwargs: Any) -> Any:
-        """Fetch and invoke a handler in one step."""
+        """Fetch and invoke a handler in one step.
+
+        Raises:
+            RuntimeError: If the router has not been bound yet.
+        """
         handler = self.get(selector)
         if handler is None or isinstance(handler, BaseRouter):
             raise NotImplementedError(f"No callable handler found for '{selector}'")
@@ -582,16 +617,15 @@ class BaseRouter(RouterInterface):
             mode: Output format mode (e.g., "openapi"). If None, returns
                   standard introspection format.
             **kwargs: Filter arguments passed to plugins via allow_entry().
-        """
-        if mode:
-            handler = getattr(self, f"_mode_{mode}", self._mode_missing)
-            return handler(mode=mode, basepath=basepath, lazy=lazy, **kwargs)
 
+        Raises:
+            RuntimeError: If the router has not been bound yet.
+        """
         if basepath:
             target = self.get(basepath)
             if not isinstance(target, BaseRouter):
                 return {}
-            return target.nodes(lazy=lazy, **kwargs)
+            return target.nodes(lazy=lazy, mode=mode, **kwargs)
         filter_args = self._prepare_filter_args(**kwargs)
 
         entries = {
@@ -628,61 +662,63 @@ class BaseRouter(RouterInterface):
         if routers:
             result["routers"] = routers
 
+        # Translate to requested format if mode specified
+        if mode:
+            translator = getattr(self, f"_translate_{mode}", None)
+            if translator is None:
+                raise ValueError(f"Unknown mode: {mode}")
+            translated: dict[str, Any] = translator(result, lazy=lazy)
+            return translated
+
         return result
 
-    def _mode_missing(self, mode: str, **kwargs: Any) -> dict[str, Any]:
-        """Handle unknown mode values."""
-        raise ValueError(f"Unknown mode: {mode}")
-
-    def _mode_openapi(
+    def _translate_openapi(
         self,
-        basepath: str | None = None,
+        nodes_data: dict[str, Any],
         lazy: bool = False,
         path_prefix: str = "",
-        **kwargs: Any,
     ) -> dict[str, Any]:
-        """Return OpenAPI-compatible schema for this router's handlers.
+        """Translate nodes() output to OpenAPI format.
 
         Args:
-            basepath: Optional path to start from (e.g., "child/grandchild").
+            nodes_data: Output from nodes() in standard format.
             lazy: If True, child routers are returned as callables.
             path_prefix: Prefix for generated paths (used internally for recursion).
-            **kwargs: Filter arguments passed to plugins via allow_entry().
 
         Returns:
             Dict with "paths" containing OpenAPI path items, and "routers" for children.
         """
-        if basepath:
-            target = self.get(basepath)
-            if not isinstance(target, BaseRouter):
-                return {"paths": {}, "routers": {}}
-            new_prefix = f"{path_prefix}/{basepath}" if path_prefix else f"/{basepath}"
-            return target._mode_openapi(lazy=lazy, path_prefix=new_prefix, **kwargs)
-
-        filter_args = self._prepare_filter_args(**kwargs)
-
         paths: dict[str, Any] = {}
-        for entry in self._entries.values():
-            if not self._allow_entry(entry, **filter_args):
-                continue
-            path = f"{path_prefix}/{entry.name}" if path_prefix else f"/{entry.name}"
-            paths[path] = self._entry_to_openapi(entry)
 
+        # Convert entries to OpenAPI paths
+        entries = nodes_data.get("entries", {})
+        for entry_name, entry_info in entries.items():
+            path = f"{path_prefix}/{entry_name}" if path_prefix else f"/{entry_name}"
+            paths[path] = self._entry_info_to_openapi(entry_name, entry_info)
+
+        # Handle child routers
+        routers_data = nodes_data.get("routers", {})
         routers: dict[str, Any]
         if lazy:
+            # In lazy mode, wrap translation in callable
             routers = {
                 child_name: (
-                    lambda c=child, p=path_prefix, n=child_name: c._mode_openapi(
-                        lazy=True, path_prefix=f"{p}/{n}" if p else f"/{n}", **kwargs
+                    lambda child_data=child_data, n=child_name: self._translate_openapi(
+                        child_data() if callable(child_data) else child_data,
+                        lazy=True,
+                        path_prefix=f"{path_prefix}/{n}" if path_prefix else f"/{n}",
                     )
                 )
-                for child_name, child in self._children.items()
+                for child_name, child_data in routers_data.items()
             }
         else:
-            for child_name, child in self._children.items():
+            # In eager mode, recursively translate and merge paths
+            for child_name, child_data in routers_data.items():
                 child_prefix = f"{path_prefix}/{child_name}" if path_prefix else f"/{child_name}"
-                child_schema = child._mode_openapi(lazy=False, path_prefix=child_prefix, **kwargs)
-                paths.update(child_schema.get("paths", {}))
+                child_openapi = self._translate_openapi(
+                    child_data, lazy=False, path_prefix=child_prefix
+                )
+                paths.update(child_openapi.get("paths", {}))
             routers = {}
 
         result: dict[str, Any] = {"paths": paths}
@@ -690,21 +726,22 @@ class BaseRouter(RouterInterface):
             result["routers"] = routers
         return result
 
-    def _entry_to_openapi(self, entry: MethodEntry) -> dict[str, Any]:
-        """Convert a single entry to OpenAPI path item format."""
-        func = entry.func
-        doc = inspect.getdoc(func) or func.__doc__ or ""
-        summary = doc.split("\n")[0] if doc else entry.name
+    def _entry_info_to_openapi(self, name: str, entry_info: dict[str, Any]) -> dict[str, Any]:
+        """Convert entry info dict to OpenAPI path item format."""
+        func = entry_info.get("callable")
+        doc = entry_info.get("doc", "")
+        summary = doc.split("\n")[0] if doc else name
+        metadata = entry_info.get("metadata", {})
 
         operation: dict[str, Any] = {
-            "operationId": entry.name,
+            "operationId": name,
             "summary": summary,
         }
         if doc:
             operation["description"] = doc
 
         # Extract parameters from pydantic metadata if available
-        pydantic_meta = entry.metadata.get("pydantic", {})
+        pydantic_meta = metadata.get("pydantic", {})
         model = pydantic_meta.get("model")
         if model and hasattr(model, "model_json_schema"):
             schema = model.model_json_schema()
@@ -712,7 +749,7 @@ class BaseRouter(RouterInterface):
                 "required": True,
                 "content": {"application/json": {"schema": schema}},
             }
-        else:
+        elif func:
             # Fallback: extract from type hints
             try:
                 hints = get_type_hints(func)
@@ -739,23 +776,23 @@ class BaseRouter(RouterInterface):
                 if parameters:
                     operation["parameters"] = parameters
 
-        # Add return type if available
-        try:
-            hints = get_type_hints(func)
-            return_hint = hints.get("return")
-            if return_hint:
-                operation["responses"] = {
-                    "200": {
-                        "description": "Successful response",
-                        "content": {
-                            "application/json": {
-                                "schema": {"type": self._python_type_to_openapi(return_hint)}
-                            }
-                        },
+            # Add return type if available
+            try:
+                hints = get_type_hints(func)
+                return_hint = hints.get("return")
+                if return_hint:
+                    operation["responses"] = {
+                        "200": {
+                            "description": "Successful response",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"type": self._python_type_to_openapi(return_hint)}
+                                }
+                            },
+                        }
                     }
-                }
-        except Exception:
-            pass
+            except Exception:
+                pass
 
         if "responses" not in operation:
             operation["responses"] = {"200": {"description": "Successful response"}}
