@@ -701,6 +701,84 @@ class BaseRouter(RouterInterface):
 
         return result
 
+    def node(self, path: str, mode: str | None = None) -> dict[str, Any]:
+        """Return info about a single node (router or entry) at the given path.
+
+        Unlike nodes() which returns the full subtree, this method returns
+        information about just one specific node without recursion.
+
+        Args:
+            path: Path to the node (e.g., "entry_name" or "child/grandchild/entry").
+            mode: Output format mode. Supported modes:
+
+                  - None: Standard introspection format.
+                  - "openapi": OpenAPI format for entries.
+
+        Returns:
+            A dict containing node info:
+
+            For a router:
+                - ``type``: "router"
+                - ``name``: Router name
+                - ``path``: Full path to this router
+                - ``description``: Router description (if set)
+                - ``owner_doc``: Owner class docstring
+
+            For an entry:
+                - ``type``: "entry"
+                - ``name``: Entry name
+                - ``path``: Full path to this entry
+                - ``doc``: Entry docstring
+                - ``metadata``: Entry metadata
+
+            Returns empty dict if path not found.
+
+            When mode="openapi", entry output includes OpenAPI format.
+        """
+        target = self.get(path)
+        if target is None:
+            return {}
+
+        # Calculate full path
+        full_path = path
+
+        if isinstance(target, BaseRouter):
+            return {
+                "type": "router",
+                "name": target.name,
+                "path": full_path,
+                "description": target.description,
+                "owner_doc": target.instance.__class__.__doc__,
+            }
+
+        # It's an entry (callable) - find the MethodEntry
+        # Resolve to get the entry directly
+        if "/" in path:
+            parent_path, entry_name = path.rsplit("/", 1)
+            parent = self.get(parent_path)
+            if not isinstance(parent, BaseRouter):
+                return {}
+            entry = parent._entries.get(entry_name)
+        else:
+            entry = self._entries.get(path)
+
+        if entry is None:
+            return {}
+
+        result: dict[str, Any] = {
+            "type": "entry",
+            "name": entry.name,
+            "path": full_path,
+            "doc": inspect.getdoc(entry.func) or entry.func.__doc__ or "",
+            "metadata": entry.metadata,
+        }
+
+        if mode == "openapi":
+            entry_info = self._entry_node_info(entry)
+            result["openapi"] = self._entry_info_to_openapi(entry.name, entry_info)
+
+        return result
+
     def _translate_openapi(
         self,
         nodes_data: dict[str, Any],
@@ -877,7 +955,7 @@ class BaseRouter(RouterInterface):
                             "description": "Successful response",
                             "content": {
                                 "application/json": {
-                                    "schema": {"type": self._python_type_to_openapi(return_hint)}
+                                    "schema": self._python_type_to_openapi_schema(return_hint)
                                 }
                             },
                         }
@@ -907,64 +985,82 @@ class BaseRouter(RouterInterface):
         return type_map.get(python_type, "object")
 
     @staticmethod
+    def _python_type_to_openapi_schema(python_type: Any) -> dict[str, Any]:
+        """Convert Python type to OpenAPI schema dict.
+
+        Handles TypedDict specially by extracting field definitions.
+        For other types, returns a simple {"type": "..."} schema.
+        """
+        # Check if it's a TypedDict
+        try:
+            from typing import is_typeddict
+        except ImportError:
+            from typing_extensions import is_typeddict
+
+        if is_typeddict(python_type):
+            # Extract TypedDict fields
+            try:
+                type_hints = get_type_hints(python_type)
+            except Exception:
+                type_hints = getattr(python_type, "__annotations__", {})
+
+            properties: dict[str, Any] = {}
+            for field_name, field_type in type_hints.items():
+                properties[field_name] = {
+                    "type": BaseRouter._python_type_to_openapi(field_type)
+                }
+
+            # Get required fields (TypedDict with total=True has all required)
+            required_keys: frozenset[str] = getattr(
+                python_type, "__required_keys__", frozenset()
+            )
+            schema: dict[str, Any] = {
+                "type": "object",
+                "properties": properties,
+            }
+            if required_keys:
+                schema["required"] = list(required_keys)
+            return schema
+
+        # Fallback to simple type
+        return {"type": BaseRouter._python_type_to_openapi(python_type)}
+
+    @staticmethod
     def _guess_http_method(func: Callable) -> str:
         """Guess HTTP method from function signature.
 
-        Returns "get" if all parameters are simple scalar types (str, int, float, bool).
-        Returns "post" if any parameter is a complex type (dict, list, Pydantic model, etc.).
+        Rules:
+        - Default = POST (safer, no caching, no URL exposure)
+        - GET only if: no parameters AND returns something (not None)
+
+        Examples:
+            def health() -> dict:      # GET - no params, returns data
+            def list() -> list:        # GET - no params, returns data
+            def add(id: int):          # POST - has params
+            def reset():               # POST - no params, no return (side effect)
 
         Args:
             func: The callable to analyze.
 
         Returns:
-            "get" or "post" based on parameter analysis.
+            "get" or "post" based on signature analysis.
         """
-        import types
-
-        simple_types = (str, int, float, bool, type(None))
-
         try:
             hints = get_type_hints(func)
         except Exception:
-            # If we can't get type hints, default to POST (safer)
             return "post"
 
-        hints.pop("return", None)
+        return_hint = hints.pop("return", None)
 
-        if not hints:
-            # No parameters at all - could be GET
-            return "get"
+        # Has parameters → POST
+        if hints:
+            return "post"
 
-        for hint in hints.values():
-            # Handle Optional types (Union[X, None]) - both typing.Union and types.UnionType
-            origin = getattr(hint, "__origin__", None)
+        # No parameters, no return → POST (side effect)
+        if return_hint is None or return_hint is type(None):
+            return "post"
 
-            # Python 3.10+ uses types.UnionType for X | Y syntax
-            if isinstance(hint, types.UnionType):
-                args = hint.__args__
-                non_none_args = [a for a in args if a is not type(None)]
-                if not all(a in simple_types for a in non_none_args):
-                    return "post"
-                continue
-
-            if origin is not None:
-                # Check typing.Union (including Optional from typing module)
-                args = getattr(hint, "__args__", ())
-                origin_name = getattr(origin, "__name__", "") or getattr(origin, "_name", "")
-                if origin_name == "Union":
-                    # For Union, check if all non-None args are simple
-                    non_none_args = [a for a in args if a is not type(None)]
-                    if not all(a in simple_types for a in non_none_args):
-                        return "post"
-                    continue
-                # Other generic types (list, dict, etc.) are complex
-                return "post"
-
-            # Check if it's a simple type
-            if hint not in simple_types:
-                # Could be a Pydantic model or other complex type
-                return "post"
-
+        # No parameters, has return → GET (read operation)
         return "get"
 
     def _entry_node_info(self, entry: MethodEntry) -> dict[str, Any]:
