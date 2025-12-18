@@ -29,6 +29,7 @@ from importlib import import_module
 __version__ = "0.10.0"
 
 from .core import RoutedClass, Router, RouterInterface, route
+from .exceptions import UNAUTHORIZED, NotAuthorized, NotFound
 
 # Import plugins to trigger auto-registration (lazy to avoid cycles)
 for _plugin in ("logging", "pydantic", "filter", "openapi"):
@@ -40,4 +41,7 @@ __all__ = [
     "RouterInterface",
     "RoutedClass",
     "route",
+    "NotFound",
+    "NotAuthorized",
+    "UNAUTHORIZED",
 ]

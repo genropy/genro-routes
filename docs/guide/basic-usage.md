@@ -244,6 +244,114 @@ assert fb.api.get("missing") is None
 
 **Note**: `get()` can also return a child router if the path points to one (see [Hierarchies](hierarchies.md)).
 
+## Exceptions: NotFound and NotAuthorized
+
+<!-- test: test_filter_plugin.py::TestGetAndCallWithFilters -->
+
+Genro Routes provides two exceptions for handling routing errors:
+
+```python
+from genro_routes import NotFound, NotAuthorized, UNAUTHORIZED
+
+# NotFound - raised when entry doesn't exist
+# NotAuthorized - raised when entry exists but access is denied by filters
+```
+
+**When using filters with `get()` and `call()`**:
+
+```python
+from genro_routes import RoutedClass, Router, route, NotFound, NotAuthorized
+
+class SecureAPI(RoutedClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("filter")
+
+    @route("api", filter_tags="admin")
+    def admin_action(self):
+        return "admin only"
+
+    @route("api", filter_tags="public")
+    def public_action(self):
+        return "public"
+
+api = SecureAPI()
+
+# Entry exists and tag matches - returns handler
+handler = api.api.get("admin_action", filter_tags="admin")
+assert handler() == "admin only"
+
+# Entry exists but tag doesn't match - raises NotAuthorized
+try:
+    api.api.get("admin_action", filter_tags="public")
+except NotAuthorized as e:
+    print(f"Access denied: {e.selector}")  # "admin_action"
+
+# Entry doesn't exist - get() returns None, call() raises NotFound
+result = api.api.get("nonexistent")  # None
+try:
+    api.api.call("nonexistent")
+except NotFound as e:
+    print(f"Not found: {e.selector}")  # "nonexistent"
+```
+
+**Exception attributes**:
+
+- `selector`: The path that was requested
+- `router_name`: The router where the error occurred
+
+**Using `node()` with filters**:
+
+The `node()` method also supports filters and returns `callable: UNAUTHORIZED` when access is denied:
+
+```python
+from genro_routes import UNAUTHORIZED
+
+info = api.api.node("admin_action", filter_tags="public")
+if info.get("callable") == UNAUTHORIZED:
+    print("Access denied")
+else:
+    handler = info["callable"]
+    result = handler()
+```
+
+## Catch-All Routing with `default_entry`
+
+<!-- test: test_router_basic.py::TestDefaultEntryWithPartial -->
+
+Routers have a `default_entry` parameter (default: `"index"`) that enables catch-all routing patterns when combined with `partial=True`:
+
+```python
+class FileServer(RoutedClass):
+    def __init__(self):
+        # default_entry="index" is the default, but can be customized
+        self.api = Router(self, name="api", default_entry="serve")
+
+    @route("api")
+    def serve(self, *path_segments):
+        return f"Serving: {'/'.join(path_segments)}"
+
+server = FileServer()
+
+# When partial=True and path can't be fully resolved,
+# unconsumed segments become arguments to the default_entry handler
+result = server.api.get("docs/api/reference", partial=True)
+# Returns: functools.partial(server.serve, "docs", "api", "reference")
+assert result() == "Serving: docs/api/reference"
+```
+
+**Key behaviors**:
+
+- `default_entry` specifies which handler to use for unresolved paths (default: `"index"`)
+- `partial=True` enables this behavior, returning a `functools.partial`
+- Unconsumed path segments are passed as positional arguments
+- If `default_entry` handler doesn't exist, raises `ValueError`
+
+**Use cases**:
+
+- File servers with arbitrary path depth
+- Catch-all handlers for dynamic routing
+- Pass-through routes to external services
+
 ## Building Hierarchies
 
 <!-- test: test_router_basic.py::test_dotted_path_and_nodes_with_attached_child -->

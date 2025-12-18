@@ -112,6 +112,8 @@ pip install -e ".[all]"
 - **`RoutedClass`** - Mixin that tracks routers per instance and exposes the `routedclass` proxy
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
 - **`obj.routedclass`** - Proxy exposed by every RoutedClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
+- **`NotFound` / `NotAuthorized`** - Exceptions for routing errors (entry not found vs. access denied by filters)
+- **`UNAUTHORIZED`** - Sentinel value returned by `node()` when entry is filtered out
 
 ## Pattern Highlights
 

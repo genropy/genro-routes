@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from genro_routes import RoutedClass, Router
 
 
@@ -345,6 +347,166 @@ class TestGetWithDefault:
 
         result = router.get("nonexistent/something")
         assert result is None
+
+
+class TestGetAndCallWithFilters:
+    """Test get() and call() with filter parameters."""
+
+    def test_get_raises_not_authorized_when_filtered(self):
+        """get() raises NotAuthorized when entry exists but is filtered."""
+        from genro_routes import NotAuthorized, RoutedClass, route
+
+        class Svc(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter")
+
+            @route("api", filter_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+        svc = Svc()
+
+        with pytest.raises(NotAuthorized) as exc_info:
+            svc.api.get("admin_action", filter_tags="public")
+
+        assert exc_info.value.selector == "admin_action"
+        assert exc_info.value.router_name == "api"
+
+    def test_get_returns_handler_when_tag_matches(self):
+        """get() returns handler when tag matches."""
+        from genro_routes import RoutedClass, route
+
+        class Svc(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter")
+
+            @route("api", filter_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+        svc = Svc()
+        handler = svc.api.get("admin_action", filter_tags="admin")
+        assert handler is not None
+        assert handler() == "admin"
+
+    def test_get_returns_none_when_not_found(self):
+        """get() returns None when entry doesn't exist (no filters involved)."""
+        from genro_routes import RoutedClass, route
+
+        class Svc(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter")
+
+            @route("api", filter_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+        svc = Svc()
+        result = svc.api.get("nonexistent")
+        assert result is None
+
+    def test_get_without_filter_returns_handler(self):
+        """get() without filter tags returns handler normally."""
+        from genro_routes import RoutedClass, route
+
+        class Svc(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter")
+
+            @route("api", filter_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+        svc = Svc()
+        handler = svc.api.get("admin_action")
+        assert handler is not None
+        assert handler() == "admin"
+
+    def test_call_raises_not_authorized_when_filtered(self):
+        """call() raises NotAuthorized when entry exists but is filtered."""
+        from genro_routes import NotAuthorized, RoutedClass, route
+
+        class Svc(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter")
+
+            @route("api", filter_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+        svc = Svc()
+
+        with pytest.raises(NotAuthorized):
+            svc.api.call("admin_action", filter_tags="public")
+
+    def test_call_raises_not_found_when_missing(self):
+        """call() raises NotFound when entry doesn't exist."""
+        from genro_routes import NotFound, RoutedClass, route
+
+        class Svc(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter")
+
+            @route("api", filter_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+        svc = Svc()
+
+        with pytest.raises(NotFound) as exc_info:
+            svc.api.call("nonexistent", filter_tags="admin")
+
+        assert exc_info.value.selector == "nonexistent"
+        assert exc_info.value.router_name == "api"
+
+    def test_call_executes_when_tag_matches(self):
+        """call() executes handler when tag matches."""
+        from genro_routes import RoutedClass, route
+
+        class Svc(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter")
+
+            @route("api", filter_tags="admin")
+            def admin_action(self):
+                return "admin result"
+
+        svc = Svc()
+        result = svc.api.call("admin_action", filter_tags="admin")
+        assert result == "admin result"
+
+    def test_call_passes_args_to_handler(self):
+        """call() passes args and kwargs to handler (excluding filter args)."""
+        from genro_routes import RoutedClass, route
+
+        class Svc(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter")
+
+            @route("api", filter_tags="admin")
+            def action(self, x, y=10):
+                return f"x={x}, y={y}"
+
+        svc = Svc()
+        result = svc.api.call("action", 5, y=20, filter_tags="admin")
+        assert result == "x=5, y=20"
+
+    def test_call_with_partial(self):
+        """call() with _partial=True enables partial resolution."""
+        from genro_routes import RoutedClass, route
+
+        class Svc(RoutedClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("filter")
+
+            @route("api", filter_tags="public")
+            def index(self, *args):
+                return f"caught: {args}"
+
+        svc = Svc()
+        # _partial=True should work with call
+        result = svc.api.call("unknown/path", _partial=True, filter_tags="public")
+        assert result == "caught: ('unknown', 'path')"
 
 
 class TestFilterPluginAllowNode:

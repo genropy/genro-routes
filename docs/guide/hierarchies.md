@@ -507,6 +507,71 @@ schema = insp.api.openapi()
 - On-demand expansion with `lazy=True`
 - OpenAPI schema generation with `mode="openapi"`
 
+## Catch-All Routes with `default_entry`
+
+<!-- test: test_router_basic.py::TestDefaultEntryWithPartial -->
+
+When using `partial=True`, routers can handle paths that don't fully resolve by delegating to a `default_entry` handler:
+
+```python
+class FileService(RoutedClass):
+    def __init__(self):
+        # default_entry="index" is the default
+        self.api = Router(self, name="api")
+
+    @route("api")
+    def index(self, *path_segments):
+        return f"File: {'/'.join(path_segments)}"
+
+class Application(RoutedClass):
+    def __init__(self):
+        self.api = Router(self, name="api")
+        self.files = FileService()
+        self.api.attach_instance(self.files, name="files")
+
+app = Application()
+
+# Path "files/docs/readme.md" - "files" is a child router,
+# "docs/readme.md" doesn't exist, so partial=True uses default_entry
+result = app.api.get("files/docs/readme.md", partial=True)
+# Returns: functools.partial(files.index, "docs", "readme.md")
+assert result() == "File: docs/readme.md"
+```
+
+**Behavior by scenario**:
+
+| Path | Scenario | Result with `partial=True` |
+|------|----------|---------------------------|
+| `child/handler` | Handler exists | Returns handler directly |
+| `child/unknown/path` | Child exists, path unresolved | `partial(child.default_entry, "unknown", "path")` |
+| `child` (router) | Single segment, is router | `partial(child.default_entry)` |
+| `unknown/path` | Nothing found | Uses this router's `default_entry` |
+
+**Custom `default_entry`**:
+
+```python
+class CustomService(RoutedClass):
+    def __init__(self):
+        self.api = Router(self, name="api", default_entry="catch_all")
+
+    @route("api")
+    def catch_all(self, *args):
+        return f"Caught: {args}"
+```
+
+**Error handling**:
+
+If `default_entry` handler doesn't exist in the target router, `ValueError` is raised:
+
+```python
+class EmptyService(RoutedClass):
+    def __init__(self):
+        self.api = Router(self, name="api")  # No "index" entry!
+
+svc = EmptyService()
+svc.api.get("unknown/path", partial=True)  # ValueError!
+```
+
 ## Real-World Examples
 
 ### Microservice-Style Organization
