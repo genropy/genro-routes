@@ -226,10 +226,15 @@ class BaseRouter(RouterInterface):
         if self._is_branch:
             raise ValueError("Branch routers cannot register handlers")
         entry_name = name
-        # Split plugin-scoped options (<plugin>_<key>) from core options
+        # Split plugin-scoped options (<plugin>_<key>) and meta_* from core options
         plugin_options: dict[str, dict[str, Any]] = {}
         core_options: dict[str, Any] = {}
         for key, value in options.items():
+            # Handle meta_* kwargs - group under "meta" key
+            if key.startswith("meta_"):
+                meta_key = key[5:]  # strip "meta_"
+                core_options.setdefault("meta", {})[meta_key] = value
+                continue
             if "_" in key:
                 plugin_name, plug_key = key.split("_", 1)
                 if plugin_name and plug_key and self._is_known_plugin(plugin_name):
@@ -336,10 +341,15 @@ class BaseRouter(RouterInterface):
             entry_meta = dict(metadata or {})
             entry_meta.update(marker)
             entry_meta.update(extra)
-            # Split plugin-scoped options from marker payload as well
+            # Split plugin-scoped options and meta_* from marker payload
             marker_plugin_opts: dict[str, dict[str, Any]] = {}
             core_marker: dict[str, Any] = {}
             for key, value in entry_meta.items():
+                # Handle meta_* kwargs - group under "meta" key
+                if key.startswith("meta_"):
+                    meta_key = key[5:]  # strip "meta_"
+                    core_marker.setdefault("meta", {})[meta_key] = value
+                    continue
                 if "_" in key:
                     plugin_name, plug_key = key.split("_", 1)
                     if plugin_name and plug_key and self._is_known_plugin(plugin_name):
@@ -865,6 +875,7 @@ class BaseRouter(RouterInterface):
         self,
         path: str,
         mode: str | None = None,
+        partial: bool = False,
         filter_kwargs: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return info about a single node (router or entry) at the given path.
@@ -878,6 +889,11 @@ class BaseRouter(RouterInterface):
 
                   - None: Standard introspection format.
                   - "openapi": OpenAPI format for entries.
+
+            partial: If True, enables partial path resolution. When the path
+                cannot be fully resolved, returns a functools.partial wrapping
+                the default_entry handler with unconsumed path segments as args.
+                Similar to get(partial=True) but with metadata included.
 
             filter_kwargs: Filter parameters extracted by @extract_kwargs
                 (filter_tags="x" becomes {"tags": "x"}).
@@ -896,6 +912,7 @@ class BaseRouter(RouterInterface):
                 - ``type``: "entry"
                 - ``name``: Entry name
                 - ``path``: Full path to this entry
+                - ``callable``: The handler (or functools.partial if partial=True)
                 - ``doc``: Entry docstring
                 - ``metadata``: Entry metadata
 
@@ -905,22 +922,67 @@ class BaseRouter(RouterInterface):
         """
         filter_args = self._prepare_filter_args(**(filter_kwargs or {}))
 
-        # Resolve the path to find the entry or router
+        # Strip leading "/" for convenience
+        path = path.lstrip("/")
+
+        # For partial resolution, we need to find how far we can go
+        unconsumed_parts: list[str] = []
+        target_router: BaseRouter = self
+        entry: MethodEntry | None = None
+        child_router: BaseRouter | None = None
+
         if "/" in path:
-            parent_path, entry_name = path.rsplit("/", 1)
-            parent = self.get(parent_path)
-            if not isinstance(parent, BaseRouter):
-                return {}
-            entry = parent._entries.get(entry_name)
-            child_router = parent._children.get(entry_name) if entry is None else None
-            target_router = parent
+            parts = path.split("/")
+            # Walk the path, tracking unconsumed segments
+            for i, segment in enumerate(parts[:-1]):
+                child = target_router._children.get(segment)
+                if child is None:
+                    if partial:
+                        # Can't go further - unconsumed starts here
+                        unconsumed_parts = parts[i:]
+                        break
+                    else:
+                        return {}
+                target_router = child
+            else:
+                # Successfully navigated to parent, now look up final segment
+                entry_name = parts[-1]
+                entry = target_router._entries.get(entry_name)
+                child_router = target_router._children.get(entry_name) if entry is None else None
+                if entry is None and child_router is None and partial:
+                    unconsumed_parts = [entry_name]
         else:
             entry = self._entries.get(path)
             child_router = self._children.get(path) if entry is None else None
-            target_router = self
+            if entry is None and child_router is None and partial:
+                unconsumed_parts = [path]
 
         # Calculate full path
         full_path = path
+
+        # Handle partial resolution when we couldn't find the exact path
+        if unconsumed_parts and partial:
+            # Look for default_entry in the last resolved router
+            entry_name = target_router.default_entry
+            default_entry = target_router._entries.get(entry_name)
+            if default_entry is None:
+                return {}
+            # Check authorization
+            authorized = not filter_args or target_router._allow_entry(default_entry, **filter_args)
+            handler: Any
+            if not authorized:
+                handler = UNAUTHORIZED
+            else:
+                handler = functools.partial(default_entry.handler, *unconsumed_parts)
+            return {
+                "type": "entry",
+                "name": default_entry.name,
+                "path": full_path,
+                "callable": handler,
+                "doc": inspect.getdoc(default_entry.func) or default_entry.func.__doc__ or "",
+                "metadata": default_entry.metadata,
+                "partial_args": unconsumed_parts,
+            }
 
         # Handle child router
         if child_router is not None:

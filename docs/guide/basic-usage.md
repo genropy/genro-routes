@@ -314,6 +314,22 @@ else:
     result = handler()
 ```
 
+**Using `node()` with partial resolution**:
+
+The `node()` method also supports `partial=True` for catch-all routing with metadata:
+
+```python
+info = router.node("unknown/path", partial=True)
+# Returns: {
+#     "type": "entry",
+#     "name": "index",  # default_entry handler
+#     "callable": functools.partial(handler, "unknown", "path"),
+#     "metadata": {...},
+#     "partial_args": ["unknown", "path"]
+# }
+result = info["callable"]()  # calls handler("unknown", "path")
+```
+
 ## Catch-All Routing with `default_entry`
 
 <!-- test: test_router_basic.py::TestDefaultEntryWithPartial -->
@@ -452,6 +468,53 @@ schema = insp.api.openapi()
 - Debug routing issues
 - Validate configuration
 - Build dynamic UIs that expand on demand (with `lazy=True`)
+
+## Custom Metadata with `meta_*`
+
+Add custom metadata to handlers using the `meta_` prefix in `@route()`:
+
+```python
+class MetadataAPI(RoutedClass):
+    def __init__(self):
+        self.api = Router(self, name="api")
+
+    @route("api", meta_mimetype="application/json", meta_deprecated=True)
+    def get_data(self):
+        """Return data in JSON format."""
+        return {"foo": "bar"}
+
+    @route("api", meta_version="2.0", meta_auth_required=True)
+    def get_data_v2(self):
+        return {"foo": "bar", "extra": True}
+
+api = MetadataAPI()
+
+# Access metadata via node()
+info = api.api.node("get_data")
+assert info["metadata"]["meta"]["mimetype"] == "application/json"
+assert info["metadata"]["meta"]["deprecated"] is True
+
+# Or via nodes() for all entries
+all_info = api.api.nodes()
+entry_meta = all_info["entries"]["get_data_v2"]["metadata"]["meta"]
+assert entry_meta["version"] == "2.0"
+assert entry_meta["auth_required"] is True
+```
+
+**Key behaviors**:
+
+- `meta_*` kwargs are grouped under `metadata["meta"]` in the entry
+- The `meta_` prefix is stripped from the key name
+- Works with both `@route()` decorator and `_add_entry()` method
+- Separate from plugin configuration (which uses `<plugin>_<key>` format)
+
+**Use cases**:
+
+- API versioning information
+- Deprecation markers
+- Content-type hints
+- Custom authorization requirements
+- Any handler-specific metadata not tied to plugins
 
 ## Next Steps
 
