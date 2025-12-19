@@ -14,6 +14,7 @@ or instantiate routers.
 """
 
 from .base_router import BaseRouter
+from .context import RoutingContext
 from .decorators import route
 from .router import Router
 from .router_interface import RouterInterface
@@ -23,6 +24,7 @@ __all__ = [
     "BaseRouter",
     "Router",
     "RouterInterface",
+    "RoutingContext",
     "route",
     "RoutingClass",
 ]

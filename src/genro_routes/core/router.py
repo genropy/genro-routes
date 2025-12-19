@@ -55,6 +55,8 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Any
 
+from genro_toolbox import dictExtract
+
 from genro_routes.core.base_router import BaseRouter
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
 
@@ -348,11 +350,15 @@ class Router(BaseRouter):
         if not super()._allow_entry(entry, **filters):
             return False  # pragma: no cover - base hook currently always True
         for plugin in self._plugins:
+            # Extract kwargs for this specific plugin using its plugin_code prefix
+            plugin_kwargs = dictExtract(
+                filters, f"{plugin.plugin_code}_", slice_prefix=True, pop=False
+            )
             # Try allow_node first (unified interface for entries and routers)
-            if not plugin.allow_node(entry, **filters):
+            if not plugin.allow_node(entry, **plugin_kwargs):
                 return False
             # Also check allow_entry for backward compatibility
-            verdict = plugin.allow_entry(self, entry, **filters)
+            verdict = plugin.allow_entry(self, entry, **plugin_kwargs)
             if verdict is False:
                 return False
         return True

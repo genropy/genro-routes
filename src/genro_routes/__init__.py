@@ -28,11 +28,11 @@ from importlib import import_module
 
 __version__ = "0.10.0"
 
-from .core import Router, RouterInterface, RoutingClass, route
+from .core import Router, RouterInterface, RoutingClass, RoutingContext, route
 from .exceptions import UNAUTHORIZED, NotAuthorized, NotFound
 
 # Import plugins to trigger auto-registration (lazy to avoid cycles)
-for _plugin in ("logging", "pydantic", "filter", "openapi"):
+for _plugin in ("logging", "pydantic", "auth", "openapi"):
     import_module(f"{__name__}.plugins.{_plugin}")
 del _plugin
 
@@ -40,6 +40,7 @@ __all__ = [
     "Router",
     "RouterInterface",
     "RoutingClass",
+    "RoutingContext",
     "route",
     "NotFound",
     "NotAuthorized",

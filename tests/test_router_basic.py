@@ -14,8 +14,6 @@
 
 """Tests for instance-based Router core functionality."""
 
-import sys
-
 import pytest
 
 from genro_routes import RoutingClass, Router, route
@@ -199,25 +197,6 @@ def test_get_with_default_returns_callable():
     assert handler() == "fallback"
 
 
-def test_get_with_smartasync(monkeypatch):
-    calls = []
-
-    def fake_smartasync(fn):
-        def wrapper(*a, **k):
-            calls.append("wrapped")
-            return fn(*a, **k)
-
-        return wrapper
-
-    fake_module = type(sys)("smartasync")
-    fake_module.smartasync = fake_smartasync
-    monkeypatch.setitem(sys.modules, "smartasync", fake_module)
-    svc = PluginService()
-    handler = svc.api.get("do_work", use_smartasync=True)
-    handler()
-    assert calls == ["wrapped"]
-
-
 def test_get_uses_init_default_handler():
     class DefaultService(RoutingClass):
         def __init__(self):
@@ -242,62 +221,6 @@ def test_get_without_default_returns_none():
     svc = PluginService()
     result = svc.api.get("unknown")
     assert result is None
-
-
-def test_get_uses_init_smartasync(monkeypatch):
-    calls = []
-
-    def fake_smartasync(fn):
-        def wrapper(*args, **kwargs):
-            calls.append("wrapped")
-            return fn(*args, **kwargs)
-
-        return wrapper
-
-    fake_module = type(sys)("smartasync")
-    fake_module.smartasync = fake_smartasync
-    monkeypatch.setitem(sys.modules, "smartasync", fake_module)
-
-    class AsyncService(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api", get_use_smartasync=True)
-
-        @route("api")
-        def do_work(self):
-            return "ok"
-
-    svc = AsyncService()
-    handler = svc.api.get("do_work")
-    assert handler() == "ok"
-    assert calls == ["wrapped"]
-
-
-def test_get_can_disable_init_smartasync(monkeypatch):
-    calls = []
-
-    def fake_smartasync(fn):
-        def wrapper(*args, **kwargs):
-            calls.append("wrapped")
-            return fn(*args, **kwargs)
-
-        return wrapper
-
-    fake_module = type(sys)("smartasync")
-    fake_module.smartasync = fake_smartasync
-    monkeypatch.setitem(sys.modules, "smartasync", fake_module)
-
-    class AsyncService(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api", get_use_smartasync=True)
-
-        @route("api")
-        def do_work(self):
-            return "ok"
-
-    svc = AsyncService()
-    handler = svc.api.get("do_work", use_smartasync=False)
-    assert handler() == "ok"
-    assert calls == []
 
 
 def test_plugin_enable_disable_runtime_data():
@@ -494,18 +417,18 @@ class TestMainRouterAttribute:
             main_router = "table"
 
             def __init__(self):
-                self.api = Router(self, name="table").plug("filter")
+                self.api = Router(self, name="table").plug("auth")
 
-            @route(filter_tags="admin")
+            @route(auth_tags="admin")
             def admin_only(self):
                 return "admin"
 
-            @route(filter_tags="public")
+            @route(auth_tags="public")
             def public_action(self):
                 return "public"
 
         t = TaggedTable()
-        entries = t.api.nodes(tags="admin")["entries"]
+        entries = t.api.nodes(auth_tags="admin")["entries"]
         assert "admin_only" in entries
         assert "public_action" not in entries
 

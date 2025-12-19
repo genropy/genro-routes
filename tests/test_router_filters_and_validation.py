@@ -70,8 +70,9 @@ def test_allow_entry_respects_plugins():
     router = _make_router().plug("filtertest")
     entry = MethodEntry("demo", lambda: None, router, plugins=[])
 
-    # hide filter triggers plugin veto (plugin receives raw filter value)
-    assert router._allow_entry(entry, hide=True) is False
+    # hide filter triggers plugin veto (plugin receives extracted filter value without prefix)
+    # filters come with plugin_code prefix, e.g., filtertest_hide=True -> {"hide": True}
+    assert router._allow_entry(entry, filtertest_hide=True) is False
     # without hide filter plugin returns None and entry passes through
     assert router._allow_entry(entry) is True
     plugin = router._plugins_by_name["filtertest"]
@@ -92,6 +93,7 @@ def test_nodes_respects_plugin_allow_skip():
     router = _make_router().plug("filtertest")
     router._add_entry(lambda: "ok", name="hidden")
 
-    # Filter is passed as-is to plugin; plugin decides how to interpret it
-    tree = router.nodes(hide=True)
+    # Filter is passed with plugin_code prefix; plugin receives extracted value
+    # e.g., filtertest_hide=True -> plugin receives {"hide": True}
+    tree = router.nodes(filtertest_hide=True)
     assert tree == {}

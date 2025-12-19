@@ -1,24 +1,24 @@
 # Copyright 2025 Softwell S.r.l.
 # Licensed under the Apache License, Version 2.0
 
-"""FilterPlugin - Filter entries by tags with boolean expressions.
+"""AuthPlugin - Authorization plugin with tag-based access control.
 
-This plugin allows tagging router entries and filtering them using
-boolean expressions with AND, OR, and NOT operators.
+This plugin provides tag-based authorization for router entries. It evaluates
+authorization rules defined on endpoints against user tags.
 
 Usage::
 
-    from genro_routes import Router
+    from genro_routes import Router, RoutingClass, route
 
-    class MyAPI:
-        api = Router()
-        api.plug("filter")
+    class MyAPI(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
 
-        @api.route(filter_tags="admin,internal")
+        @route("api", auth_tags="admin,internal")
         def admin_action(self):
             return "admin only"
 
-        @api.route(filter_tags="public")
+        @route("api", auth_tags="public")
         def public_action(self):
             return "public"
 
@@ -48,14 +48,14 @@ from genro_routes.core.router_interface import RouterInterface
 
 from ._base_plugin import BasePlugin, MethodEntry
 
-__all__ = ["FilterPlugin"]
+__all__ = ["AuthPlugin"]
 
 
-class FilterPlugin(BasePlugin):
-    """Filter entries by tags with boolean expressions."""
+class AuthPlugin(BasePlugin):
+    """Authorization plugin with tag-based access control."""
 
-    plugin_code = "filter"
-    plugin_description = "Filter entries by tags with boolean expressions"
+    plugin_code = "auth"
+    plugin_description = "Authorization plugin with tag-based access control"
 
     def configure(  # type: ignore[override]
         self,
@@ -65,11 +65,11 @@ class FilterPlugin(BasePlugin):
         _target: str = "_all_",
         flags: str | None = None,
     ) -> None:
-        """Define tags for this entry/router.
+        """Define authorization tags for this entry/router.
 
         Args:
             tags: Comma-separated tag names (e.g., "admin,internal")
-            enabled: Whether filtering is enabled (default True)
+            enabled: Whether authorization is enabled (default True)
             _target: Internal - target bucket name
             flags: Internal - flag string
         """
@@ -78,7 +78,7 @@ class FilterPlugin(BasePlugin):
     def on_attached_to_parent(self, parent_plugin: BasePlugin) -> None:
         """Merge parent tags with child tags (union).
 
-        FilterPlugin uses union semantics: parent tags are combined with
+        AuthPlugin uses union semantics: parent tags are combined with
         child tags, not replaced. This allows hierarchical tag inheritance
         where a parent router's tags apply to all children.
 
@@ -153,4 +153,4 @@ class FilterPlugin(BasePlugin):
         return bool(tags_match(rule, entry_tags))
 
 
-Router.register_plugin(FilterPlugin)
+Router.register_plugin(AuthPlugin)

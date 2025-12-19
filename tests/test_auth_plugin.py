@@ -1,7 +1,7 @@
 # Copyright 2025 Softwell S.r.l.
 # Licensed under the Apache License, Version 2.0
 
-"""Tests for FilterPlugin."""
+"""Tests for AuthPlugin."""
 
 from __future__ import annotations
 
@@ -18,108 +18,108 @@ def _make_router():
     return Router(Owner(), name="api")
 
 
-class TestFilterPluginIntegration:
-    """Test FilterPlugin with Router integration."""
+class TestAuthPluginIntegration:
+    """Test AuthPlugin with Router integration."""
 
     def test_nodes_filters_by_single_tag(self):
-        router = _make_router().plug("filter")
-        router._add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
-        router._add_entry(lambda: "public", name="public_action", filter_tags="public")
+        router = _make_router().plug("auth")
+        router._add_entry(lambda: "admin", name="admin_action", auth_tags="admin")
+        router._add_entry(lambda: "public", name="public_action", auth_tags="public")
 
-        entries = router.nodes(tags="admin").get("entries", {})
+        entries = router.nodes(auth_tags="admin").get("entries", {})
         assert "admin_action" in entries
         assert "public_action" not in entries
 
     def test_nodes_filters_by_or(self):
-        router = _make_router().plug("filter")
-        router._add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
-        router._add_entry(lambda: "public", name="public_action", filter_tags="public")
-        router._add_entry(lambda: "internal", name="internal_action", filter_tags="internal")
+        router = _make_router().plug("auth")
+        router._add_entry(lambda: "admin", name="admin_action", auth_tags="admin")
+        router._add_entry(lambda: "public", name="public_action", auth_tags="public")
+        router._add_entry(lambda: "internal", name="internal_action", auth_tags="internal")
 
-        entries = router.nodes(tags="admin,public").get("entries", {})
+        entries = router.nodes(auth_tags="admin,public").get("entries", {})
         assert "admin_action" in entries
         assert "public_action" in entries
         assert "internal_action" not in entries
 
     def test_nodes_filters_by_and(self):
-        router = _make_router().plug("filter")
-        router._add_entry(lambda: "both", name="both_action", filter_tags="admin,internal")
-        router._add_entry(lambda: "admin", name="admin_only", filter_tags="admin")
+        router = _make_router().plug("auth")
+        router._add_entry(lambda: "both", name="both_action", auth_tags="admin,internal")
+        router._add_entry(lambda: "admin", name="admin_only", auth_tags="admin")
 
-        entries = router.nodes(tags="admin&internal").get("entries", {})
+        entries = router.nodes(auth_tags="admin&internal").get("entries", {})
         assert "both_action" in entries
         assert "admin_only" not in entries
 
     def test_nodes_filters_by_not(self):
-        router = _make_router().plug("filter")
-        router._add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
-        router._add_entry(lambda: "public", name="public_action", filter_tags="public")
+        router = _make_router().plug("auth")
+        router._add_entry(lambda: "admin", name="admin_action", auth_tags="admin")
+        router._add_entry(lambda: "public", name="public_action", auth_tags="public")
 
-        entries = router.nodes(tags="!admin").get("entries", {})
+        entries = router.nodes(auth_tags="!admin").get("entries", {})
         assert "admin_action" not in entries
         assert "public_action" in entries
 
-    def test_nodes_without_tags_filter_returns_all(self):
-        router = _make_router().plug("filter")
-        router._add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
-        router._add_entry(lambda: "public", name="public_action", filter_tags="public")
+    def test_nodes_without_auth_tags_filter_returns_all(self):
+        router = _make_router().plug("auth")
+        router._add_entry(lambda: "admin", name="admin_action", auth_tags="admin")
+        router._add_entry(lambda: "public", name="public_action", auth_tags="public")
 
         entries = router.nodes().get("entries", {})
         assert "admin_action" in entries
         assert "public_action" in entries
 
     def test_entry_without_tags_matches_not_expressions(self):
-        router = _make_router().plug("filter")
-        router._add_entry(lambda: "tagged", name="tagged_action", filter_tags="admin")
+        router = _make_router().plug("auth")
+        router._add_entry(lambda: "tagged", name="tagged_action", auth_tags="admin")
         router._add_entry(lambda: "untagged", name="untagged_action")
 
-        entries = router.nodes(tags="!admin").get("entries", {})
+        entries = router.nodes(auth_tags="!admin").get("entries", {})
         assert "tagged_action" not in entries
         assert "untagged_action" in entries
 
     def test_complex_expression(self):
-        router = _make_router().plug("filter")
-        router._add_entry(lambda: "a", name="a", filter_tags="admin")
-        router._add_entry(lambda: "b", name="b", filter_tags="public")
-        router._add_entry(lambda: "c", name="c", filter_tags="admin,internal")
-        router._add_entry(lambda: "d", name="d", filter_tags="public,internal")
+        router = _make_router().plug("auth")
+        router._add_entry(lambda: "a", name="a", auth_tags="admin")
+        router._add_entry(lambda: "b", name="b", auth_tags="public")
+        router._add_entry(lambda: "c", name="c", auth_tags="admin,internal")
+        router._add_entry(lambda: "d", name="d", auth_tags="public,internal")
 
         # (admin OR public) AND NOT internal
-        entries = router.nodes(tags="(admin|public)&!internal").get("entries", {})
+        entries = router.nodes(auth_tags="(admin|public)&!internal").get("entries", {})
         assert "a" in entries  # admin, not internal
         assert "b" in entries  # public, not internal
         assert "c" not in entries  # admin but also internal
         assert "d" not in entries  # public but also internal
 
-    def test_filter_with_child_routers(self):
-        """Test that filtering works with hierarchical routers."""
+    def test_auth_with_child_routers(self):
+        """Test that authorization works with hierarchical routers."""
         from genro_routes import RoutingClass, route
 
         class Parent(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
         class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def child_admin(self):
                 return "child_admin"
 
-            @route("api", filter_tags="public")
+            @route("api", auth_tags="public")
             def child_public(self):
                 return "child_public"
 
         parent = Parent()
-        parent.api._add_entry(lambda: "parent_admin", name="parent_admin", filter_tags="admin")
+        parent.api._add_entry(lambda: "parent_admin", name="parent_admin", auth_tags="admin")
 
         child = Child()
         # Attach child - plugin is inherited from parent
         parent.api.attach_instance(child, name="child")
 
         # Filter should apply to both parent and child
-        result = parent.api.nodes(tags="admin")
+        result = parent.api.nodes(auth_tags="admin")
         assert "parent_admin" in result.get("entries", {})
         # Child router should be present if it has matching entries
         assert "child" in result.get("routers", {})
@@ -128,47 +128,47 @@ class TestFilterPluginIntegration:
         assert "child_admin" in child_entries
         assert "child_public" not in child_entries
 
-    def test_filter_removes_empty_child_routers(self):
+    def test_auth_removes_empty_child_routers(self):
         """Child routers with no matching entries should be pruned."""
         from genro_routes import RoutingClass, route
 
         class Parent(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
         class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
-            @route("api", filter_tags="public")
+            @route("api", auth_tags="public")
             def only_public(self):
                 return "public"
 
         parent = Parent()
-        parent.api._add_entry(lambda: "admin", name="admin_action", filter_tags="admin")
+        parent.api._add_entry(lambda: "admin", name="admin_action", auth_tags="admin")
 
         child = Child()
         parent.api.attach_instance(child, name="child")
 
         # Filter for admin - child has no admin entries
-        result = parent.api.nodes(tags="admin")
+        result = parent.api.nodes(auth_tags="admin")
         assert "admin_action" in result.get("entries", {})
         # Child should be pruned (empty after filter)
         assert "child" not in result.get("routers", {})
 
-    def test_filter_tag_inheritance_union(self):
+    def test_auth_tag_inheritance_union(self):
         """Test that parent tags are merged with child tags via union."""
         from genro_routes import RoutingClass, route
 
         class Parent(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter", tags="corporate")
+                self.api = Router(self, name="api").plug("auth", tags="corporate")
 
         class Child(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter", tags="internal")
+                self.api = Router(self, name="api").plug("auth", tags="internal")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def admin_only(self):
                 return "admin"
 
@@ -177,29 +177,29 @@ class TestFilterPluginIntegration:
         parent.api.attach_instance(child, name="child")
 
         # Child should now have merged tags: "corporate,internal"
-        child_plugin = child.api._plugins_by_name["filter"]
+        child_plugin = child.api._plugins_by_name["auth"]
         child_tags = child_plugin.configuration().get("tags", "")
         assert "corporate" in child_tags
         assert "internal" in child_tags
 
         # Entry has "admin" tag, but inherits "corporate,internal" from router _all_
         # Filter by admin should see child entry
-        result = parent.api.nodes(tags="admin")
+        result = parent.api.nodes(auth_tags="admin")
         assert "child" in result.get("routers", {})
 
-    def test_filter_tag_runtime_propagation(self):
+    def test_auth_tag_runtime_propagation(self):
         """Test that parent tag changes propagate to children at runtime."""
         from genro_routes import RoutingClass, route
 
         class Parent(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter", tags="corporate")
+                self.api = Router(self, name="api").plug("auth", tags="corporate")
 
         class Child(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter", tags="internal")
+                self.api = Router(self, name="api").plug("auth", tags="internal")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def admin_only(self):
                 return "admin"
 
@@ -208,13 +208,13 @@ class TestFilterPluginIntegration:
         parent.api.attach_instance(child, name="child")
 
         # Initial state: child has "corporate,internal"
-        child_plugin = child.api._plugins_by_name["filter"]
+        child_plugin = child.api._plugins_by_name["auth"]
         child_tags = child_plugin.configuration().get("tags", "")
         assert "corporate" in child_tags
         assert "internal" in child_tags
 
         # Parent changes tags: "corporate" → "corporate,hr"
-        parent_plugin = parent.api._plugins_by_name["filter"]
+        parent_plugin = parent.api._plugins_by_name["auth"]
         parent_plugin.configure(tags="corporate,hr")
 
         # Child should now have "corporate,hr,internal" (own + new parent)
@@ -223,19 +223,19 @@ class TestFilterPluginIntegration:
         assert "hr" in child_tags
         assert "internal" in child_tags
 
-    def test_filter_tag_runtime_propagation_removes_old_tags(self):
+    def test_auth_tag_runtime_propagation_removes_old_tags(self):
         """Test that old parent tags are removed when parent tags change."""
         from genro_routes import RoutingClass, route
 
         class Parent(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter", tags="corporate")
+                self.api = Router(self, name="api").plug("auth", tags="corporate")
 
         class Child(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter", tags="internal")
+                self.api = Router(self, name="api").plug("auth", tags="internal")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def admin_only(self):
                 return "admin"
 
@@ -244,13 +244,13 @@ class TestFilterPluginIntegration:
         parent.api.attach_instance(child, name="child")
 
         # Initial state: child has "corporate,internal"
-        child_plugin = child.api._plugins_by_name["filter"]
+        child_plugin = child.api._plugins_by_name["auth"]
         child_tags = child_plugin.configuration().get("tags", "")
         assert "corporate" in child_tags
         assert "internal" in child_tags
 
         # Parent changes tags completely: "corporate" → "hr"
-        parent_plugin = parent.api._plugins_by_name["filter"]
+        parent_plugin = parent.api._plugins_by_name["auth"]
         parent_plugin.configure(tags="hr")
 
         # Child should now have "hr,internal" (own + new parent, corporate removed)
@@ -358,16 +358,16 @@ class TestGetAndCallWithFilters:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def admin_action(self):
                 return "admin"
 
         svc = Svc()
 
         with pytest.raises(NotAuthorized) as exc_info:
-            svc.api.get("admin_action", filter_tags="public")
+            svc.api.get("admin_action", auth_tags="public")
 
         assert exc_info.value.selector == "admin_action"
         assert exc_info.value.router_name == "api"
@@ -378,14 +378,14 @@ class TestGetAndCallWithFilters:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def admin_action(self):
                 return "admin"
 
         svc = Svc()
-        handler = svc.api.get("admin_action", filter_tags="admin")
+        handler = svc.api.get("admin_action", auth_tags="admin")
         assert handler is not None
         assert handler() == "admin"
 
@@ -395,9 +395,9 @@ class TestGetAndCallWithFilters:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def admin_action(self):
                 return "admin"
 
@@ -411,9 +411,9 @@ class TestGetAndCallWithFilters:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def admin_action(self):
                 return "admin"
 
@@ -428,16 +428,16 @@ class TestGetAndCallWithFilters:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def admin_action(self):
                 return "admin"
 
         svc = Svc()
 
         with pytest.raises(NotAuthorized):
-            svc.api.call("admin_action", filter_tags="public")
+            svc.api.call("admin_action", auth_tags="public")
 
     def test_call_raises_not_found_when_missing(self):
         """call() raises NotFound when entry doesn't exist."""
@@ -445,16 +445,16 @@ class TestGetAndCallWithFilters:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def admin_action(self):
                 return "admin"
 
         svc = Svc()
 
         with pytest.raises(NotFound) as exc_info:
-            svc.api.call("nonexistent", filter_tags="admin")
+            svc.api.call("nonexistent", auth_tags="admin")
 
         assert exc_info.value.selector == "nonexistent"
         assert exc_info.value.router_name == "api"
@@ -465,14 +465,14 @@ class TestGetAndCallWithFilters:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def admin_action(self):
                 return "admin result"
 
         svc = Svc()
-        result = svc.api.call("admin_action", filter_tags="admin")
+        result = svc.api.call("admin_action", auth_tags="admin")
         assert result == "admin result"
 
     def test_call_passes_args_to_handler(self):
@@ -481,14 +481,14 @@ class TestGetAndCallWithFilters:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def action(self, x, y=10):
                 return f"x={x}, y={y}"
 
         svc = Svc()
-        result = svc.api.call("action", 5, y=20, filter_tags="admin")
+        result = svc.api.call("action", 5, y=20, auth_tags="admin")
         assert result == "x=5, y=20"
 
     def test_call_with_partial(self):
@@ -497,19 +497,19 @@ class TestGetAndCallWithFilters:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
-            @route("api", filter_tags="public")
+            @route("api", auth_tags="public")
             def index(self, *args):
                 return f"caught: {args}"
 
         svc = Svc()
         # _partial=True should work with call
-        result = svc.api.call("unknown/path", _partial=True, filter_tags="public")
+        result = svc.api.call("unknown/path", _partial=True, auth_tags="public")
         assert result == "caught: ('unknown', 'path')"
 
 
-class TestFilterPluginAllowNode:
+class TestAuthPluginAllowNode:
     """Test allow_node with RouterInterface directly."""
 
     def test_allow_node_with_router_interface(self):
@@ -518,21 +518,22 @@ class TestFilterPluginAllowNode:
 
         class Child(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("filter")
+                self.api = Router(self, name="api").plug("auth")
 
-            @route("api", filter_tags="admin")
+            @route("api", auth_tags="admin")
             def admin_action(self):
                 return "admin"
 
-            @route("api", filter_tags="public")
+            @route("api", auth_tags="public")
             def public_action(self):
                 return "public"
 
         child = Child()
-        plugin = child.api._plugins_by_name["filter"]
+        plugin = child.api._plugins_by_name["auth"]
 
         # Pass router directly to allow_node - should check children
         # Router has entries with "admin" and "public" tags
+        # Note: allow_node receives kwargs without prefix (already extracted by _allow_entry)
         assert plugin.allow_node(child.api, tags="admin") is True
         assert plugin.allow_node(child.api, tags="public") is True
         assert plugin.allow_node(child.api, tags="nonexistent") is False
@@ -543,10 +544,10 @@ class TestFilterPluginAllowNode:
         class Child(RoutingClass):
             pass
 
-        router = Router(Child(), name="api").plug("filter")
-        router._add_entry(lambda: "x", name="only_internal", filter_tags="internal")
+        router = Router(Child(), name="api").plug("auth")
+        router._add_entry(lambda: "x", name="only_internal", auth_tags="internal")
 
-        plugin = router._plugins_by_name["filter"]
+        plugin = router._plugins_by_name["auth"]
 
         # Filter for "admin" - no entries match
         assert plugin.allow_node(router, tags="admin") is False

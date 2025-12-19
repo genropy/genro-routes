@@ -100,7 +100,7 @@ def on_attached_to_parent(self, parent_plugin: BasePlugin) -> None:
     Default behavior: copy parent's _all_ config to child's _all_ config,
     preserving any entry-specific config the child already has.
 
-    Override to customize inheritance behavior (e.g., FilterPlugin does
+    Override to customize inheritance behavior (e.g., AuthPlugin does
     union of tags instead of replacement).
     """
 ```
@@ -139,9 +139,9 @@ def on_parent_config_changed(
 - If equal (child was following parent) → update to `new_config`
 - If different (child made own choices) → ignore the change
 
-### FilterPlugin Inheritance (Special Case)
+### AuthPlugin Inheritance (Special Case)
 
-FilterPlugin has specific inheritance semantics for tags:
+AuthPlugin has specific inheritance semantics for tags:
 
 #### Tag Semantics
 
@@ -150,7 +150,7 @@ FilterPlugin has specific inheritance semantics for tags:
 
 #### Inheritance via Union
 
-FilterPlugin overrides `on_attached_to_parent` to perform **union** of tags:
+AuthPlugin overrides `on_attached_to_parent` to perform **union** of tags:
 
 ```
 parent._all_.tags = "corporate"
@@ -178,14 +178,14 @@ requires corporate OR admin access (more permissive, not more restrictive).
 ```python
 class Parent(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("filter", tags="corporate")
+        self.api = Router(self, name="api").plug("auth", tags="corporate")
         self.child = Child()
 
 class Child(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("filter", tags="internal")
+        self.api = Router(self, name="api").plug("auth", tags="internal")
 
-    @route("api", filter_tags="admin")
+    @route("api", auth_tags="admin")
     def admin_only(self): ...
 
     @route("api")
@@ -223,7 +223,7 @@ graph LR
   C --> Rchild[child router ...]
 ```
 
-- Filters (e.g., `tags` via FilterPlugin) apply to handlers and children; empty children pruned only when filters are active.
+- Filters (e.g., `tags` via AuthPlugin) apply to handlers and children; empty children pruned only when filters are active.
 - `plugin_info` is included for routers; entries can mirror plugin info if desired, but the authoritative store is on the router.
 
 ## Admin/CLI/UI implications

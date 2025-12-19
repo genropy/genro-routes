@@ -29,7 +29,7 @@ Genro Routes provides a consistent, well-tested foundation for these patterns.
 3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutingClass instances with path access (`parent.api.get("child/method")`).
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
 5. **Runtime configuration** - `routing.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
-6. **Built-in plugins** - `logging`, `pydantic`, and `filter` plugins are included; SmartAsync wrapping is opt-in.
+6. **Built-in plugins** - `logging`, `pydantic`, and `auth` plugins are included; SmartAsync wrapping is opt-in.
 7. **Full coverage** - The package ships with a comprehensive test suite and no hidden compatibility layers.
 
 ## Quick Example
@@ -152,7 +152,7 @@ genro-routes/
 │   └── plugins/            # Built-in plugins
 │       ├── logging.py      # LoggingPlugin
 │       ├── pydantic.py     # PydanticPlugin
-│       └── filter.py       # FilterPlugin
+│       └── auth.py         # AuthPlugin
 ├── tests/                  # Test suite (96% coverage)
 └── docs/                   # Documentation (Sphinx)
 ```
@@ -168,7 +168,6 @@ Genro Routes is currently in **beta** (v0.10.0). The core API is stable with com
 ## Current Limitations
 
 - **Instance methods only** - Routers assume decorated functions are bound methods (no static/class method or free function support)
-- **No SmartAsync plugin** - `get(..., use_smartasync=True)` is optional but there's no dedicated SmartAsync plugin
 - **Minimal plugin system** - Intentionally simple; advanced features must be added manually
 
 ## Roadmap

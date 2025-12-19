@@ -316,27 +316,6 @@ router2 = Router(self, name="api2")
 router2.get("missing")()  # Raises KeyError
 ```
 
-### How do I use SmartAsync?
-
-**Question**: I want to wrap handlers with SmartAsync for async execution.
-
-<!-- test: test_router_basic.py::test_get_with_smartasync -->
-
-**Answer**: Enable `use_smartasync`:
-
-```python
-# Global for router
-router = Router(self, name="api", use_smartasync=True)
-
-# For single call
-handler = router.get("method", use_smartasync=False)  # Override
-
-# Runtime override
-result = router.get("method", use_smartasync=True)()
-```
-
-**Note**: SmartAsync must be installed separately.
-
 ### How do I introspect the structure?
 
 **Question**: I want to see all registered handlers and children.
@@ -362,7 +341,7 @@ nodes = router.nodes()
 #   }
 # }
 
-# With filters (using FilterPlugin)
+# With filters (using AuthPlugin)
 admin_only = router.nodes(tags="admin")
 
 # Generate OpenAPI schema

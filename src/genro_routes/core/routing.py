@@ -46,6 +46,8 @@ from typing import TYPE_CHECKING, Any
 
 from genro_toolbox.typeutils import safe_is_instance
 
+from .context import RoutingContext
+
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from .router import Router
 
@@ -61,7 +63,12 @@ class RoutingClass:
     via the ``routing`` property.
     """
 
-    __slots__ = (_PROXY_ATTR_NAME, "__genro_routes_router_registry__", "_routing_parent")
+    __slots__ = (
+        _PROXY_ATTR_NAME,
+        "__genro_routes_router_registry__",
+        "_routing_parent",
+        "_context",
+    )
 
     def __setattr__(self, name: str, value: Any) -> None:
         current = self._get_current_routing_attr(name)
@@ -123,6 +130,39 @@ class RoutingClass:
             proxy = _RoutingProxy(self)
             setattr(self, _PROXY_ATTR_NAME, proxy)
         return proxy
+
+    @property
+    def context(self) -> RoutingContext | None:
+        """Return the execution context, searching up the parent chain.
+
+        The context is set by the adapter (ASGI, Telegram, etc.) on the root
+        RoutingClass instance and propagates automatically to children.
+
+        Returns:
+            The current RoutingContext or None if not set.
+        """
+        ctx: RoutingContext | None = getattr(self, "_context", None)
+        if ctx is not None:
+            return ctx
+        # Propagate from parent if not set locally
+        parent: RoutingClass | None = getattr(self, "_routing_parent", None)
+        if parent is not None:
+            return parent.context
+        return None
+
+    @context.setter
+    def context(self, value: RoutingContext | None) -> None:
+        """Set the execution context.
+
+        Args:
+            value: A RoutingContext instance or None.
+
+        Raises:
+            TypeError: If value is not a RoutingContext or None.
+        """
+        if value is not None and not isinstance(value, RoutingContext):
+            raise TypeError("context must be a RoutingContext instance")
+        object.__setattr__(self, "_context", value)
 
     @property
     def default_router(self) -> Any:

@@ -264,25 +264,25 @@ from genro_routes import RoutingClass, Router, route, NotFound, NotAuthorized
 
 class SecureAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("filter")
+        self.api = Router(self, name="api").plug("auth")
 
-    @route("api", filter_tags="admin")
+    @route("api", auth_tags="admin")
     def admin_action(self):
         return "admin only"
 
-    @route("api", filter_tags="public")
+    @route("api", auth_tags="public")
     def public_action(self):
         return "public"
 
 api = SecureAPI()
 
 # Entry exists and tag matches - returns handler
-handler = api.api.get("admin_action", filter_tags="admin")
+handler = api.api.get("admin_action", auth_tags="admin")
 assert handler() == "admin only"
 
 # Entry exists but tag doesn't match - raises NotAuthorized
 try:
-    api.api.get("admin_action", filter_tags="public")
+    api.api.get("admin_action", auth_tags="public")
 except NotAuthorized as e:
     print(f"Access denied: {e.selector}")  # "admin_action"
 
@@ -306,7 +306,7 @@ The `node()` method also supports filters and returns `callable: UNAUTHORIZED` w
 ```python
 from genro_routes import UNAUTHORIZED
 
-info = api.api.node("admin_action", filter_tags="public")
+info = api.api.node("admin_action", auth_tags="public")
 if info.get("callable") == UNAUTHORIZED:
     print("Access denied")
 else:

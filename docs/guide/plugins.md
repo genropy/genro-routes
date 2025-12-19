@@ -417,21 +417,21 @@ This approach gives maximum flexibility:
 - **Plugins control their inheritance**: Each plugin can customize via hooks
 - **No magic or surprises**: The rules are simple and predictable
 
-### Example: FilterPlugin Inheritance
+### Example: AuthPlugin Inheritance
 
-FilterPlugin has specific inheritance semantics using **union** of tags:
+AuthPlugin has specific inheritance semantics using **union** of tags:
 
 ```python
 class Parent(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("filter", tags="corporate")
+        self.api = Router(self, name="api").plug("auth", tags="corporate")
         self.child = Child()
 
 class Child(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("filter", tags="internal")
+        self.api = Router(self, name="api").plug("auth", tags="internal")
 
-    @route("api", filter_tags="admin")
+    @route("api", auth_tags="admin")
     def admin_only(self): ...
 
 parent = Parent()

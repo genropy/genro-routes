@@ -10,8 +10,8 @@ Constructor and slots
 Constructor signature::
 
     BaseRouter(owner, name=None, prefix=None, *, description=None,
-               get_default_handler=None, get_use_smartasync=None,
-               get_kwargs=None, branch=False, parent_router=None)
+               get_default_handler=None, get_kwargs=None, branch=False,
+               parent_router=None)
 
 - ``owner`` is required; ``None`` raises ``ValueError``. Routers are bound to
   this instance and never re-bound.
@@ -86,7 +86,7 @@ import inspect
 from collections.abc import Callable, Iterator
 from typing import Any, get_type_hints
 
-from genro_toolbox import SmartOptions, extract_kwargs
+from genro_toolbox import SmartOptions
 from genro_toolbox.typeutils import safe_is_instance
 
 from genro_routes.exceptions import UNAUTHORIZED, NotAuthorized, NotFound
@@ -129,7 +129,6 @@ class BaseRouter(RouterInterface):
         description: str | None = None,
         default_entry: str = "index",
         get_default_handler: Callable | None = None,
-        get_use_smartasync: bool | None = None,
         get_kwargs: dict[str, Any] | None = None,
         branch: bool = False,
         parent_router: BaseRouter | None = None,
@@ -153,8 +152,6 @@ class BaseRouter(RouterInterface):
         defaults: dict[str, Any] = dict(get_kwargs or {})
         if get_default_handler is not None:
             defaults.setdefault("default_handler", get_default_handler)
-        if get_use_smartasync is not None:
-            defaults.setdefault("use_smartasync", get_use_smartasync)
         self._get_defaults: dict[str, Any] = defaults
         self._register_with_owner()
 
@@ -447,9 +444,8 @@ class BaseRouter(RouterInterface):
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    @extract_kwargs(filter=True)
     def get(
-        self, selector: str, *, filter_kwargs: dict[str, Any] | None = None, **options: Any
+        self, selector: str, **options: Any
     ) -> Callable | RouterInterface | None:
         """Resolve and return a handler, child router, or None for the given selector.
 
@@ -459,7 +455,6 @@ class BaseRouter(RouterInterface):
         - None if nothing is found and no default_handler is provided
 
         Falls back to ``default_handler`` if provided and nothing is found.
-        When ``use_smartasync`` is true, handler callables are wrapped accordingly.
 
         When ``partial=True`` and the path cannot be fully resolved:
         - If the result is a router, looks up its ``default_entry`` handler (default: "index")
@@ -481,10 +476,10 @@ class BaseRouter(RouterInterface):
             # Returns: partial(child.index, "extra", "path")
             result()  # -> "catch-all: ('extra', 'path')"
 
-        Filter parameters can be passed with ``filter_`` prefix to filter entries via plugins::
+        Authorization parameters can be passed with ``auth_`` prefix to filter entries via AuthPlugin::
 
-            # With FilterPlugin attached
-            result = router.get("admin_only", filter_tags="user")  # Raises NotAuthorized if filtered
+            # With AuthPlugin attached
+            result = router.get("admin_only", auth_tags="user")  # Raises NotAuthorized if filtered
 
         Raises:
             RuntimeError: If the router has not been bound yet.
@@ -496,11 +491,10 @@ class BaseRouter(RouterInterface):
 
         opts = SmartOptions(options, defaults=self._get_defaults)
         default = getattr(opts, "default_handler", None)
-        use_smartasync = getattr(opts, "use_smartasync", False)
         use_partial = getattr(opts, "partial", False)
 
-        # Use filter_kwargs from extract_kwargs decorator
-        filter_args = self._prepare_filter_args(**(filter_kwargs or {}))
+        # Extract filter args from options (plugin-prefixed kwargs like auth_tags, logging_level)
+        filter_args = self._prepare_filter_args(**options)
 
         # Handle path with "/" by delegating to child routers
         if "/" in selector:
@@ -512,13 +506,8 @@ class BaseRouter(RouterInterface):
                     # Check if first segment is an entry (catch-all pattern)
                     entry = self._entries.get(first)
                     if entry is not None and self._allow_entry(entry, **filter_args):
-                        handler = entry.handler
-                        if use_smartasync:
-                            from smartasync import smartasync  # type: ignore
-
-                            handler = smartasync(handler)
                         # Return partial with unconsumed path as args
-                        return functools.partial(handler, *rest.split("/"))
+                        return functools.partial(entry.handler, *rest.split("/"))
                     # No entry either, use this router's default_entry
                     entry_name = self.default_entry
                     default_entry = self._entries.get(entry_name)
@@ -527,63 +516,44 @@ class BaseRouter(RouterInterface):
                             f"No default entry '{entry_name}' in router '{self.name}' "
                             f"for partial path '{selector}'"
                         )
-                    handler = default_entry.handler
-                    if use_smartasync:
-                        from smartasync import smartasync  # type: ignore
-
-                        handler = smartasync(handler)
-                    return functools.partial(handler, *selector.split("/"))
+                    return functools.partial(default_entry.handler, *selector.split("/"))
                 if default is not None:
                     return default  # type: ignore[no-any-return]
                 return None
-            # Delegate to child router's get() - pass filter_kwargs for recursive filtering
-            child_options = {**options, "filter_kwargs": filter_kwargs}
-            result = child.get(rest, **child_options)
+            # Delegate to child router's get() - pass filter_args for recursive filtering
+            result = child.get(rest, **options)
             if result is None and use_partial:
                 # Child couldn't resolve rest - use child's default_entry
                 entry_name = child.default_entry
                 entry = child._entries.get(entry_name)
-                child_filter_args = child._prepare_filter_args(**(filter_kwargs or {}))
+                child_filter_args = child._prepare_filter_args(**options)
                 if entry is None or not child._allow_entry(entry, **child_filter_args):
                     raise ValueError(
                         f"No default entry '{entry_name}' in router '{child.name}' "
                         f"for partial path '{selector}'"
                     )
-                handler = entry.handler
-                if use_smartasync:
-                    from smartasync import smartasync  # type: ignore
-
-                    handler = smartasync(handler)
-                return functools.partial(handler, *rest.split("/"))
+                return functools.partial(entry.handler, *rest.split("/"))
             # If result is a router with partial=True, resolve its default_entry
             if use_partial and isinstance(result, BaseRouter):
                 entry_name = result.default_entry
                 entry = result._entries.get(entry_name)
-                result_filter_args = result._prepare_filter_args(**(filter_kwargs or {}))
+                result_filter_args = result._prepare_filter_args(**options)
                 if entry is None or not result._allow_entry(entry, **result_filter_args):
                     raise ValueError(
                         f"No default entry '{entry_name}' in router '{result.name}' "
                         f"for partial path '{selector}'"
                     )
-                handler = entry.handler
-                if use_smartasync:
-                    from smartasync import smartasync  # type: ignore
-
-                    handler = smartasync(handler)
-                return functools.partial(handler)
+                return functools.partial(entry.handler)
             return result
 
         # Single segment: use node() to check entry with filters
-        node_info = self.node(selector, filter_kwargs=filter_kwargs)
+        node_info = self.node(selector, **{k: v for k, v in options.items()
+                                           if not k.startswith(("default_handler", "partial"))})
         if node_info and node_info.get("type") == "entry":
             node_callable = node_info.get("callable")
             if node_callable == UNAUTHORIZED:
                 # Entry exists but filtered out
                 raise NotAuthorized(selector, self.name)
-            if use_smartasync:
-                from smartasync import smartasync  # type: ignore
-
-                node_callable = smartasync(node_callable)
             return node_callable
 
         child_router = self._children.get(selector)
@@ -597,12 +567,7 @@ class BaseRouter(RouterInterface):
                         f"No default entry '{entry_name}' in router '{child_router.name}' "
                         f"for partial path '{selector}'"
                     )
-                handler = entry.handler
-                if use_smartasync:
-                    from smartasync import smartasync  # type: ignore
-
-                    handler = smartasync(handler)
-                return functools.partial(handler)
+                return functools.partial(entry.handler)
             return child_router
 
         # Nothing found - check partial for empty selector or use default
@@ -615,12 +580,7 @@ class BaseRouter(RouterInterface):
                     f"No default entry '{entry_name}' in router '{self.name}' "
                     f"for empty partial path"
                 )
-            handler = entry.handler
-            if use_smartasync:
-                from smartasync import smartasync  # type: ignore
-
-                handler = smartasync(handler)
-            return functools.partial(handler)
+            return functools.partial(entry.handler)
 
         if default is not None:
             return default  # type: ignore[no-any-return]
@@ -629,13 +589,11 @@ class BaseRouter(RouterInterface):
 
     __getitem__ = get
 
-    @extract_kwargs(filter=True)
     def call(
         self,
         selector: str,
         *args: Any,
         _partial: bool = False,
-        filter_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> Any:
         """Fetch and invoke a handler in one step.
@@ -644,24 +602,34 @@ class BaseRouter(RouterInterface):
             selector: Path to the handler.
             *args: Positional arguments passed to the handler.
             _partial: If True, enables partial resolution (passed to get()).
-            filter_kwargs: Filter parameters extracted by @extract_kwargs (filter_tags="x" becomes {"tags": "x"}).
-            **kwargs: Keyword arguments passed to the handler.
+            **kwargs: Keyword arguments passed to the handler. Plugin-prefixed kwargs
+                (e.g., auth_tags="x") are used for filtering and NOT passed to handler.
 
         Raises:
             NotFound: If the handler does not exist.
             NotAuthorized: If the handler exists but is filtered out.
         """
+        # Separate filter kwargs (plugin-prefixed) from handler kwargs
+        filter_kwargs: dict[str, Any] = {}
+        handler_kwargs: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            # Check if key is a plugin-prefixed kwarg
+            if "_" in key:
+                prefix = key.split("_", 1)[0]
+                if self._is_known_plugin(prefix):
+                    filter_kwargs[key] = value
+                    continue
+            handler_kwargs[key] = value
+
         # Build get() options
-        get_options: dict[str, Any] = {}
+        get_options: dict[str, Any] = dict(filter_kwargs)
         if _partial:
             get_options["partial"] = True
-        if filter_kwargs:
-            get_options["filter_kwargs"] = filter_kwargs
 
         handler = self.get(selector, **get_options)
         if handler is None or isinstance(handler, BaseRouter):
             raise NotFound(selector, self.name)
-        return handler(*args, **kwargs)  # type: ignore[operator]
+        return handler(*args, **handler_kwargs)  # type: ignore[operator]
 
     # ------------------------------------------------------------------
     # Children management (via attach_instance/detach_instance)
@@ -870,13 +838,12 @@ class BaseRouter(RouterInterface):
 
         return result
 
-    @extract_kwargs(filter=True)
     def node(
         self,
         path: str,
         mode: str | None = None,
         partial: bool = False,
-        filter_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Return info about a single node (router or entry) at the given path.
 
@@ -895,8 +862,7 @@ class BaseRouter(RouterInterface):
                 the default_entry handler with unconsumed path segments as args.
                 Similar to get(partial=True) but with metadata included.
 
-            filter_kwargs: Filter parameters extracted by @extract_kwargs
-                (filter_tags="x" becomes {"tags": "x"}).
+            **kwargs: Plugin-prefixed filter kwargs (e.g., auth_tags="x").
 
         Returns:
             A dict containing node info:
@@ -920,7 +886,7 @@ class BaseRouter(RouterInterface):
 
             When mode="openapi", entry output includes OpenAPI format.
         """
-        filter_args = self._prepare_filter_args(**(filter_kwargs or {}))
+        filter_args = self._prepare_filter_args(**kwargs)
 
         # Strip leading "/" for convenience
         path = path.lstrip("/")

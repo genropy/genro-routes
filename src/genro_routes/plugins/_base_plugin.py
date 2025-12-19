@@ -357,7 +357,7 @@ class BasePlugin:
         - Copies parent's _all_ config to child's _all_ config
         - Does NOT overwrite if child already has _all_ config (beyond defaults)
 
-        Override to customize inheritance behavior (e.g., FilterPlugin does
+        Override to customize inheritance behavior (e.g., AuthPlugin does
         union of tags instead of replacement).
 
         Args:
