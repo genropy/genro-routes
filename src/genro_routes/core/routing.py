@@ -1,19 +1,19 @@
-"""RoutedClass mixin and router proxy for Genro Routes.
+"""RoutingClass mixin and router proxy for Genro Routes.
 
 The mixin keeps router state off user instances via slots and offers a proxy
 for configuration/lookup.
 
-RoutedClass
------------
+RoutingClass
+------------
 A mixin class providing:
     - ``_register_router(router)``: Lazily creates a registry dict on the instance
       and stores the router under ``router.name`` if truthy.
     - ``_iter_registered_routers``: Yields ``(name, router)`` for registry entries.
-    - ``routedclass`` property: Returns cached ``_RoutedProxy`` bound to the owner.
+    - ``routing`` property: Returns cached ``_RoutingProxy`` bound to the owner.
 
-_RoutedProxy
-------------
-Bound to the owning ``RoutedClass`` instance.
+_RoutingProxy
+-------------
+Bound to the owning ``RoutingClass`` instance.
 
 Router lookup:
     - ``get_router(name, path=None)`` splits combined specs (``foo.bar``) into
@@ -25,9 +25,9 @@ Configuration entrypoint:
 
 Example::
 
-    from genro_routes import Router, RoutedClass, route
+    from genro_routes import Router, RoutingClass, route
 
-    class MyService(RoutedClass):
+    class MyService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -36,7 +36,7 @@ Example::
             return "Hello!"
 
     svc = MyService()
-    svc.routedclass.configure("api:logging/_all_", enabled=False)
+    svc.routing.configure("api:logging/_all_", enabled=False)
 """
 
 from __future__ import annotations
@@ -49,35 +49,35 @@ from genro_toolbox.typeutils import safe_is_instance
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from .router import Router
 
-__all__ = ["RoutedClass", "is_routed_class"]
+__all__ = ["RoutingClass", "is_routing_class"]
 
-_PROXY_ATTR_NAME = "__routed_proxy__"
+_PROXY_ATTR_NAME = "__routing_proxy__"
 
 
-class RoutedClass:
+class RoutingClass:
     """Mixin providing helper proxies for runtime routers.
 
     Subclass this to enable automatic router registration and configuration
-    via the ``routedclass`` property.
+    via the ``routing`` property.
     """
 
-    __slots__ = (_PROXY_ATTR_NAME, "__genro_routes_router_registry__", "_routed_parent")
+    __slots__ = (_PROXY_ATTR_NAME, "__genro_routes_router_registry__", "_routing_parent")
 
     def __setattr__(self, name: str, value: Any) -> None:
-        current = self._get_current_routed_attr(name)
+        current = self._get_current_routing_attr(name)
         if current is not None:
             self._auto_detach_child(current)
 
         object.__setattr__(self, name, value)
 
-    def _get_current_routed_attr(self, name: str) -> Any:
+    def _get_current_routing_attr(self, name: str) -> Any:
         try:
             current = object.__getattribute__(self, name)
         except AttributeError:
             return None
-        if not safe_is_instance(current, "genro_routes.core.routed.RoutedClass"):
+        if not safe_is_instance(current, "genro_routes.core.routing.RoutingClass"):
             return None
-        if getattr(current, "_routed_parent", None) is not self:
+        if getattr(current, "_routing_parent", None) is not self:
             return None  # pragma: no cover - only detach if bound to this parent
         return current
 
@@ -106,8 +106,8 @@ class RoutedClass:
 
         Called automatically by Router during initialization.
         """
-        if not hasattr(self, "_routed_parent"):
-            object.__setattr__(self, "_routed_parent", None)
+        if not hasattr(self, "_routing_parent"):
+            object.__setattr__(self, "_routing_parent", None)
         if router.name:
             self._routers[router.name] = router
 
@@ -116,11 +116,11 @@ class RoutedClass:
         yield from self._routers.items()
 
     @property
-    def routedclass(self) -> _RoutedProxy:
+    def routing(self) -> _RoutingProxy:
         """Return a proxy for router configuration and lookup."""
         proxy = getattr(self, _PROXY_ATTR_NAME, None)
         if proxy is None:
-            proxy = _RoutedProxy(self)
+            proxy = _RoutingProxy(self)
             setattr(self, _PROXY_ATTR_NAME, proxy)
         return proxy
 
@@ -152,12 +152,12 @@ class RoutedClass:
         return None
 
 
-class _RoutedProxy:
-    """Proxy for accessing and configuring routers on a RoutedClass instance."""
+class _RoutingProxy:
+    """Proxy for accessing and configuring routers on a RoutingClass instance."""
 
-    _owner: RoutedClass
+    _owner: RoutingClass
 
-    def __init__(self, owner: RoutedClass):
+    def __init__(self, owner: RoutingClass):
         object.__setattr__(self, "_owner", owner)
 
     def get_router(self, name: str, path: str | None = None):
@@ -171,7 +171,7 @@ class _RoutedProxy:
             return router
         return self._navigate_router(router, extra_path)
 
-    def _lookup_router(self, owner: RoutedClass, name: str) -> Router | None:
+    def _lookup_router(self, owner: RoutingClass, name: str) -> Router | None:
         router = owner._routers.get(name)
         if router:
             return router  # type: ignore[no-any-return]
@@ -308,6 +308,6 @@ class _RoutedProxy:
         return {"target": target, "updated": sorted(matches)}
 
 
-def is_routed_class(obj: Any) -> bool:
-    """Return True when ``obj`` is a RoutedClass instance."""
-    return safe_is_instance(obj, "genro_routes.core.routed.RoutedClass")  # type: ignore[no-any-return]
+def is_routing_class(obj: Any) -> bool:
+    """Return True when ``obj`` is a RoutingClass instance."""
+    return safe_is_instance(obj, "genro_routes.core.routing.RoutingClass")  # type: ignore[no-any-return]

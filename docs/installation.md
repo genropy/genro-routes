@@ -56,7 +56,7 @@ This installs Genro Routes in editable mode with all optional dependencies.
 Test your installation:
 
 ```python
-python -c "from genro_routes import Router, RoutedClass, route; print('Genro Routes installed successfully!')"
+python -c "from genro_routes import Router, RoutingClass, route; print('Genro Routes installed successfully!')"
 ```
 
 ## Next Steps

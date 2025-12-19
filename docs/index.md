@@ -27,7 +27,7 @@ Genro Routes provides:
 - **Composable plugins** - Hook into decoration and handler execution with `BasePlugin`
 - **Plugin inheritance** - Plugins propagate automatically from parent to child routers
 - **Flexible registration** - Use `@route` decorator with prefixes, metadata, and explicit names
-- **Runtime configuration** - Configure plugins with `routedclass.configure()` using target syntax
+- **Runtime configuration** - Configure plugins with `routing.configure()` using target syntax
 - **SmartAsync support** - Optional integration with async execution
 - **100% test coverage** - Comprehensive test suite
 
@@ -38,9 +38,9 @@ Genro Routes provides:
 [From test](https://github.com/genropy/genro-routes/blob/main/tests/test_router_basic.py#L141-L148)
 
 ```python
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 
-class Service(RoutedClass):
+class Service(RoutingClass):
     def __init__(self, label: str):
         self.label = label
         self.api = Router(self, name="api")

@@ -14,9 +14,9 @@
 
 **Example**:
 ```python
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 
-class OrdersAPI(RoutedClass):
+class OrdersAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="orders")
 
@@ -75,7 +75,7 @@ You can use Genro Routes **alongside** FastAPI to organize your internal handler
 4. **Is isolated per instance**: each object has its own router
 
 ```python
-class Service(RoutedClass):
+class Service(RoutingClass):
     def __init__(self, label: str):
         self.label = label
         self.api = Router(self, name="api")
@@ -113,17 +113,17 @@ def handle_users(self): ...
 def handle_create(self): ...  # Registered as "create" (strips prefix)
 ```
 
-### What is RoutedClass?
+### What is RoutingClass?
 
-**Question**: Do I always need to inherit from `RoutedClass`?
+**Question**: Do I always need to inherit from `RoutingClass`?
 
-**Answer**: **Recommended but not required**. `RoutedClass` provides:
+**Answer**: **Recommended but not required**. `RoutingClass` provides:
 
-- `obj.routedclass` proxy to access all routers
-- `obj.routedclass.configure()` for global configuration
+- `obj.routing` proxy to access all routers
+- `obj.routing.configure()` for global configuration
 - Automatic router registry management
 
-**Without RoutedClass** you can still use `Router` directly, but you lose the unified proxy.
+**Without RoutingClass** you can still use `Router` directly, but you lose the unified proxy.
 
 ## Hierarchies and Child Routers
 
@@ -134,7 +134,7 @@ def handle_create(self): ...  # Registered as "create" (strips prefix)
 **Answer**: Use `attach_instance()` to connect child instances:
 
 ```python
-class Dashboard(RoutedClass):
+class Dashboard(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.sales = SalesModule()
@@ -182,7 +182,7 @@ nodes = dashboard.api.nodes()
 **Answer**: **Yes, automatically**. Plugins propagate from parent to children:
 
 ```python
-class Parent(RoutedClass):
+class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("logging", level="debug")
         self.child_obj = Child()
@@ -249,20 +249,20 @@ router.get("create")({"name": "test"})  # ValidationError
 
 <!-- test: test_router_edge_cases.py::test_routed_configure_updates_plugins_global_and_local -->
 
-**Answer**: Use `routedclass.configure()`:
+**Answer**: Use `routing.configure()`:
 
 ```python
 # Global for all handlers
-obj.routedclass.configure("api:logging", level="warning")
+obj.routing.configure("api:logging", level="warning")
 
 # For specific handler
-obj.routedclass.configure("api:logging/create", enabled=False)
+obj.routing.configure("api:logging/create", enabled=False)
 
 # With wildcards
-obj.routedclass.configure("*:logging/*", level="debug")
+obj.routing.configure("*:logging/*", level="debug")
 
 # Query configuration
-report = obj.routedclass.configure("?")
+report = obj.routing.configure("?")
 ```
 
 ### Can I create custom plugins?

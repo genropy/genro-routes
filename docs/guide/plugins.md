@@ -9,7 +9,7 @@ Plugins in Genro Routes:
 - **Extend behavior** without modifying handler code
 - **Per-instance state** - each router gets independent plugin instances
 - **Two hooks**: `on_decore()` for metadata, `wrap_handler()` for execution
-- **Configurable** - runtime configuration via `routedclass.configure()`
+- **Configurable** - runtime configuration via `routing.configure()`
 - **Composable** - multiple plugins work together automatically
 - **Inherit automatically** - parent plugins apply to child routers
 
@@ -20,9 +20,9 @@ Genro Routes includes two production-ready plugins:
 **LoggingPlugin** (`logging`):
 
 ```python
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 
-class Service(RoutedClass):
+class Service(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("logging")
 
@@ -37,7 +37,7 @@ result = svc.api.get("process")("test")  # Automatically logged
 **PydanticPlugin** (`pydantic`):
 
 ```python
-class ValidatedService(RoutedClass):
+class ValidatedService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("pydantic")
 
@@ -62,7 +62,7 @@ Extend `BasePlugin` and implement hooks. Every plugin **must** define two class 
 ### Basic Plugin Structure
 
 ```python
-from genro_routes import Router, RoutedClass, route
+from genro_routes import Router, RoutingClass, route
 from genro_routes.plugins._base_plugin import BasePlugin
 
 class CapturePlugin(BasePlugin):
@@ -100,7 +100,7 @@ class CapturePlugin(BasePlugin):
 Router.register_plugin(CapturePlugin)
 
 # Use in service
-class PluginService(RoutedClass):
+class PluginService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("capture")
 
@@ -422,12 +422,12 @@ This approach gives maximum flexibility:
 FilterPlugin has specific inheritance semantics using **union** of tags:
 
 ```python
-class Parent(RoutedClass):
+class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("filter", tags="corporate")
         self.child = Child()
 
-class Child(RoutedClass):
+class Child(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("filter", tags="internal")
 
@@ -465,7 +465,7 @@ class CustomPlugin(BasePlugin):
 Router.register_plugin(CustomPlugin)
 
 # Now available in all routers
-class Service(RoutedClass):
+class Service(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("custom")
 ```
@@ -617,7 +617,7 @@ Real-world plugin with configuration and state:
 
 ```python
 import inspect
-from genro_routes import Router, RoutedClass, route
+from genro_routes import Router, RoutingClass, route
 from genro_routes.plugins._base_plugin import BasePlugin
 
 class AuthPlugin(BasePlugin):
@@ -681,7 +681,7 @@ class AuthPlugin(BasePlugin):
 Router.register_plugin(AuthPlugin)
 
 # Use in service
-class API(RoutedClass):
+class API(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("auth")
 

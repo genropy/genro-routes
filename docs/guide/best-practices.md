@@ -10,7 +10,7 @@ Each router should have a clear, single responsibility:
 
 ```python
 # Good: Focused routers
-class UserService(RoutedClass):
+class UserService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -25,7 +25,7 @@ class UserService(RoutedClass):
 
 
 # Bad: Router doing too much
-class EverythingService(RoutedClass):
+class EverythingService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -45,7 +45,7 @@ Router and handler names should be self-documenting:
 
 ```python
 # Good: Clear, descriptive names
-class OrderService(RoutedClass):
+class OrderService(RoutingClass):
     def __init__(self):
         self.orders = Router(self, name="orders")
 
@@ -57,7 +57,7 @@ class OrderService(RoutedClass):
 
 
 # Bad: Vague names
-class Service(RoutedClass):
+class Service(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -73,7 +73,7 @@ class Service(RoutedClass):
 Use prefixes to group related handlers while keeping public names clean:
 
 ```python
-class AdminAPI(RoutedClass):
+class AdminAPI(RoutingClass):
     def __init__(self):
         self.admin = Router(self, name="admin", prefix="admin_")
 
@@ -109,7 +109,7 @@ app.api.get("v1/internal/services/users/management/list")
 Branch routers provide namespace organization without handlers:
 
 ```python
-class Application(RoutedClass):
+class Application(RoutingClass):
     def __init__(self):
         # Branch router as namespace container
         self.api = Router(self, name="api", branch=True)
@@ -125,7 +125,7 @@ Always store child instances as attributes before attaching:
 
 ```python
 # Good: Store then attach
-class Parent(RoutedClass):
+class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.child = ChildService()  # Store first
@@ -133,7 +133,7 @@ class Parent(RoutedClass):
 
 
 # Bad: Attach without storing
-class Parent(RoutedClass):
+class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.api.attach_instance(ChildService(), name="child")  # Will fail!
@@ -147,7 +147,7 @@ Attach plugins where they make sense:
 
 ```python
 # Good: Logging at root, validation where needed
-class Application(RoutedClass):
+class Application(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("logging")  # All handlers logged
 
@@ -158,7 +158,7 @@ class Application(RoutedClass):
         self.api.attach_instance(self.admin, name="admin")
 
 
-class AdminAPI(RoutedClass):
+class AdminAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("pydantic")  # Strict validation
 ```
@@ -184,8 +184,8 @@ Don't rely on defaults for production:
 
 ```python
 # Good: Explicit configuration
-svc.routedclass.configure("api:logging/_all_", level="info", enabled=True)
-svc.routedclass.configure("api:pydantic/_all_", strict=True)
+svc.routing.configure("api:logging/_all_", level="info", enabled=True)
+svc.routing.configure("api:pydantic/_all_", strict=True)
 
 # Bad: Implicit defaults everywhere
 svc.api.plug("logging").plug("pydantic")  # What's the config?
@@ -292,7 +292,7 @@ Attach plugins during router creation for optimal handler wrapping:
 
 ```python
 # Good: Plugins attached during construction
-class Service(RoutedClass):
+class Service(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")\
             .plug("logging")\
@@ -352,13 +352,13 @@ Avoid circular attachments:
 
 ```python
 # Bad: Circular reference
-class A(RoutedClass):
+class A(RoutingClass):
     def __init__(self, b):
         self.api = Router(self, name="api")
         self.b = b
         self.api.attach_instance(b, name="b")
 
-class B(RoutedClass):
+class B(RoutingClass):
     def __init__(self, a):
         self.api = Router(self, name="api")
         self.a = a
@@ -371,14 +371,14 @@ Don't configure what doesn't need configuration:
 
 ```python
 # Bad: Over-engineered
-svc.routedclass.configure("api:logging/handler1", level="info")
-svc.routedclass.configure("api:logging/handler2", level="info")
-svc.routedclass.configure("api:logging/handler3", level="info")
+svc.routing.configure("api:logging/handler1", level="info")
+svc.routing.configure("api:logging/handler2", level="info")
+svc.routing.configure("api:logging/handler3", level="info")
 # ... 50 more lines
 
 # Good: Use defaults and override exceptions
-svc.routedclass.configure("api:logging/_all_", level="info")
-svc.routedclass.configure("api:logging/debug_*", level="debug")
+svc.routing.configure("api:logging/_all_", level="info")
+svc.routing.configure("api:logging/debug_*", level="debug")
 ```
 
 ## Summary

@@ -19,10 +19,10 @@ from pydantic import ValidationError
 
 # Import to trigger plugin registration
 import genro_routes.plugins.pydantic  # noqa: F401
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 
 
-class ValidateService(RoutedClass):
+class ValidateService(RoutingClass):
     def __init__(self):
         self.calls = 0
         self.api = Router(self, name="api").plug("pydantic")
@@ -66,7 +66,7 @@ def test_pydantic_plugin_disabled_at_runtime():
 def test_pydantic_plugin_disabled_per_handler():
     """Test disabling pydantic validation for a specific handler."""
 
-    class MultiService(RoutedClass):
+    class MultiService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
@@ -95,7 +95,7 @@ def test_pydantic_plugin_disabled_per_handler():
 def test_pydantic_plugin_config_merge_base_and_handler():
     """Test that per-handler config overrides base config."""
 
-    class MergeService(RoutedClass):
+    class MergeService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 

@@ -15,7 +15,7 @@ decoration time.
 
 Re-exports
 ----------
-This module re-exports ``RoutedClass`` and ``Router`` for convenience so user
+This module re-exports ``RoutingClass`` and ``Router`` for convenience so user
 code can import everything from one place.
 """
 
@@ -24,10 +24,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from .routed import RoutedClass
 from .router import Router
+from .routing import RoutingClass
 
-__all__ = ["route", "RoutedClass", "Router"]
+__all__ = ["route", "RoutingClass", "Router"]
 
 
 def route(
@@ -55,7 +55,7 @@ def route(
             return {"id": user_id}
 
         # With main_router class attribute:
-        class Table(RoutedClass):
+        class Table(RoutingClass):
             main_router = "table"
 
             @route()  # Uses main_router automatically

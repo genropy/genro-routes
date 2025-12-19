@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from genro_routes import RoutedClass, Router
+from genro_routes import RoutingClass, Router
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
 
 
@@ -59,7 +59,7 @@ class _GoodMetadataPlugin(BasePlugin):
 
 
 def _make_router():
-    class Owner(RoutedClass):
+    class Owner(RoutingClass):
         pass
 
     return Router(Owner(), name="api")

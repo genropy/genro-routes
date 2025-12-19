@@ -17,9 +17,9 @@ pip install genro-routes
 Create a service with instance-scoped routing:
 
 ```python
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 
-class Service(RoutedClass):
+class Service(RoutingClass):
     def __init__(self, label: str):
         self.label = label
         self.api = Router(self, name="api")
@@ -47,7 +47,7 @@ assert second.api.get("describe")() == "service:beta"
 Use prefixes and explicit names for cleaner method registration:
 
 ```python
-class SubService(RoutedClass):
+class SubService(RoutingClass):
     def __init__(self, prefix: str):
         self.prefix = prefix
         self.routes = Router(self, name="routes", prefix="handle_")
@@ -76,7 +76,7 @@ assert sub.routes.get("detail")(10) == "users:detail:10"
 Avoid repeating the router name with a class attribute:
 
 ```python
-class Table(RoutedClass):
+class Table(RoutingClass):
     main_router = "table"
 
     def __init__(self):
@@ -99,7 +99,7 @@ assert t.table.get("add")("x") == "added:x"
 Create nested router structures:
 
 ```python
-class RootAPI(RoutedClass):
+class RootAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.users = SubService("users")
@@ -124,7 +124,7 @@ assert root.api.get("products/detail")(5) == "products:detail:5"
 Extend behavior with plugins. Built-in plugins (`logging`, `pydantic`) are pre-registered.
 
 ```python
-class PluginService(RoutedClass):
+class PluginService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("logging")
 
@@ -145,7 +145,7 @@ result = svc.api.get("do_work")()  # Automatically logged
 Use Pydantic for automatic validation:
 
 ```python
-class ValidateService(RoutedClass):
+class ValidateService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("pydantic")
 

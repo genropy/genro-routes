@@ -15,11 +15,11 @@ Genro Routes supports hierarchical router composition where:
 
 ## Managing Hierarchies
 
-Genro Routes provides explicit methods for managing RoutedClass hierarchies:
+Genro Routes provides explicit methods for managing RoutingClass hierarchies:
 
-- **`attach_instance(child, name=...)`** - Attach a RoutedClass instance to create parent-child relationship
-- **`detach_instance(child)`** - Remove a RoutedClass instance from the hierarchy
-- **Parent tracking** - Children track their parent via `_routed_parent` attribute
+- **`attach_instance(child, name=...)`** - Attach a RoutingClass instance to create parent-child relationship
+- **`detach_instance(child)`** - Remove a RoutingClass instance from the hierarchy
+- **Parent tracking** - Children track their parent via `_routing_parent` attribute
 - **Auto-detachment** - Replacing a child attribute automatically detaches the old instance
 
 ## Basic Instance Attachment
@@ -29,9 +29,9 @@ Genro Routes provides explicit methods for managing RoutedClass hierarchies:
 Attach a child instance explicitly with an alias:
 
 ```python
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 
-class Child(RoutedClass):
+class Child(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -39,7 +39,7 @@ class Child(RoutedClass):
     def list(self):
         return "child:list"
 
-class Parent(RoutedClass):
+class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         # Store child as attribute first
@@ -59,11 +59,11 @@ assert child_router is not None
 assert child_router.name == "api"
 
 # Parent tracking is automatic
-assert parent.child._routed_parent is parent
+assert parent.child._routing_parent is parent
 
 # Detach when needed
 parent.api.detach_instance(parent.child)
-assert parent.child._routed_parent is None
+assert parent.child._routing_parent is None
 ```
 
 **Key requirements**:
@@ -86,7 +86,7 @@ assert parent.child._routed_parent is None
 When a child has multiple routers, they can be auto-mapped:
 
 ```python
-class MultiRouterChild(RoutedClass):
+class MultiRouterChild(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.admin = Router(self, name="admin")
@@ -99,7 +99,7 @@ class MultiRouterChild(RoutedClass):
     def manage(self):
         return "manage"
 
-class Parent(RoutedClass):
+class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.child = MultiRouterChild()
@@ -156,7 +156,7 @@ assert parent.api.get("admin_panel/manage")() == "manage"
 When parent has multiple routers, explicit alias is required:
 
 ```python
-class MultiRouterParent(RoutedClass):
+class MultiRouterParent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.admin = Router(self, name="admin")
@@ -178,7 +178,7 @@ assert "child_alias" in parent.api._children
 Create pure organizational nodes with branch routers:
 
 ```python
-class OrganizedService(RoutedClass):
+class OrganizedService(RoutingClass):
     def __init__(self):
         # Branch router: pure container, no handlers
         self.api = Router(self, name="api", branch=True)
@@ -220,10 +220,10 @@ self.api = Router(self, name="api")  # Regular router
 
 <!-- test: test_router_edge_cases.py::test_parent_router_creates_hierarchy -->
 
-Create router hierarchies directly without separate `RoutedClass` instances using `parent_router`:
+Create router hierarchies directly without separate `RoutingClass` instances using `parent_router`:
 
 ```python
-class Service(RoutedClass):
+class Service(RoutingClass):
     def __init__(self):
         # Parent branch router
         self.api = Router(self, name="api", branch=True)
@@ -260,14 +260,14 @@ assert svc.api.call("orders.list_orders") == ["order1", "order2"]
 | Use Case | Method |
 |----------|--------|
 | Same instance, multiple routers | `parent_router` |
-| Different `RoutedClass` instances | `attach_instance` |
+| Different `RoutingClass` instances | `attach_instance` |
 | Dynamic attachment/detachment | `attach_instance` |
 | Static hierarchy at init time | `parent_router` |
 
 **Example: Mixed hierarchy**:
 
 ```python
-class Application(RoutedClass):
+class Application(RoutingClass):
     def __init__(self):
         # Root branch
         self.api = Router(self, name="api", branch=True)
@@ -303,14 +303,14 @@ app.api.call("auth/login")            # Attached instance
 Replacing a child attribute automatically detaches the old instance:
 
 ```python
-class Parent(RoutedClass):
+class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.child = Child()
         self.api.attach_instance(self.child, name="child")
 
 parent = Parent()
-assert parent.child._routed_parent is parent
+assert parent.child._routing_parent is parent
 assert "child" in parent.api._children
 
 # Replacing the attribute triggers auto-detach
@@ -323,8 +323,8 @@ assert "child" not in parent.api._children
 **Auto-detachment behavior**:
 
 - Triggered when setting `parent.attribute = new_value`
-- Only detaches if old value's `_routed_parent` is this parent
-- Clears `_routed_parent` on detached instance
+- Only detaches if old value's `_routing_parent` is this parent
+- Clears `_routing_parent` on detached instance
 - Removes from all parent routers automatically
 - Best-effort: ignores errors to avoid blocking attribute assignment
 
@@ -342,28 +342,28 @@ parent.api.attach_instance(parent.auth_service, name="auth")
 
 ## Parent Tracking
 
-Every attached RoutedClass tracks its parent:
+Every attached RoutingClass tracks its parent:
 
 ```python
-class Child(RoutedClass):
+class Child(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
     def get_parent_info(self):
-        if self._routed_parent:
-            return f"My parent is {type(self._routed_parent).__name__}"
+        if self._routing_parent:
+            return f"My parent is {type(self._routing_parent).__name__}"
         return "No parent"
 
 child = Child()
-assert child._routed_parent is None  # Not attached
+assert child._routing_parent is None  # Not attached
 
 parent = Parent()
 parent.child = child
 parent.api.attach_instance(parent.child, name="child")
-assert child._routed_parent is parent  # Parent tracked
+assert child._routing_parent is parent  # Parent tracked
 
 parent.api.detach_instance(child)
-assert child._routed_parent is None  # Cleared on detach
+assert child._routing_parent is None  # Cleared on detach
 ```
 
 **Parent tracking enables**:
@@ -380,7 +380,7 @@ assert child._routed_parent is None  # Cleared on detach
 Plugins propagate automatically from parent to children:
 
 ```python
-class Service(RoutedClass):
+class Service(RoutingClass):
     def __init__(self, name: str):
         self.name = name
         self.api = Router(self, name="api")
@@ -389,7 +389,7 @@ class Service(RoutedClass):
     def process(self):
         return f"{self.name}:process"
 
-class Application(RoutedClass):
+class Application(RoutingClass):
     def __init__(self):
         # Plugin attached to parent
         self.api = Router(self, name="api").plug("logging")
@@ -419,14 +419,14 @@ result = app.service.api.get("process")()
 
 <!-- test: test_router_edge_cases.py::test_routed_proxy_get_router_handles_dotted_path -->
 
-Navigate hierarchy with dotted paths via `routedclass.get_router()`:
+Navigate hierarchy with dotted paths via `routing.get_router()`:
 
 ```python
-class Child(RoutedClass):
+class Child(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
-class Parent(RoutedClass):
+class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.child = Child()
@@ -435,7 +435,7 @@ class Parent(RoutedClass):
 parent = Parent()
 
 # Get child router directly
-child_router = parent.routedclass.get_router("api/child")
+child_router = parent.routing.get_router("api/child")
 assert child_router.name == "api"
 assert child_router.instance is parent.child
 ```
@@ -454,7 +454,7 @@ assert child_router.instance is parent.child
 Inspect the full hierarchy structure:
 
 ```python
-class Inspectable(RoutedClass):
+class Inspectable(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.service = Service("child")
@@ -514,7 +514,7 @@ schema = insp.api.openapi()
 When using `partial=True`, routers can handle paths that don't fully resolve by delegating to a `default_entry` handler:
 
 ```python
-class FileService(RoutedClass):
+class FileService(RoutingClass):
     def __init__(self):
         # default_entry="index" is the default
         self.api = Router(self, name="api")
@@ -523,7 +523,7 @@ class FileService(RoutedClass):
     def index(self, *path_segments):
         return f"File: {'/'.join(path_segments)}"
 
-class Application(RoutedClass):
+class Application(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.files = FileService()
@@ -550,7 +550,7 @@ assert result() == "File: docs/readme.md"
 **Custom `default_entry`**:
 
 ```python
-class CustomService(RoutedClass):
+class CustomService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api", default_entry="catch_all")
 
@@ -564,7 +564,7 @@ class CustomService(RoutedClass):
 If `default_entry` handler doesn't exist in the target router, `ValueError` is raised:
 
 ```python
-class EmptyService(RoutedClass):
+class EmptyService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")  # No "index" entry!
 
@@ -577,7 +577,7 @@ svc.api.get("unknown/path", partial=True)  # ValueError!
 ### Microservice-Style Organization
 
 ```python
-class AuthService(RoutedClass):
+class AuthService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -589,7 +589,7 @@ class AuthService(RoutedClass):
     def logout(self, token: str):
         return {"status": "ok"}
 
-class UserService(RoutedClass):
+class UserService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -601,7 +601,7 @@ class UserService(RoutedClass):
     def get_user(self, user_id: int):
         return {"id": user_id, "name": "..."}
 
-class Application(RoutedClass):
+class Application(RoutingClass):
     def __init__(self):
         # Root router with logging
         self.api = Router(self, name="api").plug("logging")
@@ -626,7 +626,7 @@ users = app.api.call("users/list_users")
 ### Multi-Level Organization with Branches
 
 ```python
-class ReportsAPI(RoutedClass):
+class ReportsAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -638,7 +638,7 @@ class ReportsAPI(RoutedClass):
     def inventory_report(self):
         return "inventory data"
 
-class AdminAPI(RoutedClass):
+class AdminAPI(RoutingClass):
     def __init__(self):
         # Branch for organization
         self.api = Router(self, name="api", branch=True)
@@ -649,7 +649,7 @@ class AdminAPI(RoutedClass):
         self.api.attach_instance(self.users, name="users")
         self.api.attach_instance(self.reports, name="reports")
 
-class Application(RoutedClass):
+class Application(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api", branch=True)
 
@@ -673,7 +673,7 @@ app.api.get("admin/reports/sales_report")()  # Admin reports
 ### Dynamic Service Replacement
 
 ```python
-class ServiceV1(RoutedClass):
+class ServiceV1(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -681,7 +681,7 @@ class ServiceV1(RoutedClass):
     def process(self, data: str):
         return f"v1:{data}"
 
-class ServiceV2(RoutedClass):
+class ServiceV2(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -689,7 +689,7 @@ class ServiceV2(RoutedClass):
     def process(self, data: str):
         return f"v2:{data}"
 
-class Application(RoutedClass):
+class Application(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.service = ServiceV1()
@@ -713,7 +713,7 @@ assert app.api.get("processor/process")("test") == "v2:test"
 
 ```python
 # Use branch routers for pure organization
-class API(RoutedClass):
+class API(RoutingClass):
     def __init__(self):
         self.root = Router(self, name="root", branch=True)
 
@@ -756,7 +756,7 @@ admin.api.attach_instance(self.report_admin, name="reports")
 
 ```python
 # REQUIRED: Always store child as attribute first
-class Parent(RoutedClass):
+class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.child = Child()  # Store first
@@ -789,22 +789,22 @@ self.api.get("auth_v2/login")
 ### Parent-Aware Children
 
 ```python
-class ChildService(RoutedClass):
+class ChildService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
     @route("api")
     def get_config(self):
         # Access parent context
-        if self._routed_parent:
-            return self._routed_parent.config
+        if self._routing_parent:
+            return self._routing_parent.config
         return {}
 ```
 
 ### Conditional Attachment
 
 ```python
-class Application(RoutedClass):
+class Application(RoutingClass):
     def __init__(self, config):
         self.api = Router(self, name="api")
 
@@ -821,7 +821,7 @@ class Application(RoutedClass):
 ### Multi-Router Services
 
 ```python
-class DualInterfaceService(RoutedClass):
+class DualInterfaceService(RoutingClass):
     def __init__(self):
         self.public = Router(self, name="public")
         self.admin = Router(self, name="admin")

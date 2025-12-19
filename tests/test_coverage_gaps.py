@@ -18,7 +18,7 @@ import pytest
 
 import genro_routes.plugins.logging  # noqa: F401
 import genro_routes.plugins.pydantic  # noqa: F401
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 from genro_routes.plugins._base_plugin import BasePlugin
 
 # --- base_router.py:682 - _describe_entry_extra returns extra ---
@@ -27,7 +27,7 @@ from genro_routes.plugins._base_plugin import BasePlugin
 def test_nodes_with_plugin_returns_extra_info():
     """Test that nodes() includes plugin info when plugins are attached."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
@@ -81,7 +81,7 @@ def test_register_plugin_empty_name_raises():
 def test_inherited_plugin_config_lookup():
     """Test that child router inherits parent plugin config."""
 
-    class ChildSvc(RoutedClass):
+    class ChildSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -89,7 +89,7 @@ def test_inherited_plugin_config_lookup():
         def child_handler(self):
             return "child"
 
-    class ParentSvc(RoutedClass):
+    class ParentSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("logging")
             self.child = ChildSvc()  # Child must be an attribute of parent
@@ -123,7 +123,7 @@ def test_inherited_plugin_config_lookup():
 def test_configure_multi_target():
     """Test configure() with comma-separated targets."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("logging")
 
@@ -168,7 +168,7 @@ def test_base_plugin_configure_with_flags():
 
     Router.register_plugin(FlagsPlugin)
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("flags_test")
 
@@ -191,7 +191,7 @@ def test_base_plugin_configure_with_flags():
 def test_pydantic_handler_without_param_hints():
     """Test pydantic plugin with handler that has no parameter hints."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
@@ -208,7 +208,7 @@ def test_pydantic_handler_without_param_hints():
 def test_pydantic_handler_only_return_hint():
     """Test pydantic plugin with handler that has only return hint."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
@@ -239,7 +239,7 @@ def test_pydantic_hint_not_in_signature_raises():
     # Add annotation for parameter not in signature
     handler.__annotations__["phantom"] = int
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
@@ -258,7 +258,7 @@ def test_pydantic_hint_not_in_signature_raises():
 def test_pydantic_get_model_disabled():
     """Test get_model returns None when disabled."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
@@ -284,7 +284,7 @@ def test_pydantic_get_model_disabled():
 def test_pydantic_get_model_no_model():
     """Test get_model returns None when no model was created."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
@@ -307,7 +307,7 @@ def test_pydantic_get_model_no_model():
 def test_pydantic_entry_metadata_no_meta():
     """Test entry_metadata returns empty dict when no pydantic metadata."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
@@ -326,7 +326,7 @@ def test_pydantic_entry_metadata_no_meta():
 def test_pydantic_entry_metadata_with_meta():
     """Test entry_metadata returns model info when pydantic metadata exists."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
@@ -350,7 +350,7 @@ def test_pydantic_entry_metadata_with_meta():
 def test_inherited_plugin_is_separate_instance():
     """Test that inherited plugin is a new instance, not shared with parent."""
 
-    class ChildSvc(RoutedClass):
+    class ChildSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -358,7 +358,7 @@ def test_inherited_plugin_is_separate_instance():
         def child_handler(self):
             return "child"
 
-    class ParentSvc(RoutedClass):
+    class ParentSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("logging")
             self.child = ChildSvc()
@@ -382,7 +382,7 @@ def test_inherited_plugin_is_separate_instance():
 def test_inherited_plugin_copies_parent_config():
     """Test that child inherits a copy of parent's config at attach time."""
 
-    class ChildSvc(RoutedClass):
+    class ChildSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -390,7 +390,7 @@ def test_inherited_plugin_copies_parent_config():
         def child_handler(self):
             return "child"
 
-    class ParentSvc(RoutedClass):
+    class ParentSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("logging")
             self.child = ChildSvc()
@@ -416,7 +416,7 @@ def test_inherited_plugin_copies_parent_config():
 def test_child_config_independent_from_parent():
     """Test that after attach, child's config is independent from parent."""
 
-    class ChildSvc(RoutedClass):
+    class ChildSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -424,7 +424,7 @@ def test_child_config_independent_from_parent():
         def child_handler(self):
             return "child"
 
-    class ParentSvc(RoutedClass):
+    class ParentSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("logging")
             self.child = ChildSvc()
@@ -469,7 +469,7 @@ def test_parent_config_change_notifies_children():
 
     Router.register_plugin(TrackingPlugin)
 
-    class ChildSvc(RoutedClass):
+    class ChildSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="child_api")
 
@@ -477,7 +477,7 @@ def test_parent_config_change_notifies_children():
         def child_handler(self):
             return "child"
 
-    class ParentSvc(RoutedClass):
+    class ParentSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="parent_api").plug("tracking")
             self.child = ChildSvc()
@@ -519,7 +519,7 @@ def test_cascading_notifications():
 
     Router.register_plugin(CascadePlugin)
 
-    class GrandchildSvc(RoutedClass):
+    class GrandchildSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="grandchild_api")
 
@@ -527,7 +527,7 @@ def test_cascading_notifications():
         def grandchild_handler(self):
             return "grandchild"
 
-    class ChildSvc(RoutedClass):
+    class ChildSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="child_api")
             self.grandchild = GrandchildSvc()
@@ -536,7 +536,7 @@ def test_cascading_notifications():
         def child_handler(self):
             return "child"
 
-    class ParentSvc(RoutedClass):
+    class ParentSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="parent_api").plug("cascade")
             self.child = ChildSvc()
@@ -579,7 +579,7 @@ def test_child_ignores_parent_config_no_cascade():
 
     Router.register_plugin(IgnorePlugin)
 
-    class GrandchildSvc(RoutedClass):
+    class GrandchildSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="grandchild_api")
 
@@ -587,7 +587,7 @@ def test_child_ignores_parent_config_no_cascade():
         def grandchild_handler(self):
             return "grandchild"
 
-    class ChildSvc(RoutedClass):
+    class ChildSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="child_api")
             self.grandchild = GrandchildSvc()
@@ -596,7 +596,7 @@ def test_child_ignores_parent_config_no_cascade():
         def child_handler(self):
             return "child"
 
-    class ParentSvc(RoutedClass):
+    class ParentSvc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="parent_api").plug("ignore")
             self.child = ChildSvc()

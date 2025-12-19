@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import pytest
 
-from genro_routes import RoutedClass, Router
+from genro_routes import RoutingClass, Router
 
 
-class Owner(RoutedClass):
+class Owner(RoutingClass):
     pass
 
 
@@ -93,13 +93,13 @@ class TestFilterPluginIntegration:
 
     def test_filter_with_child_routers(self):
         """Test that filtering works with hierarchical routers."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Parent(RoutedClass):
+        class Parent(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -130,13 +130,13 @@ class TestFilterPluginIntegration:
 
     def test_filter_removes_empty_child_routers(self):
         """Child routers with no matching entries should be pruned."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Parent(RoutedClass):
+        class Parent(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -158,13 +158,13 @@ class TestFilterPluginIntegration:
 
     def test_filter_tag_inheritance_union(self):
         """Test that parent tags are merged with child tags via union."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Parent(RoutedClass):
+        class Parent(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter", tags="corporate")
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter", tags="internal")
 
@@ -189,13 +189,13 @@ class TestFilterPluginIntegration:
 
     def test_filter_tag_runtime_propagation(self):
         """Test that parent tag changes propagate to children at runtime."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Parent(RoutedClass):
+        class Parent(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter", tags="corporate")
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter", tags="internal")
 
@@ -225,13 +225,13 @@ class TestFilterPluginIntegration:
 
     def test_filter_tag_runtime_propagation_removes_old_tags(self):
         """Test that old parent tags are removed when parent tags change."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Parent(RoutedClass):
+        class Parent(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter", tags="corporate")
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter", tags="internal")
 
@@ -300,13 +300,13 @@ class TestDictLikeInterface:
 
     def test_dict_interface_with_children(self):
         """Test dict interface includes children."""
-        from genro_routes import RoutedClass
+        from genro_routes import RoutingClass
 
-        class Parent(RoutedClass):
+        class Parent(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -354,9 +354,9 @@ class TestGetAndCallWithFilters:
 
     def test_get_raises_not_authorized_when_filtered(self):
         """get() raises NotAuthorized when entry exists but is filtered."""
-        from genro_routes import NotAuthorized, RoutedClass, route
+        from genro_routes import NotAuthorized, RoutingClass, route
 
-        class Svc(RoutedClass):
+        class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
@@ -374,9 +374,9 @@ class TestGetAndCallWithFilters:
 
     def test_get_returns_handler_when_tag_matches(self):
         """get() returns handler when tag matches."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Svc(RoutedClass):
+        class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
@@ -391,9 +391,9 @@ class TestGetAndCallWithFilters:
 
     def test_get_returns_none_when_not_found(self):
         """get() returns None when entry doesn't exist (no filters involved)."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Svc(RoutedClass):
+        class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
@@ -407,9 +407,9 @@ class TestGetAndCallWithFilters:
 
     def test_get_without_filter_returns_handler(self):
         """get() without filter tags returns handler normally."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Svc(RoutedClass):
+        class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
@@ -424,9 +424,9 @@ class TestGetAndCallWithFilters:
 
     def test_call_raises_not_authorized_when_filtered(self):
         """call() raises NotAuthorized when entry exists but is filtered."""
-        from genro_routes import NotAuthorized, RoutedClass, route
+        from genro_routes import NotAuthorized, RoutingClass, route
 
-        class Svc(RoutedClass):
+        class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
@@ -441,9 +441,9 @@ class TestGetAndCallWithFilters:
 
     def test_call_raises_not_found_when_missing(self):
         """call() raises NotFound when entry doesn't exist."""
-        from genro_routes import NotFound, RoutedClass, route
+        from genro_routes import NotFound, RoutingClass, route
 
-        class Svc(RoutedClass):
+        class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
@@ -461,9 +461,9 @@ class TestGetAndCallWithFilters:
 
     def test_call_executes_when_tag_matches(self):
         """call() executes handler when tag matches."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Svc(RoutedClass):
+        class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
@@ -477,9 +477,9 @@ class TestGetAndCallWithFilters:
 
     def test_call_passes_args_to_handler(self):
         """call() passes args and kwargs to handler (excluding filter args)."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Svc(RoutedClass):
+        class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
@@ -493,9 +493,9 @@ class TestGetAndCallWithFilters:
 
     def test_call_with_partial(self):
         """call() with _partial=True enables partial resolution."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Svc(RoutedClass):
+        class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
@@ -514,9 +514,9 @@ class TestFilterPluginAllowNode:
 
     def test_allow_node_with_router_interface(self):
         """Test allow_node checks children when passed a RouterInterface."""
-        from genro_routes import RoutedClass, route
+        from genro_routes import RoutingClass, route
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("filter")
 
@@ -540,7 +540,7 @@ class TestFilterPluginAllowNode:
     def test_allow_node_empty_router(self):
         """Test allow_node with router that has no matching entries."""
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             pass
 
         router = Router(Child(), name="api").plug("filter")

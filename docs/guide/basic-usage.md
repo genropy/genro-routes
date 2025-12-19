@@ -20,9 +20,9 @@ Genro Routes provides instance-scoped routing with hierarchical organization and
 Create a service with instance-scoped routing:
 
 ```python
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 
-class Service(RoutedClass):
+class Service(RoutingClass):
     def __init__(self, label: str):
         self.label = label
         self.api = Router(self, name="api")
@@ -43,7 +43,7 @@ assert second.api.get("describe")() == "service:beta"
 
 - `Router(self, name="api")` creates instance-scoped router in `__init__`
 - `@route("api")` marks method for registration
-- `RoutedClass` is **required** - all classes using `Router` must inherit from it
+- `RoutingClass` is **required** - all classes using `Router` must inherit from it
 - Each instance has independent routing state
 
 ## Registering Handlers
@@ -53,7 +53,7 @@ assert second.api.get("describe")() == "service:beta"
 Methods are automatically registered when decorated with `@route`:
 
 ```python
-class API(RoutedClass):
+class API(RoutingClass):
     def __init__(self):
         self.routes = Router(self, name="routes")
 
@@ -74,7 +74,7 @@ assert api.routes.get("echo")("hello") == "hello"
 assert api.routes.get("alt_name")() == "executed"
 ```
 
-**Registration happens automatically** when you inherit from `RoutedClass` and instantiate routers in `__init__`.
+**Registration happens automatically** when you inherit from `RoutingClass` and instantiate routers in `__init__`.
 
 ## Default Router with `main_router`
 
@@ -83,7 +83,7 @@ assert api.routes.get("alt_name")() == "executed"
 When a class uses a single router consistently, you can define `main_router` as a class attribute to avoid repeating the router name:
 
 ```python
-class Table(RoutedClass):
+class Table(RoutingClass):
     main_router = "table"  # Default router for @route()
 
     def __init__(self):
@@ -117,7 +117,7 @@ assert t.table.get("remove")(1) == "removed:1"
 You can also access the default router programmatically via the `default_router` property:
 
 ```python
-class SingleAPI(RoutedClass):
+class SingleAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -131,7 +131,7 @@ svc = SingleAPI()
 assert svc.default_router is svc.api
 
 # With main_router defined, it takes priority
-class MultiAPI(RoutedClass):
+class MultiAPI(RoutingClass):
     main_router = "admin"
 
     def __init__(self):
@@ -149,7 +149,7 @@ assert m.default_router is m.admin  # main_router takes priority
 Use `get()` to retrieve handlers and `call()` for direct invocation:
 
 ```python
-class Calculator(RoutedClass):
+class Calculator(RoutingClass):
     def __init__(self):
         self.ops = Router(self, name="ops")
 
@@ -180,7 +180,7 @@ assert result == 30
 Clean up method names with prefixes and provide alternative names with the `name` option:
 
 ```python
-class SubService(RoutedClass):
+class SubService(RoutingClass):
     def __init__(self, prefix: str):
         self.prefix = prefix
         self.routes = Router(self, name="routes", prefix="handle_")
@@ -215,7 +215,7 @@ assert sub.routes.get("detail")(10) == "users:detail:10"
 Provide fallback handlers when routes don't exist:
 
 ```python
-class Fallback(RoutedClass):
+class Fallback(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -260,9 +260,9 @@ from genro_routes import NotFound, NotAuthorized, UNAUTHORIZED
 **When using filters with `get()` and `call()`**:
 
 ```python
-from genro_routes import RoutedClass, Router, route, NotFound, NotAuthorized
+from genro_routes import RoutingClass, Router, route, NotFound, NotAuthorized
 
-class SecureAPI(RoutedClass):
+class SecureAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("filter")
 
@@ -337,7 +337,7 @@ result = info["callable"]()  # calls handler("unknown", "path")
 Routers have a `default_entry` parameter (default: `"index"`) that enables catch-all routing patterns when combined with `partial=True`:
 
 ```python
-class FileServer(RoutedClass):
+class FileServer(RoutingClass):
     def __init__(self):
         # default_entry="index" is the default, but can be customized
         self.api = Router(self, name="api", default_entry="serve")
@@ -375,7 +375,7 @@ assert result() == "Serving: docs/api/reference"
 Create nested router structures with dotted path access:
 
 ```python
-class SubService(RoutedClass):
+class SubService(RoutingClass):
     def __init__(self, prefix: str):
         self.prefix = prefix
         self.routes = Router(self, name="routes", prefix="handle_")
@@ -388,7 +388,7 @@ class SubService(RoutedClass):
     def handle_detail(self, ident: int):
         return f"{self.prefix}:detail:{ident}"
 
-class RootAPI(RoutedClass):
+class RootAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.users = SubService("users")
@@ -417,7 +417,7 @@ assert root.api.get("products/detail")(5) == "products:detail:5"
 Inspect router structure and registered handlers:
 
 ```python
-class Inspectable(RoutedClass):
+class Inspectable(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.child_service = SubService("child")
@@ -474,7 +474,7 @@ schema = insp.api.openapi()
 Add custom metadata to handlers using the `meta_` prefix in `@route()`:
 
 ```python
-class MetadataAPI(RoutedClass):
+class MetadataAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 

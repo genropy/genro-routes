@@ -18,12 +18,12 @@ import sys
 
 import pytest
 
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 from genro_routes.plugins._base_plugin import BasePlugin  # Not public API
 
 
 def test_orders_quick_example():
-    class OrdersAPI(RoutedClass):
+    class OrdersAPI(RoutingClass):
         def __init__(self, label: str):
             self.label = label
             self.api = Router(self, name="orders")
@@ -47,7 +47,7 @@ def test_orders_quick_example():
     assert set(overview["entries"].keys()) == {"list", "retrieve", "create"}
 
 
-class Service(RoutedClass):
+class Service(RoutingClass):
     def __init__(self, label: str):
         self.label = label
         self.api = Router(self, name="api")
@@ -57,7 +57,7 @@ class Service(RoutedClass):
         return f"service:{self.label}"
 
 
-class SubService(RoutedClass):
+class SubService(RoutingClass):
     def __init__(self, prefix: str):
         self.prefix = prefix
         self.routes = Router(self, name="routes", prefix="handle_")
@@ -71,7 +71,7 @@ class SubService(RoutedClass):
         return f"{self.prefix}:detail:{ident}"
 
 
-class RootAPI(RoutedClass):
+class RootAPI(RoutingClass):
     def __init__(self):
         self.services: list[Service] = []
         self.api = Router(self, name="api")
@@ -100,7 +100,7 @@ class CapturePlugin(BasePlugin):
 Router.register_plugin(CapturePlugin)
 
 
-class PluginService(RoutedClass):
+class PluginService(RoutingClass):
     def __init__(self):
         self.touched = False
         self.api = Router(self, name="api").plug("capture")
@@ -130,7 +130,7 @@ class TogglePlugin(BasePlugin):
 Router.register_plugin(TogglePlugin)
 
 
-class ToggleService(RoutedClass):
+class ToggleService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("toggle")
 
@@ -139,7 +139,7 @@ class ToggleService(RoutedClass):
         return "done"
 
 
-class DynamicRouterService(RoutedClass):
+class DynamicRouterService(RoutingClass):
     def __init__(self):
         self.dynamic = Router(self, name="dynamic")
         self.dynamic._add_entry(self.dynamic_alpha)
@@ -219,7 +219,7 @@ def test_get_with_smartasync(monkeypatch):
 
 
 def test_get_uses_init_default_handler():
-    class DefaultService(RoutedClass):
+    class DefaultService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api", get_default_handler=lambda: "init-default")
 
@@ -229,7 +229,7 @@ def test_get_uses_init_default_handler():
 
 
 def test_get_runtime_override_init_default_handler():
-    class DefaultService(RoutedClass):
+    class DefaultService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api", get_default_handler=lambda: "init-default")
 
@@ -258,7 +258,7 @@ def test_get_uses_init_smartasync(monkeypatch):
     fake_module.smartasync = fake_smartasync
     monkeypatch.setitem(sys.modules, "smartasync", fake_module)
 
-    class AsyncService(RoutedClass):
+    class AsyncService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api", get_use_smartasync=True)
 
@@ -286,7 +286,7 @@ def test_get_can_disable_init_smartasync(monkeypatch):
     fake_module.smartasync = fake_smartasync
     monkeypatch.setitem(sys.modules, "smartasync", fake_module)
 
-    class AsyncService(RoutedClass):
+    class AsyncService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api", get_use_smartasync=True)
 
@@ -318,7 +318,7 @@ def test_plugin_enable_disable_runtime_data():
 
 
 def test_dotted_path_and_nodes_with_attached_child():
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -326,7 +326,7 @@ def test_dotted_path_and_nodes_with_attached_child():
         def ping(self):
             return "pong"
 
-    class Parent(RoutedClass):
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -349,7 +349,7 @@ class TestMainRouterAttribute:
     def test_route_without_args_uses_main_router(self):
         """@route() without arguments uses main_router class attribute."""
 
-        class Table(RoutedClass):
+        class Table(RoutingClass):
             main_router = "table"
 
             def __init__(self):
@@ -371,7 +371,7 @@ class TestMainRouterAttribute:
     def test_route_with_explicit_name_overrides_main_router(self):
         """@route('other') ignores main_router."""
 
-        class Mixed(RoutedClass):
+        class Mixed(RoutingClass):
             main_router = "api"
 
             def __init__(self):
@@ -396,7 +396,7 @@ class TestMainRouterAttribute:
     def test_route_without_main_router_is_ignored(self):
         """@route() without main_router is not registered anywhere."""
 
-        class NoDefault(RoutedClass):
+        class NoDefault(RoutingClass):
             # No main_router defined
 
             def __init__(self):
@@ -418,7 +418,7 @@ class TestMainRouterAttribute:
     def test_main_router_with_custom_entry_name(self):
         """@route(name='custom') works with main_router."""
 
-        class Table(RoutedClass):
+        class Table(RoutingClass):
             main_router = "table"
 
             def __init__(self):
@@ -436,7 +436,7 @@ class TestMainRouterAttribute:
     def test_main_router_inheritance(self):
         """Subclass inherits main_router from parent."""
 
-        class BaseTable(RoutedClass):
+        class BaseTable(RoutingClass):
             main_router = "table"
 
             @route()
@@ -461,7 +461,7 @@ class TestMainRouterAttribute:
     def test_main_router_override_in_subclass(self):
         """Subclass can override main_router - affects all methods including inherited."""
 
-        class BaseTable(RoutedClass):
+        class BaseTable(RoutingClass):
             main_router = "table"
 
             @route()
@@ -490,7 +490,7 @@ class TestMainRouterAttribute:
     def test_main_router_with_plugin_kwargs(self):
         """@route() with kwargs works with main_router."""
 
-        class TaggedTable(RoutedClass):
+        class TaggedTable(RoutingClass):
             main_router = "table"
 
             def __init__(self):
@@ -511,26 +511,26 @@ class TestMainRouterAttribute:
 
 
 # ============================================================================
-# RoutedClass requirement and default_router tests
+# RoutingClass requirement and default_router tests
 # ============================================================================
 
 
-class TestRoutedClassRequirement:
-    """Test that Router requires RoutedClass."""
+class TestRoutingClassRequirement:
+    """Test that Router requires RoutingClass."""
 
     def test_router_requires_routed_class(self):
-        """Router raises TypeError if owner is not a RoutedClass."""
+        """Router raises TypeError if owner is not a RoutingClass."""
 
         class PlainClass:
             pass
 
-        with pytest.raises(TypeError, match="must be a RoutedClass"):
+        with pytest.raises(TypeError, match="must be a RoutingClass"):
             Router(PlainClass(), name="api")
 
     def test_router_accepts_routed_class(self):
-        """Router accepts RoutedClass instances."""
+        """Router accepts RoutingClass instances."""
 
-        class MyService(RoutedClass):
+        class MyService(RoutingClass):
             pass
 
         svc = MyService()
@@ -539,12 +539,12 @@ class TestRoutedClassRequirement:
 
 
 class TestDefaultRouter:
-    """Test default_router property on RoutedClass."""
+    """Test default_router property on RoutingClass."""
 
     def test_default_router_single_router(self):
         """default_router returns the only router when there's exactly one."""
 
-        class SingleRouter(RoutedClass):
+        class SingleRouter(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -554,7 +554,7 @@ class TestDefaultRouter:
     def test_default_router_multiple_routers_no_main(self):
         """default_router returns None when multiple routers and no main_router."""
 
-        class MultiRouter(RoutedClass):
+        class MultiRouter(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.admin = Router(self, name="admin")
@@ -565,7 +565,7 @@ class TestDefaultRouter:
     def test_default_router_uses_main_router_attribute(self):
         """default_router respects main_router class attribute."""
 
-        class WithMainRouter(RoutedClass):
+        class WithMainRouter(RoutingClass):
             main_router = "admin"
 
             def __init__(self):
@@ -578,7 +578,7 @@ class TestDefaultRouter:
     def test_default_router_no_routers(self):
         """default_router returns None when no routers registered."""
 
-        class NoRouters(RoutedClass):
+        class NoRouters(RoutingClass):
             pass
 
         svc = NoRouters()
@@ -587,7 +587,7 @@ class TestDefaultRouter:
     def test_default_router_main_router_not_found(self):
         """default_router returns None when main_router name doesn't match any router."""
 
-        class BadMainRouter(RoutedClass):
+        class BadMainRouter(RoutingClass):
             main_router = "nonexistent"
 
             def __init__(self):
@@ -609,7 +609,7 @@ class TestGetWithPartial:
         """get(partial=True) returns partial with default_entry handler for unresolved paths."""
         import functools
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -617,7 +617,7 @@ class TestGetWithPartial:
             def index(self, *args):
                 return f"index called with: {args}"
 
-        class Root(RoutedClass):
+        class Root(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.child = Child()
@@ -636,7 +636,7 @@ class TestGetWithPartial:
     def test_partial_can_be_called_later(self):
         """partial result can be invoked later with bound args."""
 
-        class Service(RoutedClass):
+        class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -656,7 +656,7 @@ class TestGetWithPartial:
         """partial works correctly with deeply nested router hierarchies."""
         import functools
 
-        class GrandChild(RoutedClass):
+        class GrandChild(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -664,13 +664,13 @@ class TestGetWithPartial:
             def index(self, *args):
                 return f"grandchild index: {args}"
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.grandchild = GrandChild()
                 self.api.attach_instance(self.grandchild, name="grandchild")
 
-        class Root(RoutedClass):
+        class Root(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.child = Child()
@@ -689,7 +689,7 @@ class TestGetWithPartial:
     def test_partial_false_returns_none_for_unresolved(self):
         """Without partial=True, get() returns None for unresolved paths."""
 
-        class Service(RoutedClass):
+        class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -709,7 +709,7 @@ class TestGetWithPartial:
     def test_partial_with_single_segment_unresolved_returns_none(self):
         """partial=True returns None for non-existent single segment (no router to resolve)."""
 
-        class Service(RoutedClass):
+        class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -725,7 +725,7 @@ class TestGetWithPartial:
     def test_partial_resolved_path_returns_normal_result(self):
         """When path is fully resolved, partial=True doesn't change behavior."""
 
-        class Service(RoutedClass):
+        class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -744,7 +744,7 @@ class TestGetWithPartial:
     def test_partial_entry_with_extra_path_segments(self):
         """When entry exists but has extra path, return partial with segments as args."""
 
-        class Service(RoutedClass):
+        class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -772,7 +772,7 @@ class TestDefaultEntryWithPartial:
     def test_default_entry_is_index_by_default(self):
         """Router default_entry is 'index' by default."""
 
-        class Service(RoutedClass):
+        class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -786,7 +786,7 @@ class TestDefaultEntryWithPartial:
     def test_default_entry_can_be_customized(self):
         """Router default_entry can be set to a custom value."""
 
-        class Service(RoutedClass):
+        class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api", default_entry="handle")
 
@@ -801,7 +801,7 @@ class TestDefaultEntryWithPartial:
         """partial=True uses child router's default_entry (index) for unresolved path."""
         import functools
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -809,7 +809,7 @@ class TestDefaultEntryWithPartial:
             def index(self, *args):
                 return f"index called with {args}"
 
-        class Root(RoutedClass):
+        class Root(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.child = Child()
@@ -828,7 +828,7 @@ class TestDefaultEntryWithPartial:
         """partial=True uses custom default_entry when configured."""
         import functools
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api", default_entry="handle")
 
@@ -836,7 +836,7 @@ class TestDefaultEntryWithPartial:
             def handle(self, *args):
                 return f"handle called with {args}"
 
-        class Root(RoutedClass):
+        class Root(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.child = Child()
@@ -853,7 +853,7 @@ class TestDefaultEntryWithPartial:
         """partial=True raises ValueError when default_entry doesn't exist."""
         import pytest
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")  # default_entry="index" but no index entry
 
@@ -861,7 +861,7 @@ class TestDefaultEntryWithPartial:
             def action(self):  # Not named "index"
                 return "action"
 
-        class Root(RoutedClass):
+        class Root(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.child = Child()
@@ -876,7 +876,7 @@ class TestDefaultEntryWithPartial:
         """partial=True on single segment router uses default_entry."""
         import functools
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -884,7 +884,7 @@ class TestDefaultEntryWithPartial:
             def index(self):
                 return "index"
 
-        class Root(RoutedClass):
+        class Root(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.child = Child()
@@ -900,7 +900,7 @@ class TestDefaultEntryWithPartial:
     def test_partial_false_returns_router_not_default_entry(self):
         """Without partial=True, get() returns the router itself."""
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -908,7 +908,7 @@ class TestDefaultEntryWithPartial:
             def index(self):
                 return "index"
 
-        class Root(RoutedClass):
+        class Root(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.child = Child()
@@ -924,7 +924,7 @@ class TestDefaultEntryWithPartial:
         """partial=True with empty selector uses this router's default_entry."""
         import functools
 
-        class Service(RoutedClass):
+        class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -942,7 +942,7 @@ class TestDefaultEntryWithPartial:
         """partial=True with empty selector raises when default_entry missing."""
         import pytest
 
-        class Service(RoutedClass):
+        class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -958,7 +958,7 @@ class TestDefaultEntryWithPartial:
     def test_leading_slash_is_stripped(self):
         """get() strips leading slash from selector."""
 
-        class Service(RoutedClass):
+        class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -975,7 +975,7 @@ class TestDefaultEntryWithPartial:
     def test_leading_slash_with_hierarchy(self):
         """get() strips leading slash in hierarchical paths."""
 
-        class Child(RoutedClass):
+        class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
@@ -983,7 +983,7 @@ class TestDefaultEntryWithPartial:
             def handler(self):
                 return "child handler"
 
-        class Root(RoutedClass):
+        class Root(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.child = Child()

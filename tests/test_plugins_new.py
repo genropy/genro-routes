@@ -16,10 +16,10 @@
 
 # Import to trigger plugin registration
 import genro_routes.plugins.logging  # noqa: F401
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 
 
-class LoggedService(RoutedClass):
+class LoggedService(RoutingClass):
     def __init__(self):
         self.calls = 0
         self.routes = Router(self, name="routes").plug("logging")
@@ -67,7 +67,7 @@ def test_logging_plugin_respects_route_plugin_flags():
         def info(self, message):
             records.append(message)
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("logging")
             # Inject dummy logger so we can see if logging fires.
@@ -92,7 +92,7 @@ def test_logging_plugin_respects_runtime_config_toggle():
         def info(self, message):
             records.append(message)
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("logging")
             self.api.logging._logger = DummyLogger()  # type: ignore[attr-defined]
@@ -118,7 +118,7 @@ def test_logging_plugin_print_sink_overrides_logger(capsys):
         def info(self, message):
             records.append(message)
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("logging")
             self.api.logging._logger = DummyLogger()  # type: ignore[attr-defined]

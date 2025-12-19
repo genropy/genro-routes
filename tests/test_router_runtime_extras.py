@@ -16,12 +16,12 @@
 
 import pytest
 
-from genro_routes import RoutedClass, Router, route
-from genro_routes.core.routed import is_routed_class
+from genro_routes import RoutingClass, Router, route
+from genro_routes.core.routing import is_routing_class
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
 
 
-class ManualService(RoutedClass):
+class ManualService(RoutingClass):
     """Service with manual router registration."""
 
     def __init__(self):
@@ -38,7 +38,7 @@ class ManualService(RoutedClass):
         return "auto"
 
 
-class DualRoutes(RoutedClass):
+class DualRoutes(RoutingClass):
     def __init__(self):
         self.one = Router(self, name="one")
         self.two = Router(self, name="two")
@@ -49,20 +49,20 @@ class DualRoutes(RoutedClass):
         return "shared"
 
 
-class MultiChild(RoutedClass):
+class MultiChild(RoutingClass):
     def __init__(self):
         self.router_a = Router(self, name="router_a")
         self.router_b = Router(self, name="router_b")
 
 
-class SlotRouted(RoutedClass):
+class SlotRouted(RoutingClass):
     __slots__ = ("slot_router",)
 
     def __init__(self):
         self.slot_router = Router(self, name="slot")
 
 
-class DuplicateMarkers(RoutedClass):
+class DuplicateMarkers(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -85,7 +85,7 @@ if "stamp_extra" not in Router.available_plugins():
     Router.register_plugin(StampPlugin)
 
 
-class LoggingService(RoutedClass):
+class LoggingService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("logging")
 
@@ -221,7 +221,7 @@ def test_router_nodes_include_metadata_tree():
 def test_router_nodes_with_basepath():
     """Test nodes() with basepath navigates to child router."""
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -229,7 +229,7 @@ def test_router_nodes_with_basepath():
         def child_action(self):
             return "child"
 
-    class Grandchild(RoutedClass):
+    class Grandchild(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -237,7 +237,7 @@ def test_router_nodes_with_basepath():
         def grandchild_action(self):
             return "grandchild"
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -281,7 +281,7 @@ def test_router_nodes_with_basepath():
 def test_get_returns_child_router():
     """Test get() returns child router when path points to one."""
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -289,7 +289,7 @@ def test_get_returns_child_router():
         def child_action(self):
             return "child"
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -324,7 +324,7 @@ def test_get_returns_child_router():
 def test_nodes_lazy_returns_router_references():
     """Test nodes(lazy=True) returns router references for child routers."""
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -332,7 +332,7 @@ def test_nodes_lazy_returns_router_references():
         def child_action(self):
             return "child"
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -367,7 +367,7 @@ def test_nodes_lazy_returns_router_references():
 def test_openapi_returns_schema():
     """Test openapi() returns OpenAPI-compatible schema."""
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -376,7 +376,7 @@ def test_openapi_returns_schema():
             """Get a user by ID."""
             return {"id": user_id, "name": name}
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -409,7 +409,7 @@ def test_openapi_returns_schema():
 def test_openapi_lazy_returns_router_references():
     """Test openapi(lazy=True) returns router references for child routers."""
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -417,7 +417,7 @@ def test_openapi_lazy_returns_router_references():
         def action(self):
             return "child"
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -443,7 +443,7 @@ def test_openapi_lazy_returns_router_references():
 def test_openapi_with_basepath():
     """Test openapi(basepath=...) navigates to child."""
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -451,7 +451,7 @@ def test_openapi_with_basepath():
         def child_action(self):
             return "child"
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -472,37 +472,37 @@ def test_openapi_with_basepath():
 def test_configure_validates_inputs_and_targets():
     svc = LoggingService()
     with pytest.raises(ValueError):
-        svc.routedclass.configure([], enabled=True)
+        svc.routing.configure([], enabled=True)
     with pytest.raises(ValueError):
-        svc.routedclass.configure({"flags": "on"})
+        svc.routing.configure({"flags": "on"})
     with pytest.raises(TypeError):
-        svc.routedclass.configure(42)  # type: ignore[arg-type]
+        svc.routing.configure(42)  # type: ignore[arg-type]
     with pytest.raises(ValueError):
-        svc.routedclass.configure("?", foo="bar")
+        svc.routing.configure("?", foo="bar")
     with pytest.raises(ValueError):
-        svc.routedclass.configure("missingcolon", mode="x")
+        svc.routing.configure("missingcolon", mode="x")
     with pytest.raises(ValueError):
-        svc.routedclass.configure(":logging/_all_", mode="x")
+        svc.routing.configure(":logging/_all_", mode="x")
     with pytest.raises(ValueError):
-        svc.routedclass.configure("api:/_all_", mode="x")
+        svc.routing.configure("api:/_all_", mode="x")
     with pytest.raises(AttributeError):
-        svc.routedclass.configure("api:ghost/_all_", flags="on")
+        svc.routing.configure("api:ghost/_all_", flags="on")
     with pytest.raises(ValueError):
-        svc.routedclass.configure("api:logging/_all_")
+        svc.routing.configure("api:logging/_all_")
     with pytest.raises(KeyError):
-        svc.routedclass.configure("api:logging/missing*", flags="before")
-    result = svc.routedclass.configure("api:logging", flags="before")
+        svc.routing.configure("api:logging/missing*", flags="before")
+    result = svc.routing.configure("api:logging", flags="before")
     assert result["updated"] == ["_all_"]
 
 
 def test_configure_question_success_and_router_proxy_errors():
     svc = LoggingService()
-    tree = svc.routedclass.configure("?")
+    tree = svc.routing.configure("?")
     assert "api" in tree
     with pytest.raises(AttributeError):
-        svc.routedclass.get_router("missing")
+        svc.routing.get_router("missing")
     svc._routers.pop("api")
-    router = svc.routedclass.get_router("api")
+    router = svc.routing.get_router("api")
     assert router is svc.api
 
 
@@ -513,31 +513,31 @@ def test_iter_registered_routers_lists_entries():
 
 
 def test_get_router_skips_empty_segments():
-    class Leaf(RoutedClass):
+    class Leaf(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="leaf")
 
-    class Parent(RoutedClass):
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Leaf()
             self.api._children["child"] = self.child.api  # direct attach for test
 
     svc = Parent()
-    router = svc.routedclass.get_router("api/child//")
+    router = svc.routing.get_router("api/child//")
     assert router.name == "leaf"
 
 
-def test_is_routed_class_helper():
+def test_is_routing_class_helper():
     svc = ManualService()
-    assert is_routed_class(svc) is True
-    assert is_routed_class(object()) is False
+    assert is_routing_class(svc) is True
+    assert is_routing_class(object()) is False
 
 
 def test_openapi_basepath_to_handler_returns_empty():
     """Test openapi(basepath=...) returns empty when pointing to handler."""
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -559,7 +559,7 @@ def test_openapi_basepath_to_handler_returns_empty():
 def test_openapi_with_pydantic_model():
     """Test openapi() uses pydantic model schema when available."""
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
@@ -595,7 +595,7 @@ def test_openapi_entry_filtering():
     if "openapi_filter" not in Router.available_plugins():
         Router.register_plugin(FilterPlugin)
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("openapi_filter")
 
@@ -618,7 +618,7 @@ def test_openapi_entry_filtering():
 def test_openapi_handler_without_type_hints():
     """Test openapi() handles handlers without type hints."""
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -641,7 +641,7 @@ def test_openapi_handler_without_type_hints():
 def test_openapi_type_conversion():
     """Test pydantic schema handles various types in requestBody."""
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -669,7 +669,7 @@ def test_openapi_type_conversion():
 def test_openapi_generic_types():
     """Test pydantic schema handles generic types like list[str]."""
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -696,7 +696,7 @@ def test_openapi_unknown_type_graceful_fallback():
     class CustomType:
         pass
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -718,7 +718,7 @@ def test_openapi_unknown_type_graceful_fallback():
 def test_openapi_required_vs_optional_params():
     """Test pydantic schema correctly marks required vs optional in requestBody."""
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -742,7 +742,7 @@ def test_openapi_required_vs_optional_params():
 def test_openapi_handles_broken_type_hints():
     """Test openapi() gracefully handles functions with unresolvable type hints."""
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -774,7 +774,7 @@ def test_openapi_handles_broken_type_hints():
 def test_openapi_handles_hint_param_mismatch():
     """Test openapi() when type hint references non-existent parameter."""
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -810,7 +810,7 @@ def test_openapi_handles_hint_param_mismatch():
 def test_nodes_unknown_mode_raises():
     """Test that nodes(mode='unknown') raises ValueError."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -832,7 +832,7 @@ def test_nodes_unknown_mode_raises():
 def test_h_openapi_returns_hierarchical_schema():
     """Test h_openapi mode returns nested OpenAPI structure."""
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -841,7 +841,7 @@ def test_h_openapi_returns_hierarchical_schema():
             """Get a user by ID."""
             return {"id": user_id}
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -876,7 +876,7 @@ def test_h_openapi_returns_hierarchical_schema():
 def test_h_openapi_vs_openapi_comparison():
     """Test difference between h_openapi (hierarchical) and openapi (flat)."""
 
-    class GrandChild(RoutedClass):
+    class GrandChild(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -884,7 +884,7 @@ def test_h_openapi_vs_openapi_comparison():
         def deep_action(self):
             return "deep"
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.grandchild = GrandChild()
@@ -894,7 +894,7 @@ def test_h_openapi_vs_openapi_comparison():
         def child_action(self):
             return "child"
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -932,7 +932,7 @@ def test_h_openapi_vs_openapi_comparison():
 def test_h_openapi_lazy_returns_router_references():
     """Test h_openapi lazy=True returns router references."""
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -940,7 +940,7 @@ def test_h_openapi_lazy_returns_router_references():
         def action(self):
             return "child"
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -967,7 +967,7 @@ def test_h_openapi_lazy_returns_router_references():
 def test_h_openapi_preserves_openapi_format():
     """Test h_openapi produces valid OpenAPI format for entries."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -991,7 +991,7 @@ def test_h_openapi_preserves_openapi_format():
 def test_h_openapi_empty_routers_excluded():
     """Test h_openapi excludes empty routers dict."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -1010,7 +1010,7 @@ def test_h_openapi_empty_routers_excluded():
 def test_nodes_includes_description_and_owner_doc():
     """Test nodes() includes router description and owner docstring."""
 
-    class ArticleService(RoutedClass):
+    class ArticleService(RoutingClass):
         """Service for managing articles."""
 
         def __init__(self):
@@ -1030,7 +1030,7 @@ def test_nodes_includes_description_and_owner_doc():
 def test_nodes_description_none_when_not_set():
     """Test nodes() returns None for description when not set."""
 
-    class SimpleService(RoutedClass):
+    class SimpleService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -1048,7 +1048,7 @@ def test_nodes_description_none_when_not_set():
 def test_h_openapi_includes_description_and_owner_doc():
     """Test h_openapi mode includes description and owner_doc at each level."""
 
-    class ChildService(RoutedClass):
+    class ChildService(RoutingClass):
         """Child service for users."""
 
         def __init__(self):
@@ -1058,7 +1058,7 @@ def test_h_openapi_includes_description_and_owner_doc():
         def get_user(self):
             return {}
 
-    class RootService(RoutedClass):
+    class RootService(RoutingClass):
         """Main API service."""
 
         def __init__(self):
@@ -1148,7 +1148,7 @@ def test_guess_http_method_broken_hints_is_post():
 def test_openapi_uses_guessed_http_method():
     """Test openapi output uses guessed HTTP method from signature."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -1196,7 +1196,7 @@ def test_openapi_uses_guessed_http_method():
 def test_openapi_plugin_method_override():
     """Test openapi plugin allows explicit HTTP method override."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("openapi")
 
@@ -1224,7 +1224,7 @@ def test_openapi_plugin_method_override():
 def test_openapi_plugin_tags():
     """Test openapi plugin adds tags to operations."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("openapi")
 
@@ -1251,7 +1251,7 @@ def test_openapi_plugin_tags():
 def test_openapi_plugin_no_effect_without_config():
     """Test openapi plugin doesn't change anything without explicit config."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("openapi")
 
@@ -1280,7 +1280,7 @@ def test_openapi_plugin_available():
 def test_node_returns_entry_info():
     """Test node() returns info for a single entry."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -1302,7 +1302,7 @@ def test_node_returns_entry_info():
 def test_node_returns_router_info():
     """Test node() returns info for a child router."""
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         """Child service docstring."""
 
         def __init__(self):
@@ -1312,7 +1312,7 @@ def test_node_returns_router_info():
         def action(self):
             return "ok"
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -1331,7 +1331,7 @@ def test_node_returns_router_info():
 def test_node_returns_empty_for_missing_path():
     """Test node() returns empty dict for non-existent path."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -1348,7 +1348,7 @@ def test_node_returns_empty_for_missing_path():
 def test_node_with_nested_path():
     """Test node() works with nested paths."""
 
-    class GrandChild(RoutedClass):
+    class GrandChild(RoutingClass):
         """Grandchild docstring."""
 
         def __init__(self):
@@ -1359,7 +1359,7 @@ def test_node_with_nested_path():
             """Deep action docstring."""
             return "deep"
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.grandchild = GrandChild()
@@ -1369,7 +1369,7 @@ def test_node_with_nested_path():
         def child_action(self):
             return "child"
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -1395,7 +1395,7 @@ def test_node_with_nested_path():
 def test_node_with_openapi_mode():
     """Test node() with mode='openapi' includes OpenAPI format."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -1421,7 +1421,7 @@ def test_node_with_openapi_mode():
 def test_node_openapi_mode_on_router_has_no_effect():
     """Test node() with mode='openapi' on router returns normal router info."""
 
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api", description="Child API")
 
@@ -1429,7 +1429,7 @@ def test_node_openapi_mode_on_router_has_no_effect():
         def action(self):
             return "ok"
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -1457,7 +1457,7 @@ def test_openapi_typeddict_response_schema():
         name: str
         active: bool
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -1493,7 +1493,7 @@ def test_openapi_typeddict_with_required_keys():
         id: int
         name: str
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -1523,7 +1523,7 @@ def test_openapi_typeddict_with_required_keys():
 def test_openapi_non_typeddict_still_works():
     """Test openapi still works for non-TypedDict return types."""
 
-    class Svc(RoutedClass):
+    class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 

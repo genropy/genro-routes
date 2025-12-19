@@ -16,7 +16,7 @@
 
 import pytest
 
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 from genro_routes.plugins import pydantic as pyd_mod
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry  # Not public API
 
@@ -34,7 +34,7 @@ class SimplePlugin(BasePlugin):
 
 
 def test_plugin_configure_and_configuration():
-    class Host(RoutedClass):
+    class Host(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple")
 
@@ -58,7 +58,7 @@ def test_plugin_configure_and_configuration():
 
 
 def test_plugin_constructor_flags():
-    class Host(RoutedClass):
+    class Host(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple", flags="beta:on,alpha:off")
 
@@ -83,7 +83,7 @@ ensure_plugin(SimplePlugin)
 def test_plugin_configuration_has_defaults():
     """Test that plugin configuration returns default config when no custom config set."""
 
-    class Host(RoutedClass):
+    class Host(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple")
 
@@ -95,7 +95,7 @@ def test_plugin_configuration_has_defaults():
 def test_plugin_missing_plugin_raises():
     """Test that accessing missing plugin raises AttributeError."""
 
-    class Host(RoutedClass):
+    class Host(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple")
 
@@ -114,7 +114,7 @@ def test_plugin_missing_plugin_raises():
 def test_route_decorator_with_plugin_options():
     """Test that handlers with plugin options in decorator work correctly."""
 
-    class Host(RoutedClass):
+    class Host(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple")
 
@@ -133,7 +133,7 @@ def test_route_decorator_with_plugin_options():
 def test_plugin_configure_after_binding():
     """Test that configure() works after binding."""
 
-    class Host(RoutedClass):
+    class Host(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple")
 
@@ -153,7 +153,7 @@ def test_plugin_configure_after_binding():
 def test_route_decorator_metadata_preserved():
     """Test that custom metadata from route decorator is preserved."""
 
-    class Host(RoutedClass):
+    class Host(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -170,7 +170,7 @@ def test_route_decorator_metadata_preserved():
 
 
 def test_router_auto_registers_marked_methods_and_validates_plugins():
-    class Demo(RoutedClass):
+    class Demo(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -187,7 +187,7 @@ def test_router_auto_registers_marked_methods_and_validates_plugins():
 
 
 def test_router_detects_handler_name_collision():
-    class DuplicateService(RoutedClass):
+    class DuplicateService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -205,7 +205,7 @@ def test_router_detects_handler_name_collision():
 
 
 def test_iter_plugins_and_missing_attribute():
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple")
 
@@ -221,7 +221,7 @@ def test_iter_plugins_and_missing_attribute():
 
 
 def test_attach_and_detach_instance_single_router_with_alias():
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -229,7 +229,7 @@ def test_attach_and_detach_instance_single_router_with_alias():
         def ping(self):
             return "pong"
 
-    class Parent(RoutedClass):
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -250,12 +250,12 @@ def test_attach_and_detach_instance_single_router_with_alias():
 
 
 def test_attach_instance_multiple_routers_requires_mapping():
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.admin = Router(self, name="admin")
 
-    class Parent(RoutedClass):
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -269,11 +269,11 @@ def test_attach_instance_multiple_routers_requires_mapping():
 
 
 def test_attach_instance_single_child_requires_alias_when_parent_multi():
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
-    class Parent(RoutedClass):
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.admin = Router(self, name="admin")
@@ -288,12 +288,12 @@ def test_attach_instance_single_child_requires_alias_when_parent_multi():
 
 
 def test_attach_instance_allows_partial_mapping_and_skips_unmapped():
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.admin = Router(self, name="admin")
 
-    class Parent(RoutedClass):
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -311,11 +311,11 @@ def test_attach_instance_allows_partial_mapping_and_skips_unmapped():
 
 
 def test_attach_instance_name_collision():
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
-    class Parent(RoutedClass):
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child1 = Child()
@@ -328,7 +328,7 @@ def test_attach_instance_name_collision():
 
 
 def test_detach_instance_missing_alias():
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.admin = Router(self, name="admin")
@@ -342,8 +342,8 @@ def test_detach_instance_missing_alias():
     assert info.get("routers", {}) == {}
 
 
-def test_attach_instance_requires_routedclass():
-    class Parent(RoutedClass):
+def test_attach_instance_requires_routing_class():
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -355,7 +355,7 @@ def test_attach_instance_requires_routedclass():
 
 
 def test_auto_detach_on_attribute_replacement():
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
@@ -363,7 +363,7 @@ def test_auto_detach_on_attribute_replacement():
         def ping(self):
             return "pong"
 
-    class Parent(RoutedClass):
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
@@ -383,11 +383,11 @@ def test_auto_detach_on_attribute_replacement():
 
 
 def test_attach_instance_rejects_other_parent_when_already_bound():
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
-    class Parent(RoutedClass):
+    class Parent(RoutingClass):
         def __init__(self, label: str):
             self.label = label
             self.api = Router(self, name="api")
@@ -407,12 +407,12 @@ def test_attach_instance_rejects_other_parent_when_already_bound():
 
 
 def test_attach_instance_requires_mapping_when_parent_has_multiple_routers():
-    class Child(RoutedClass):
+    class Child(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.admin = Router(self, name="admin")
 
-    class Parent(RoutedClass):
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.admin = Router(self, name="admin")
@@ -426,7 +426,7 @@ def test_attach_instance_requires_mapping_when_parent_has_multiple_routers():
 def test_branch_router_blocks_entries():
     """Branch routers cannot register handlers directly."""
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.branch = Router(self, name="branch", branch=True)
 
@@ -438,7 +438,7 @@ def test_branch_router_blocks_entries():
 def test_parent_router_creates_hierarchy():
     """Test that parent_router parameter creates router hierarchies."""
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api", branch=True)
             self.users = Router(self, name="users", parent_router=self.api)
@@ -467,7 +467,7 @@ def test_parent_router_creates_hierarchy():
 def test_parent_router_requires_name():
     """Test that parent_router raises ValueError if child has no name."""
 
-    class Owner(RoutedClass):
+    class Owner(RoutingClass):
         pass
 
     owner = Owner()
@@ -480,7 +480,7 @@ def test_parent_router_requires_name():
 def test_parent_router_detects_collision():
     """Test that parent_router raises ValueError on name collision."""
 
-    class Owner(RoutedClass):
+    class Owner(RoutingClass):
         pass
 
     owner = Owner()
@@ -494,7 +494,7 @@ def test_parent_router_detects_collision():
 def _make_router_for_plugin_test():
     """Create a minimal router for testing plugin behavior."""
 
-    class Owner(RoutedClass):
+    class Owner(RoutingClass):
         pass
 
     return Router(Owner(), name="test")
@@ -610,7 +610,7 @@ def test_router_get_config_paths():
 
     Router.register_plugin(CfgPlugin)
 
-    class Service(RoutedClass):
+    class Service(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("cfgplug", mode="x")
             # Per-handler config via configure()
@@ -629,25 +629,25 @@ def test_router_get_config_paths():
 
 
 def test_routed_proxy_get_router_handles_dotted_path():
-    class Leaf(RoutedClass):
+    class Leaf(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="leaf")
 
-    class Parent(RoutedClass):
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Leaf()
             self.api._children["child"] = self.child.api  # direct attach for test
 
     svc = Parent()
-    router = svc.routedclass.get_router("api/child")
+    router = svc.routing.get_router("api/child")
     assert router.name == "leaf"
 
 
 def test_routed_configure_updates_plugins_global_and_local():
     ensure_plugin(SimplePlugin)
 
-    class ConfService(RoutedClass):
+    class ConfService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple")
 
@@ -661,20 +661,20 @@ def test_routed_configure_updates_plugins_global_and_local():
 
     svc = ConfService()
     svc.api.nodes()  # Trigger lazy binding before configure
-    svc.routedclass.configure("api:simple/_all_", threshold=10)
+    svc.routing.configure("api:simple/_all_", threshold=10)
     assert svc.api.simple.configuration()["threshold"] == 10
 
-    svc.routedclass.configure("api:simple/foo", enabled=False)
+    svc.routing.configure("api:simple/foo", enabled=False)
     assert svc.api.simple.configuration("foo")["enabled"] is False
 
-    svc.routedclass.configure("api:simple/b*", mode="strict")
+    svc.routing.configure("api:simple/b*", mode="strict")
     assert svc.api.simple.configuration("bar")["mode"] == "strict"
 
     payload = [
         {"target": "api:simple/_all_", "flags": "trace"},
         {"target": "api:simple/foo", "limit": 5},
     ]
-    result = svc.routedclass.configure(payload)
+    result = svc.routing.configure(payload)
     assert len(result) == 2
     assert svc.api.simple.configuration("foo")["limit"] == 5
 
@@ -682,7 +682,7 @@ def test_routed_configure_updates_plugins_global_and_local():
 def test_routed_configure_question_lists_tree():
     ensure_plugin(SimplePlugin)
 
-    class Root(RoutedClass):
+    class Root(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("simple")
 
@@ -691,7 +691,7 @@ def test_routed_configure_question_lists_tree():
             return "root"
 
     svc = Root()
-    info = svc.routedclass.configure("?")
+    info = svc.routing.configure("?")
     assert "api" in info
     assert info["api"]["plugins"]
     assert info["api"]["routers"] == {}

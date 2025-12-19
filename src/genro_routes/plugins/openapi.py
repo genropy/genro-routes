@@ -15,9 +15,9 @@ Accepted keys (router-level or per-handler):
 
 Example::
 
-    from genro_routes import Router, RoutedClass, route
+    from genro_routes import Router, RoutingClass, route
 
-    class MyService(RoutedClass):
+    class MyService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("openapi")
 

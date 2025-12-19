@@ -6,9 +6,9 @@ This document is the source of truth for how routing, hierarchy, and plugins wor
 
 ```mermaid
 graph TD
-  RC[RoutedClass instance]
+  RC[RoutingClass instance]
   Router[Router (per instance)]
-  ChildRC[Child RoutedClass]
+  ChildRC[Child RoutingClass]
   ChildRouter[Child Router]
 
   RC -->|attribute| Router
@@ -176,12 +176,12 @@ requires corporate OR admin access (more permissive, not more restrictive).
 #### Example
 
 ```python
-class Parent(RoutedClass):
+class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("filter", tags="corporate")
         self.child = Child()
 
-class Child(RoutedClass):
+class Child(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("filter", tags="internal")
 

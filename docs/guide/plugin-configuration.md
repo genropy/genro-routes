@@ -4,7 +4,7 @@ Configure plugins at runtime through a unified API with support for global setti
 
 ## Overview
 
-Genro Routes provides `routedclass.configure()` for runtime plugin configuration with:
+Genro Routes provides `routing.configure()` for runtime plugin configuration with:
 
 - **Target syntax**: `<router>:<plugin>/<selector>` format
 - **Global configuration**: Apply to all handlers with `_all_`
@@ -44,9 +44,9 @@ Glob patterns use `fnmatch` for matching.
 Configure plugins using keyword arguments:
 
 ```python
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 
-class ConfService(RoutedClass):
+class ConfService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("logging")
 
@@ -61,15 +61,15 @@ class ConfService(RoutedClass):
 svc = ConfService()
 
 # Global configuration - applies to all handlers
-svc.routedclass.configure("api:logging/_all_", threshold=10)
+svc.routing.configure("api:logging/_all_", threshold=10)
 assert svc.api.logging.configuration()["threshold"] == 10
 
 # Handler-specific configuration
-svc.routedclass.configure("api:logging/foo", enabled=False)
+svc.routing.configure("api:logging/foo", enabled=False)
 assert svc.api.logging.configuration("foo")["enabled"] is False
 
 # Glob pattern configuration
-svc.routedclass.configure("api:logging/b*", mode="strict")
+svc.routing.configure("api:logging/b*", mode="strict")
 assert svc.api.logging.configuration("bar")["mode"] == "strict"
 ```
 
@@ -92,7 +92,7 @@ payload = [
     {"target": "api:logging/foo", "limit": 5},
 ]
 
-result = svc.routedclass.configure(payload)
+result = svc.routing.configure(payload)
 assert len(result) == 2
 assert svc.api.logging.configuration("foo")["limit"] == 5
 ```
@@ -118,7 +118,7 @@ assert svc.api.logging.configuration("foo")["limit"] == 5
 Query the router and plugin structure with `"?"`:
 
 ```python
-class Leaf(RoutedClass):
+class Leaf(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("logging")
 
@@ -126,7 +126,7 @@ class Leaf(RoutedClass):
     def ping(self):
         return "leaf"
 
-class Root(RoutedClass):
+class Root(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("logging")
         self.leaf = Leaf()
@@ -139,7 +139,7 @@ class Root(RoutedClass):
 svc = Root()
 
 # Get full configuration tree
-info = svc.routedclass.configure("?")
+info = svc.routing.configure("?")
 assert "api" in info
 assert info["api"]["plugins"]
 assert "leaf" in info["api"]["routers"]
@@ -159,7 +159,7 @@ assert "leaf" in info["api"]["routers"]
 Create a dedicated configuration endpoint:
 
 ```python
-class ConfigAPI(RoutedClass):
+class ConfigAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("logging")
         self.admin = Router(self, name="admin")
@@ -167,7 +167,7 @@ class ConfigAPI(RoutedClass):
     @route("admin")
     def configure_plugin(self, target: str, **options):
         """Configure plugins via API endpoint."""
-        result = self.routedclass.configure(target, **options)
+        result = self.routing.configure(target, **options)
         return {"status": "ok", "result": result}
 
 config = ConfigAPI()
@@ -197,19 +197,19 @@ assert result["status"] == "ok"
 ```python
 # Router name cannot be empty
 try:
-    svc.routedclass.configure(":logging/_all_", enabled=True)
+    svc.routing.configure(":logging/_all_", enabled=True)
 except ValueError:
     pass  # Expected
 
 # Plugin must exist
 try:
-    svc.routedclass.configure("api:nonexistent/_all_", enabled=True)
+    svc.routing.configure("api:nonexistent/_all_", enabled=True)
 except AttributeError:
     pass  # Expected
 
 # Selector must match at least one handler
 try:
-    svc.routedclass.configure("api:logging/nonexistent", enabled=True)
+    svc.routing.configure("api:logging/nonexistent", enabled=True)
 except KeyError:
     pass  # Expected
 ```
@@ -220,11 +220,11 @@ except KeyError:
 
 ```python
 # Set defaults for all handlers
-svc.routedclass.configure("api:logging/_all_", enabled=True, level="info")
+svc.routing.configure("api:logging/_all_", enabled=True, level="info")
 
 # Override for specific handlers
-svc.routedclass.configure("api:logging/debug_*", level="debug")
-svc.routedclass.configure("api:logging/admin_*", enabled=False)
+svc.routing.configure("api:logging/debug_*", level="debug")
+svc.routing.configure("api:logging/admin_*", enabled=False)
 ```
 
 **Configuration from files**:
@@ -237,17 +237,17 @@ with open("plugin_config.json") as f:
     config = json.load(f)
 
 # Apply batch configuration
-svc.routedclass.configure(config["plugins"])
+svc.routing.configure(config["plugins"])
 ```
 
 **Gradual rollout**:
 
 ```python
 # Enable new feature for test handlers only
-svc.routedclass.configure("api:new_feature/test_*", enabled=True)
+svc.routing.configure("api:new_feature/test_*", enabled=True)
 
 # Expand to all after validation
-svc.routedclass.configure("api:new_feature/_all_", enabled=True)
+svc.routing.configure("api:new_feature/_all_", enabled=True)
 ```
 
 ## Next Steps

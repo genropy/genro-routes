@@ -26,18 +26,18 @@ Genro Routes provides a consistent, well-tested foundation for these patterns.
 
 1. **Instance-scoped routers** - Each object instantiates its own routers (`Router(self, ...)`) with isolated state.
 2. **Friendly registration** - `@route(...)` accepts explicit names, auto-strips prefixes, and supports custom metadata.
-3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutedClass instances with path access (`parent.api.get("child/method")`).
+3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutingClass instances with path access (`parent.api.get("child/method")`).
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
-5. **Runtime configuration** - `routedclass.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
+5. **Runtime configuration** - `routing.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
 6. **Built-in plugins** - `logging`, `pydantic`, and `filter` plugins are included; SmartAsync wrapping is opt-in.
 7. **Full coverage** - The package ships with a comprehensive test suite and no hidden compatibility layers.
 
 ## Quick Example
 
 ```python
-from genro_routes import RoutedClass, Router, route
+from genro_routes import RoutingClass, Router, route
 
-class OrdersAPI(RoutedClass):
+class OrdersAPI(RoutingClass):
     def __init__(self, label: str):
         self.label = label
         self.api = Router(self, name="orders")
@@ -67,7 +67,7 @@ print(overview["entries"].keys())      # dict_keys(['list', 'retrieve', 'create'
 Build nested service structures with path access:
 
 ```python
-class UsersAPI(RoutedClass):
+class UsersAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
@@ -75,7 +75,7 @@ class UsersAPI(RoutedClass):
     def list(self):
         return ["alice", "bob"]
 
-class Application(RoutedClass):
+class Application(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.users = UsersAPI()
@@ -109,19 +109,19 @@ pip install -e ".[all]"
 
 - **`Router`** - Runtime router bound directly to an object via `Router(self, name="api")`
 - **`@route("name")`** - Decorator that marks bound methods for the router with the matching name
-- **`RoutedClass`** - Mixin that tracks routers per instance and exposes the `routedclass` proxy
+- **`RoutingClass`** - Mixin that tracks routers per instance and exposes the `routing` proxy
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
-- **`obj.routedclass`** - Proxy exposed by every RoutedClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
+- **`obj.routing`** - Proxy exposed by every RoutingClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
 - **`NotFound` / `NotAuthorized`** - Exceptions for routing errors (entry not found vs. access denied by filters)
 - **`UNAUTHORIZED`** - Sentinel value returned by `node()` when entry is filtered out
 
 ## Pattern Highlights
 
 - **Explicit naming + prefixes** - `@route("api", name="detail")` and `Router(self, prefix="handle_")` separate method names from public route names.
-- **Explicit instance hierarchies** - `self.api.attach_instance(self.child, name="alias")` connects RoutedClass instances with parent tracking and auto-detachment.
+- **Explicit instance hierarchies** - `self.api.attach_instance(self.child, name="alias")` connects RoutingClass instances with parent tracking and auto-detachment.
 - **Branch routers** - `Router(self, branch=True)` creates pure organizational nodes without handlers.
 - **Built-in and custom plugins** - `Router(self, ...).plug("logging")`, `Router(self, ...).plug("pydantic")`, or custom plugins.
-- **Runtime configuration** - `routedclass.configure("api:logging/_all_", enabled=False)` applies targeted overrides with wildcards or batch updates.
+- **Runtime configuration** - `routing.configure("api:logging/_all_", enabled=False)` applies targeted overrides with wildcards or batch updates.
 - **Lazy binding** - Routers auto-bind on first use; no explicit `bind()` call needed.
 
 ## Documentation
@@ -148,7 +148,7 @@ genro-routes/
 │   ├── core/               # Core router implementation
 │   │   ├── router.py       # Router runtime implementation
 │   │   ├── decorators.py   # @route decorator
-│   │   └── routed.py       # RoutedClass mixin
+│   │   └── routing.py      # RoutingClass mixin
 │   └── plugins/            # Built-in plugins
 │       ├── logging.py      # LoggingPlugin
 │       ├── pydantic.py     # PydanticPlugin

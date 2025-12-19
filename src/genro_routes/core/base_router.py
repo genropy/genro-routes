@@ -54,7 +54,7 @@ Children (instance hierarchies)
 -------------------------------
 ``attach_instance(child, name=None)`` / ``detach_instance(child)``
 
-- ``attach_instance`` connects routers exposed on a ``RoutedClass`` child that
+- ``attach_instance`` connects routers exposed on a ``RoutingClass`` child that
   is already stored as an attribute on the parent instance.
 - Attached child routers inherit plugins via ``_on_attached_to_parent``.
 
@@ -136,10 +136,10 @@ class BaseRouter(RouterInterface):
     ) -> None:
         if owner is None:
             raise ValueError("Router requires a parent instance")
-        if not safe_is_instance(owner, "genro_routes.core.routed.RoutedClass"):
+        if not safe_is_instance(owner, "genro_routes.core.routing.RoutingClass"):
             raise TypeError(
-                f"Router owner must be a RoutedClass instance, got {type(owner).__name__}. "
-                "Inherit from RoutedClass to use Router."
+                f"Router owner must be a RoutingClass instance, got {type(owner).__name__}. "
+                "Inherit from RoutingClass to use Router."
             )
         self.instance = owner
         self.name = name
@@ -468,7 +468,7 @@ class BaseRouter(RouterInterface):
 
         This enables catch-all routing patterns::
 
-            class Child(RoutedClass):
+            class Child(RoutingClass):
                 def __init__(self):
                     self.api = Router(self, name="api")  # default_entry="index"
 
@@ -666,18 +666,18 @@ class BaseRouter(RouterInterface):
     # ------------------------------------------------------------------
     # Children management (via attach_instance/detach_instance)
     # ------------------------------------------------------------------
-    def attach_instance(self, routed_child: Any, *, name: str | None = None) -> BaseRouter:
-        """Attach a RoutedClass instance with optional alias mapping."""
-        if not safe_is_instance(routed_child, "genro_routes.core.routed.RoutedClass"):
-            raise TypeError("attach_instance() requires a RoutedClass instance")
-        existing_parent = getattr(routed_child, "_routed_parent", None)
+    def attach_instance(self, routing_child: Any, *, name: str | None = None) -> BaseRouter:
+        """Attach a RoutingClass instance with optional alias mapping."""
+        if not safe_is_instance(routing_child, "genro_routes.core.routing.RoutingClass"):
+            raise TypeError("attach_instance() requires a RoutingClass instance")
+        existing_parent = getattr(routing_child, "_routing_parent", None)
         if existing_parent is not None and existing_parent is not self.instance:
             raise ValueError("attach_instance() rejected: child already bound to another parent")
 
-        candidates = self._collect_child_routers(routed_child)
+        candidates = self._collect_child_routers(routing_child)
         if not candidates:
             raise TypeError(
-                f"Object {routed_child!r} does not expose Router instances"
+                f"Object {routing_child!r} does not expose Router instances"
             )  # pragma: no cover
 
         mapping: dict[str, str] = {}
@@ -736,26 +736,26 @@ class BaseRouter(RouterInterface):
             router._on_attached_to_parent(self)
             attached = router
 
-        if getattr(routed_child, "_routed_parent", None) is not self.instance:
-            object.__setattr__(routed_child, "_routed_parent", self.instance)
+        if getattr(routing_child, "_routing_parent", None) is not self.instance:
+            object.__setattr__(routing_child, "_routing_parent", self.instance)
         assert attached is not None
         return attached
 
-    def detach_instance(self, routed_child: Any) -> BaseRouter:
-        """Detach all routers belonging to a RoutedClass instance."""
-        if not safe_is_instance(routed_child, "genro_routes.core.routed.RoutedClass"):
-            raise TypeError("detach_instance() requires a RoutedClass instance")
+    def detach_instance(self, routing_child: Any) -> BaseRouter:
+        """Detach all routers belonging to a RoutingClass instance."""
+        if not safe_is_instance(routing_child, "genro_routes.core.routing.RoutingClass"):
+            raise TypeError("detach_instance() requires a RoutingClass instance")
         removed: list[str] = []
         for alias, router in list(self._children.items()):
-            if router.instance is routed_child:
+            if router.instance is routing_child:
                 removed.append(alias)
                 self._children.pop(alias, None)
 
-        if getattr(routed_child, "_routed_parent", None) is self.instance:
-            object.__setattr__(routed_child, "_routed_parent", None)
+        if getattr(routing_child, "_routing_parent", None) is self.instance:
+            object.__setattr__(routing_child, "_routing_parent", None)
 
         # No hard error if nothing was removed; detach is best-effort.
-        return routed_child  # type: ignore[no-any-return]
+        return routing_child  # type: ignore[no-any-return]
 
     def _collect_child_routers(self, source: Any) -> list[tuple[str, BaseRouter]]:
         """Return all routers registered in ``source``'s registry."""
