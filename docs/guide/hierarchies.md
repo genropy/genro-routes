@@ -7,7 +7,7 @@ Build complex routing structures with nested routers, dotted path navigation, an
 Genro Routes supports hierarchical router composition where:
 
 - **Parent routers** can have **child routers** attached through explicit instance binding
-- **Path separator** `/` navigates the hierarchy (`root.api.get("users/list")`)
+- **Path separator** `/` navigates the hierarchy (`root.api.node("users/list")()`)
 - **Plugins propagate** from parent to children automatically
 - **Each level** maintains independent handler registration
 - **Parent tracking** maintains the relationship between parent and child instances
@@ -51,12 +51,12 @@ parent = Parent()
 parent.api.attach_instance(parent.child, name="sales")
 
 # Access through hierarchy
-assert parent.api.get("sales/list")() == "child:list"
+assert parent.api.node("sales/list")() == "child:list"
 
-# get() can also return the child router directly
-child_router = parent.api.get("sales")
-assert child_router is not None
-assert child_router.name == "api"
+# node() can also return info about the child router
+child_node = parent.api.node("sales")
+assert child_node.is_router
+assert child_node.name == "api"
 
 # Parent tracking is automatic
 assert parent.child._routing_parent is parent
@@ -73,11 +73,11 @@ assert parent.child._routing_parent is None
 - Parent tracking is handled automatically
 - Detachment clears the parent reference
 
-**`get()` return values**:
+**`node()` return values**:
 
-- Returns a **callable** if the path points to a handler
-- Returns a **Router** if the path points to a child router
-- Returns **None** if nothing is found (no exception raised)
+- Returns a **callable RouterNode** if the path points to a handler
+- Returns a **RouterNode with `is_router=True`** if the path points to a child router
+- Returns an **empty RouterNode** (falsy) if nothing is found
 
 ## Multiple Routers: Auto-Mapping
 
@@ -110,8 +110,8 @@ parent = Parent()
 parent.api.attach_instance(parent.child)
 
 # Both child routers are accessible
-assert parent.api.get("api/get_data")() == "data"
-assert parent.api.get("admin/manage")() == "manage"
+assert parent.api.node("api/get_data")() == "data"
+assert parent.api.node("admin/manage")() == "manage"
 ```
 
 **Auto-mapping rules**:
@@ -138,8 +138,8 @@ assert "admin" not in parent.api._children  # not attached
 
 # Attach both with custom aliases
 parent.api.attach_instance(parent.child, name="api:sales, admin:admin_panel")
-assert parent.api.get("sales/get_data")() == "data"
-assert parent.api.get("admin_panel/manage")() == "manage"
+assert parent.api.node("sales/get_data")() == "data"
+assert parent.api.node("admin_panel/manage")() == "manage"
 ```
 
 **Mapping syntax**:
@@ -193,8 +193,8 @@ class OrganizedService(RoutingClass):
 service = OrganizedService()
 
 # Access through branch
-service.api.get("users/list")()
-service.api.get("products/create")()
+service.api.node("users/list")()
+service.api.node("products/create")()
 ```
 
 **Branch router characteristics**:
@@ -243,8 +243,8 @@ class Service(RoutingClass):
 svc = Service()
 
 # Access through hierarchy
-assert svc.api.call("users.list_users") == ["alice", "bob"]
-assert svc.api.call("orders.list_orders") == ["order1", "order2"]
+assert svc.api.node("users/list_users")() == ["alice", "bob"]
+assert svc.api.node("orders/list_orders")() == ["order1", "order2"]
 ```
 
 **Key characteristics**:
@@ -291,9 +291,9 @@ class Application(RoutingClass):
 app = Application()
 
 # All accessible through hierarchy
-app.api.call("users/list_users")      # Direct child
-app.api.call("products/list_products") # Direct child
-app.api.call("auth/login")            # Attached instance
+app.api.node("users/list_users")()      # Direct child
+app.api.node("products/list_products")() # Direct child
+app.api.node("auth/login")()            # Attached instance
 ```
 
 ## Auto-Detachment
@@ -404,7 +404,7 @@ app.api.attach_instance(app.service, name="service")
 assert hasattr(app.service.api, "logging")
 
 # Plugin applies to child handlers
-result = app.service.api.get("process")()
+result = app.service.api.node("process")()
 # Logging plugin was active during call
 ```
 
@@ -532,20 +532,50 @@ class Application(RoutingClass):
 app = Application()
 
 # Path "files/docs/readme.md" - "files" is a child router,
-# "docs/readme.md" doesn't exist, so partial=True uses default_entry
-result = app.api.get("files/docs/readme.md", partial=True)
-# Returns: functools.partial(files.index, "docs", "readme.md")
-assert result() == "File: docs/readme.md"
+# "docs/readme.md" doesn't exist, so best-match resolution uses default_entry
+node = app.api.node("files/docs/readme.md")
+# node.callable is: functools.partial(files.index, "docs", "readme.md")
+# node.partial_args is: ["docs", "readme.md"]
+assert node() == "File: docs/readme.md"
 ```
 
-**Behavior by scenario**:
+**Behavior by scenario** (best-match resolution):
 
-| Path | Scenario | Result with `partial=True` |
-|------|----------|---------------------------|
-| `child/handler` | Handler exists | Returns handler directly |
-| `child/unknown/path` | Child exists, path unresolved | `partial(child.default_entry, "unknown", "path")` |
-| `child` (router) | Single segment, is router | `partial(child.default_entry)` |
+| Path | Scenario | Result |
+|------|----------|--------|
+| `/` or `""` | Empty path | RouterNode with `is_root=True` |
+| `child/handler` | Handler exists | Returns RouterNode with handler |
+| `child/unknown/path` | Child exists, path unresolved | RouterNode with `partial(child.default_entry, "unknown", "path")` |
+| `child` (router) | Single segment, is router | RouterNode with `is_router=True` |
 | `unknown/path` | Nothing found | Uses this router's `default_entry` |
+
+**Root node** (empty path):
+
+When you call `node("/")` or `node("")`, you get a **root node**:
+
+```python
+class Service(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api")
+
+    @route("api")
+    def index(self):
+        return "home"
+
+svc = Service()
+node = svc.api.node("/")
+
+# Root node properties
+assert node.is_root  # type="root"
+assert node.name == "api"  # router name
+assert node.path == ""
+
+# If default_entry exists, it's callable
+assert node.callable is not None
+assert node() == "home"
+```
+
+If no `default_entry` exists, `node.callable` is `None` and calling raises `NotFound`.
 
 **Custom `default_entry`**:
 
@@ -561,7 +591,7 @@ class CustomService(RoutingClass):
 
 **Error handling**:
 
-If `default_entry` handler doesn't exist in the target router, `ValueError` is raised:
+If `default_entry` handler doesn't exist in the target router, an empty RouterNode is returned:
 
 ```python
 class EmptyService(RoutingClass):
@@ -569,7 +599,8 @@ class EmptyService(RoutingClass):
         self.api = Router(self, name="api")  # No "index" entry!
 
 svc = EmptyService()
-svc.api.get("unknown/path", partial=True)  # ValueError!
+node = svc.api.node("unknown/path")
+assert not node  # Empty RouterNode - path couldn't be resolved
 ```
 
 ## Real-World Examples
@@ -617,8 +648,8 @@ class Application(RoutingClass):
 app = Application()
 
 # Access through hierarchy
-token = app.api.call("auth/login", "alice", "secret123")
-users = app.api.call("users/list_users")
+token = app.api.node("auth/login")("alice", "secret123")
+users = app.api.node("users/list_users")()
 
 # Logging applies to all handlers automatically
 ```
@@ -665,9 +696,9 @@ class Application(RoutingClass):
 app = Application()
 
 # Clean hierarchy
-app.api.get("public/list_users")()           # Public access
-app.api.get("admin/users/get_user")(123)     # Admin user access
-app.api.get("admin/reports/sales_report")()  # Admin reports
+app.api.node("public/list_users")()           # Public access
+app.api.node("admin/users/get_user")(123)     # Admin user access
+app.api.node("admin/reports/sales_report")()  # Admin reports
 ```
 
 ### Dynamic Service Replacement
@@ -701,10 +732,10 @@ class Application(RoutingClass):
         self.api.attach_instance(self.service, name="processor")
 
 app = Application()
-assert app.api.get("processor/process")("test") == "v1:test"
+assert app.api.node("processor/process")("test") == "v1:test"
 
 app.upgrade_service()  # Seamless replacement
-assert app.api.get("processor/process")("test") == "v2:test"
+assert app.api.node("processor/process")("test") == "v2:test"
 ```
 
 ## Best Practices
@@ -748,8 +779,8 @@ app.api.attach_instance(self.admin, name="admin")
 admin.api.attach_instance(self.user_admin, name="users")
 admin.api.attach_instance(self.report_admin, name="reports")
 
-# Access: app.api.get("admin/users/create_user")
-#         app.api.get("admin/reports/sales_report")
+# Access: app.api.node("admin/users/create_user")()
+#         app.api.node("admin/reports/sales_report")()
 ```
 
 ### Store Before Attach
@@ -780,8 +811,8 @@ self.api.attach_instance(self.auth, name="auth_v1")
 self.api.attach_instance(self.new_auth, name="auth_v2")
 
 # Access both versions
-self.api.get("auth_v1/login")
-self.api.get("auth_v2/login")
+self.api.node("auth_v1/login")()
+self.api.node("auth_v2/login")()
 ```
 
 ## Common Patterns

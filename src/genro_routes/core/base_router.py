@@ -10,24 +10,25 @@ Constructor and slots
 Constructor signature::
 
     BaseRouter(owner, name=None, prefix=None, *, description=None,
-               get_default_handler=None, get_kwargs=None, branch=False,
-               parent_router=None)
+               default_entry="index", branch=False, parent_router=None)
 
 - ``owner`` is required; ``None`` raises ``ValueError``. Routers are bound to
   this instance and never re-bound.
 - ``description``: optional human-readable description of this router's purpose.
   Included in ``nodes()`` output for documentation/introspection.
+- ``default_entry``: the fallback entry name (default: "index") used when a path
+  cannot be fully resolved. The router returns this entry with unconsumed path
+  segments available in ``partial_args``.
 - ``parent_router``: optional parent router. When provided, this router is
   automatically attached as a child using ``name`` as the alias. Requires
   ``name`` to be set; raises ``ValueError`` on name collision.
 - Slots: ``instance``, ``name``, ``prefix``, ``description`` (optional router description),
-  ``_entries`` (logical name → MethodEntry with handler), ``_children`` (name → child router),
-  ``_get_defaults`` (SmartOptions defaults).
+  ``_entries`` (logical name → MethodEntry with handler), ``_children`` (name → child router).
 
 Lazy binding
 ------------
 Routers use lazy binding: methods decorated with ``@route`` are discovered and
-registered automatically on first use (get/call/nodes). No explicit bind() call
+registered automatically on first use (node/nodes). No explicit bind() call
 is needed.
 
 Marker discovery
@@ -44,11 +45,11 @@ Handler table and wrapping
 
 Lookup and execution
 --------------------
-- ``get(selector, **options)`` resolves ``selector`` via ``_resolve_path``.
-  A path string (using '/' separator) traverses children. Missing handlers
-  fall back to ``default_handler`` (if provided) else raise ``NotImplementedError``.
-
-- ``__getitem__`` aliases ``get``; ``call`` fetches then invokes the handler.
+- ``node(path, **kwargs)`` resolves ``path`` using best-match resolution.
+  Returns a ``RouterNode`` wrapper that is callable. The RouterNode contains
+  metadata about the resolved entry and any unconsumed path segments in
+  ``partial_args``. If the path cannot be resolved, an empty RouterNode is
+  returned (evaluates to False).
 
 Children (instance hierarchies)
 -------------------------------
@@ -81,18 +82,17 @@ Hooks for subclasses
 
 from __future__ import annotations
 
-import functools
 import inspect
 from collections.abc import Callable, Iterator
 from typing import Any, get_type_hints
 
-from genro_toolbox import SmartOptions
 from genro_toolbox.typeutils import safe_is_instance
 
-from genro_routes.exceptions import UNAUTHORIZED, NotAuthorized, NotFound
+from genro_routes.exceptions import UNAUTHORIZED
 from genro_routes.plugins._base_plugin import MethodEntry
 
 from .router_interface import RouterInterface
+from .router_node import RouterNode
 
 __all__ = ["BaseRouter"]
 
@@ -442,196 +442,6 @@ class BaseRouter(RouterInterface):
             entry.handler = self._wrap_handler(entry, entry.func)
 
     # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-    def get(
-        self, selector: str, **options: Any
-    ) -> Callable | RouterInterface | None:
-        """Resolve and return a handler, child router, or None for the given selector.
-
-        Path selectors traverse attached children using '/'. Returns:
-        - A callable if the selector points to a handler
-        - A RouterInterface if the selector points to a child router
-        - None if nothing is found and no default_handler is provided
-
-        Falls back to ``default_handler`` if provided and nothing is found.
-
-        When ``partial=True`` and the path cannot be fully resolved:
-        - If the result is a router, looks up its ``default_entry`` handler (default: "index")
-        - Returns a ``functools.partial`` wrapping that handler with the unconsumed
-          path segments as positional arguments
-
-        This enables catch-all routing patterns::
-
-            class Child(RoutingClass):
-                def __init__(self):
-                    self.api = Router(self, name="api")  # default_entry="index"
-
-                @route("api")
-                def index(self, *args):
-                    return f"catch-all: {args}"
-
-            # Given: child exists, extra/path does not
-            result = root.get("child/extra/path", partial=True)
-            # Returns: partial(child.index, "extra", "path")
-            result()  # -> "catch-all: ('extra', 'path')"
-
-        Authorization parameters can be passed with ``auth_`` prefix to filter entries via AuthPlugin::
-
-            # With AuthPlugin attached
-            result = router.get("admin_only", auth_tags="user")  # Raises NotAuthorized if filtered
-
-        Raises:
-            RuntimeError: If the router has not been bound yet.
-            ValueError: If partial=True and the target router has no default_entry handler.
-            NotAuthorized: If entry exists but is filtered out by plugins.
-        """
-        # Strip leading "/" for convenience (e.g., "/shop/articles" -> "shop/articles")
-        selector = selector.lstrip("/")
-
-        opts = SmartOptions(options, defaults=self._get_defaults)
-        default = getattr(opts, "default_handler", None)
-        use_partial = getattr(opts, "partial", False)
-
-        # Extract filter args from options (plugin-prefixed kwargs like auth_tags, logging_level)
-        filter_args = self._prepare_filter_args(**options)
-
-        # Handle path with "/" by delegating to child routers
-        if "/" in selector:
-            first, rest = selector.split("/", 1)
-            child = self._children.get(first)
-            if child is None:
-                # Child not found - check if partial resolution is requested
-                if use_partial:
-                    # Check if first segment is an entry (catch-all pattern)
-                    entry = self._entries.get(first)
-                    if entry is not None and self._allow_entry(entry, **filter_args):
-                        # Return partial with unconsumed path as args
-                        return functools.partial(entry.handler, *rest.split("/"))
-                    # No entry either, use this router's default_entry
-                    entry_name = self.default_entry
-                    default_entry = self._entries.get(entry_name)
-                    if default_entry is None or not self._allow_entry(default_entry, **filter_args):
-                        raise ValueError(
-                            f"No default entry '{entry_name}' in router '{self.name}' "
-                            f"for partial path '{selector}'"
-                        )
-                    return functools.partial(default_entry.handler, *selector.split("/"))
-                if default is not None:
-                    return default  # type: ignore[no-any-return]
-                return None
-            # Delegate to child router's get() - pass filter_args for recursive filtering
-            result = child.get(rest, **options)
-            if result is None and use_partial:
-                # Child couldn't resolve rest - use child's default_entry
-                entry_name = child.default_entry
-                entry = child._entries.get(entry_name)
-                child_filter_args = child._prepare_filter_args(**options)
-                if entry is None or not child._allow_entry(entry, **child_filter_args):
-                    raise ValueError(
-                        f"No default entry '{entry_name}' in router '{child.name}' "
-                        f"for partial path '{selector}'"
-                    )
-                return functools.partial(entry.handler, *rest.split("/"))
-            # If result is a router with partial=True, resolve its default_entry
-            if use_partial and isinstance(result, BaseRouter):
-                entry_name = result.default_entry
-                entry = result._entries.get(entry_name)
-                result_filter_args = result._prepare_filter_args(**options)
-                if entry is None or not result._allow_entry(entry, **result_filter_args):
-                    raise ValueError(
-                        f"No default entry '{entry_name}' in router '{result.name}' "
-                        f"for partial path '{selector}'"
-                    )
-                return functools.partial(entry.handler)
-            return result
-
-        # Single segment: use node() to check entry with filters
-        node_info = self.node(selector, **{k: v for k, v in options.items()
-                                           if not k.startswith(("default_handler", "partial"))})
-        if node_info and node_info.get("type") == "entry":
-            node_callable = node_info.get("callable")
-            if node_callable == UNAUTHORIZED:
-                # Entry exists but filtered out
-                raise NotAuthorized(selector, self.name)
-            return node_callable
-
-        child_router = self._children.get(selector)
-        if child_router is not None:
-            # If partial=True and result is a router, resolve its default_entry
-            if use_partial:
-                entry_name = child_router.default_entry
-                entry = child_router._entries.get(entry_name)
-                if entry is None:
-                    raise ValueError(
-                        f"No default entry '{entry_name}' in router '{child_router.name}' "
-                        f"for partial path '{selector}'"
-                    )
-                return functools.partial(entry.handler)
-            return child_router
-
-        # Nothing found - check partial for empty selector or use default
-        if use_partial and selector == "":
-            # Empty selector with partial=True returns this router's default_entry
-            entry_name = self.default_entry
-            entry = self._entries.get(entry_name)
-            if entry is None:
-                raise ValueError(
-                    f"No default entry '{entry_name}' in router '{self.name}' "
-                    f"for empty partial path"
-                )
-            return functools.partial(entry.handler)
-
-        if default is not None:
-            return default  # type: ignore[no-any-return]
-
-        return None
-
-    __getitem__ = get
-
-    def call(
-        self,
-        selector: str,
-        *args: Any,
-        _partial: bool = False,
-        **kwargs: Any,
-    ) -> Any:
-        """Fetch and invoke a handler in one step.
-
-        Args:
-            selector: Path to the handler.
-            *args: Positional arguments passed to the handler.
-            _partial: If True, enables partial resolution (passed to get()).
-            **kwargs: Keyword arguments passed to the handler. Plugin-prefixed kwargs
-                (e.g., auth_tags="x") are used for filtering and NOT passed to handler.
-
-        Raises:
-            NotFound: If the handler does not exist.
-            NotAuthorized: If the handler exists but is filtered out.
-        """
-        # Separate filter kwargs (plugin-prefixed) from handler kwargs
-        filter_kwargs: dict[str, Any] = {}
-        handler_kwargs: dict[str, Any] = {}
-        for key, value in kwargs.items():
-            # Check if key is a plugin-prefixed kwarg
-            if "_" in key:
-                prefix = key.split("_", 1)[0]
-                if self._is_known_plugin(prefix):
-                    filter_kwargs[key] = value
-                    continue
-            handler_kwargs[key] = value
-
-        # Build get() options
-        get_options: dict[str, Any] = dict(filter_kwargs)
-        if _partial:
-            get_options["partial"] = True
-
-        handler = self.get(selector, **get_options)
-        if handler is None or isinstance(handler, BaseRouter):
-            raise NotFound(selector, self.name)
-        return handler(*args, **handler_kwargs)  # type: ignore[operator]
-
-    # ------------------------------------------------------------------
     # Children management (via attach_instance/detach_instance)
     # ------------------------------------------------------------------
     def attach_instance(self, routing_child: Any, *, name: str | None = None) -> BaseRouter:
@@ -788,8 +598,16 @@ class BaseRouter(RouterInterface):
             When mode is specified, output is translated to that format.
         """
         if basepath:
-            target = self.get(basepath)
-            if not isinstance(target, BaseRouter):
+            target_node = self.node(basepath)
+            if not target_node or target_node.type != "router":
+                return {}
+            # Navigate to the actual router via children
+            target = self._children.get(basepath.split("/")[0])
+            for segment in basepath.split("/")[1:]:
+                if target is None:
+                    return {}
+                target = target._children.get(segment)
+            if target is None:
                 return {}
             return target.nodes(lazy=lazy, mode=mode, **kwargs)
         filter_args = self._prepare_filter_args(**kwargs)
@@ -842,13 +660,27 @@ class BaseRouter(RouterInterface):
         self,
         path: str,
         mode: str | None = None,
-        partial: bool = False,
+        errors: dict[str, type[Exception]] | None = None,
         **kwargs: Any,
-    ) -> dict[str, Any]:
+    ) -> RouterNode:
         """Return info about a single node (router or entry) at the given path.
 
         Unlike nodes() which returns the full subtree, this method returns
         information about just one specific node without recursion.
+
+        This method always performs best-match resolution: it walks the path
+        as far as possible, tracking the last valid callable node (entry or
+        router with default_entry). If the exact path is not found, it falls
+        back to that last valid node with unconsumed path segments in ``partial_args``.
+
+        The returned RouterNode is callable - invoking it executes the handler.
+
+        Resolution rules:
+            - Entry found exactly → returns callable entry
+            - Router with default_entry found exactly → returns default_entry callable
+            - Router without default_entry found exactly → returns router (call raises NotFound)
+            - Path not found → falls back to last valid node + partial_args
+            - If partial_args present and function doesn't accept *args → call raises NotFound
 
         Args:
             path: Path to the node (e.g., "entry_name" or "child/grandchild/entry").
@@ -857,130 +689,247 @@ class BaseRouter(RouterInterface):
                   - None: Standard introspection format.
                   - "openapi": OpenAPI format for entries.
 
-            partial: If True, enables partial path resolution. When the path
-                cannot be fully resolved, returns a functools.partial wrapping
-                the default_entry handler with unconsumed path segments as args.
-                Similar to get(partial=True) but with metadata included.
+            errors: Optional dict mapping error codes to custom exception classes.
+                    Available codes (see ``RouterNode.ERROR_CODES``):
+
+                    - ``not_found``: Path not found or varargs_required
+                    - ``not_authorized``: Auth tags don't match (403)
+                    - ``not_authenticated``: Auth required but not provided (401)
+                    - ``validation_error``: Pydantic validation failed
+
+                    Example::
+
+                        node = router.node("handler", errors={
+                            'not_found': HTTPNotFound,
+                            'not_authorized': HTTPForbidden,
+                        })
 
             **kwargs: Plugin-prefixed filter kwargs (e.g., auth_tags="x").
 
         Returns:
-            A dict containing node info:
+            A RouterNode containing node info:
 
-            For a router:
+            For a root node (empty path "/" or ""):
+                - ``type``: "root"
+                - ``name``: Router name
+                - ``path``: "" (empty string)
+                - ``description``: Router description (if set)
+                - ``owner_doc``: Owner class docstring
+                - ``callable``: The default_entry handler (if exists)
+                - ``doc``: default_entry docstring (if exists)
+                - ``metadata``: default_entry metadata (if exists)
+                - ``default_entry``: True (if default_entry exists)
+
+            For a router (without default_entry):
                 - ``type``: "router"
                 - ``name``: Router name
                 - ``path``: Full path to this router
                 - ``description``: Router description (if set)
                 - ``owner_doc``: Owner class docstring
 
-            For an entry:
+            For an entry (or router with default_entry):
                 - ``type``: "entry"
                 - ``name``: Entry name
                 - ``path``: Full path to this entry
-                - ``callable``: The handler (or functools.partial if partial=True)
+                - ``callable``: The handler
                 - ``doc``: Entry docstring
                 - ``metadata``: Entry metadata
-
-            Returns empty dict if path not found or filtered out.
+                - ``partial_args``: Unconsumed path segments (empty list if exact match)
+                - ``default_entry``: True if resolved via default_entry fallback
+                - ``varargs_required``: True if partial_args present but *args not accepted
 
             When mode="openapi", entry output includes OpenAPI format.
+
+            The RouterNode is callable::
+
+                node = router.node("my_handler")
+                result = node()  # Invoke the handler
+
+            Calling a RouterNode with ``varargs_required=True`` raises the 'not_found' exception.
+            Calling a RouterNode that is not authorized raises the 'not_authorized' exception.
+            Calling a router node (type="router") raises the 'not_found' exception.
+            Calling a root node without default_entry raises the 'not_found' exception.
         """
         filter_args = self._prepare_filter_args(**kwargs)
 
-        # Strip leading "/" for convenience
-        path = path.lstrip("/")
+        # Strip leading/trailing "/" for convenience (alfa/ == alfa)
+        path = path.strip("/")
 
-        # For partial resolution, we need to find how far we can go
-        unconsumed_parts: list[str] = []
-        target_router: BaseRouter = self
-        entry: MethodEntry | None = None
-        child_router: BaseRouter | None = None
+        # Split path into parts
+        parts = path.split("/") if path else []
 
-        if "/" in path:
-            parts = path.split("/")
-            # Walk the path, tracking unconsumed segments
-            for i, segment in enumerate(parts[:-1]):
-                child = target_router._children.get(segment)
-                if child is None:
-                    if partial:
-                        # Can't go further - unconsumed starts here
-                        unconsumed_parts = parts[i:]
-                        break
-                    else:
-                        return {}
-                target_router = child
-            else:
-                # Successfully navigated to parent, now look up final segment
-                entry_name = parts[-1]
-                entry = target_router._entries.get(entry_name)
-                child_router = target_router._children.get(entry_name) if entry is None else None
-                if entry is None and child_router is None and partial:
-                    unconsumed_parts = [entry_name]
+        # Walk the path tracking:
+        # - current_router: where we are in the tree
+        # - last_valid_node: last entry or router with default_entry we can fall back to
+        # - last_valid_router: the router containing last_valid_node
+        # - last_valid_index: position in parts where last_valid_node was found
+        current_router: BaseRouter = self
+        last_valid_node: MethodEntry | None = None
+        last_valid_router: BaseRouter = self
+        last_valid_index: int = -1  # -1 means root level default_entry
+
+        # Check if root has a default_entry we can fall back to
+        root_default = self._entries.get(self.default_entry)
+        if root_default is not None:
+            last_valid_node = root_default
+            last_valid_router = self
+            last_valid_index = -1
+
+        # Walk through the path
+        final_entry: MethodEntry | None = None
+        final_router: BaseRouter | None = None
+        consumed_index: int = -1  # How far we got
+
+        for i, segment in enumerate(parts):
+            # First check for entry at this level
+            entry = current_router._entries.get(segment)
+            if entry is not None:
+                # Found an entry - this becomes a candidate for last_valid_node
+                last_valid_node = entry
+                last_valid_router = current_router
+                last_valid_index = i
+                final_entry = entry
+                final_router = None
+                consumed_index = i
+                continue
+
+            # Check for child router
+            child = current_router._children.get(segment)
+            if child is not None:
+                # Check if this router has a default_entry
+                child_default = child._entries.get(child.default_entry)
+                if child_default is not None:
+                    last_valid_node = child_default
+                    last_valid_router = child
+                    last_valid_index = i
+                current_router = child
+                final_entry = None
+                final_router = child
+                consumed_index = i
+                continue
+
+            # Can't go further - segment not found
+            # We'll use last_valid_node with partial_args
+            break
         else:
-            entry = self._entries.get(path)
-            child_router = self._children.get(path) if entry is None else None
-            if entry is None and child_router is None and partial:
-                unconsumed_parts = [path]
+            # Consumed all parts - we found the exact path
+            pass
 
-        # Calculate full path
+        # Calculate partial_args (unconsumed segments)
+        if consumed_index < len(parts) - 1:
+            # Didn't consume all parts
+            partial_args = parts[consumed_index + 1:] if consumed_index >= 0 else parts
+        else:
+            partial_args = []
+
+        # Now determine what to return based on what we found
         full_path = path
 
-        # Handle partial resolution when we couldn't find the exact path
-        if unconsumed_parts and partial:
-            # Look for default_entry in the last resolved router
-            entry_name = target_router.default_entry
-            default_entry = target_router._entries.get(entry_name)
-            if default_entry is None:
-                return {}
-            # Check authorization
-            authorized = not filter_args or target_router._allow_entry(default_entry, **filter_args)
-            handler: Any
-            if not authorized:
-                handler = UNAUTHORIZED
-            else:
-                handler = functools.partial(default_entry.handler, *unconsumed_parts)
-            return {
+        # Case 1: We found an entry exactly (no partial_args from path walking)
+        if final_entry is not None and not partial_args:
+            authorized = not filter_args or current_router._allow_entry(final_entry, **filter_args)
+            result_dict: dict[str, Any] = {
                 "type": "entry",
-                "name": default_entry.name,
+                "name": final_entry.name,
                 "path": full_path,
-                "callable": handler,
-                "doc": inspect.getdoc(default_entry.func) or default_entry.func.__doc__ or "",
-                "metadata": default_entry.metadata,
-                "partial_args": unconsumed_parts,
+                "callable": final_entry.handler if authorized else UNAUTHORIZED,
+                "doc": inspect.getdoc(final_entry.func) or final_entry.func.__doc__ or "",
+                "metadata": final_entry.metadata,
+                "partial_args": [],
+            }
+            if mode == "openapi":
+                entry_info = current_router._entry_node_info(final_entry)
+                result_dict["openapi"] = current_router._entry_info_to_openapi(final_entry.name, entry_info)
+            return RouterNode(result_dict, self, errors)
+
+        # Case 2: We found a router exactly (no partial_args from path walking)
+        if final_router is not None and not partial_args:
+            # Check if router has default_entry
+            default_entry = final_router._entries.get(final_router.default_entry)
+            if default_entry is not None:
+                # Return the default_entry callable
+                authorized = not filter_args or final_router._allow_entry(default_entry, **filter_args)
+                result_dict = {
+                    "type": "entry",
+                    "name": default_entry.name,
+                    "path": full_path,
+                    "callable": default_entry.handler if authorized else UNAUTHORIZED,
+                    "doc": inspect.getdoc(default_entry.func) or default_entry.func.__doc__ or "",
+                    "metadata": default_entry.metadata,
+                    "partial_args": [],
+                    "default_entry": True,
+                }
+                if mode == "openapi":
+                    entry_info = final_router._entry_node_info(default_entry)
+                    result_dict["openapi"] = final_router._entry_info_to_openapi(default_entry.name, entry_info)
+                return RouterNode(result_dict, self, errors)
+            else:
+                # Router without default_entry - return router info (call will raise NotFound)
+                return RouterNode({
+                    "type": "router",
+                    "name": final_router.name,
+                    "path": full_path,
+                    "description": final_router.description,
+                    "owner_doc": final_router.instance.__class__.__doc__,
+                }, self, errors)
+
+        # Case 3: Empty path - return root info with optional default_entry callable
+        if not parts:
+            default_entry = self._entries.get(self.default_entry)
+            result_dict = {
+                "type": "root",
+                "name": self.name,
+                "path": "",
+                "description": self.description,
+                "owner_doc": self.instance.__class__.__doc__,
+            }
+            if default_entry is not None:
+                authorized = not filter_args or self._allow_entry(default_entry, **filter_args)
+                result_dict["callable"] = default_entry.handler if authorized else UNAUTHORIZED
+                result_dict["doc"] = inspect.getdoc(default_entry.func) or default_entry.func.__doc__ or ""
+                result_dict["metadata"] = default_entry.metadata
+                result_dict["default_entry"] = True
+                if mode == "openapi":
+                    entry_info = self._entry_node_info(default_entry)
+                    result_dict["openapi"] = self._entry_info_to_openapi(default_entry.name, entry_info)
+            return RouterNode(result_dict, self, errors)
+
+        # Case 4: Partial resolution - use last_valid_node with partial_args
+        if last_valid_node is not None:
+            # Calculate correct partial_args based on where last_valid_node was found
+            # Root default_entry (-1) → all parts are partial, otherwise from last_valid_index+1
+            partial_args = parts if last_valid_index == -1 else parts[last_valid_index + 1:]
+
+            # Check if the function accepts *args
+            sig = inspect.signature(last_valid_node.func)
+            has_var_positional = any(
+                p.kind == inspect.Parameter.VAR_POSITIONAL
+                for p in sig.parameters.values()
+            )
+
+            authorized = not filter_args or last_valid_router._allow_entry(last_valid_node, **filter_args)
+            result_dict = {
+                "type": "entry",
+                "name": last_valid_node.name,
+                "path": full_path,
+                "callable": last_valid_node.handler if authorized else UNAUTHORIZED,
+                "doc": inspect.getdoc(last_valid_node.func) or last_valid_node.func.__doc__ or "",
+                "metadata": last_valid_node.metadata,
+                "partial_args": partial_args,
+                "default_entry": True,
             }
 
-        # Handle child router
-        if child_router is not None:
-            return {
-                "type": "router",
-                "name": child_router.name,
-                "path": full_path,
-                "description": child_router.description,
-                "owner_doc": child_router.instance.__class__.__doc__,
-            }
+            # If partial_args exist but function doesn't accept *args, mark for NotFound on call
+            if partial_args and not has_var_positional:
+                result_dict["varargs_required"] = True
 
-        # Handle entry with filter check
-        if entry is None:
-            return {}
+            if mode == "openapi":
+                entry_info = last_valid_router._entry_node_info(last_valid_node)
+                result_dict["openapi"] = last_valid_router._entry_info_to_openapi(last_valid_node.name, entry_info)
+            return RouterNode(result_dict, self, errors)
 
-        # Check authorization - if not authorized, callable is UNAUTHORIZED
-        authorized = not filter_args or target_router._allow_entry(entry, **filter_args)
-
-        result: dict[str, Any] = {
-            "type": "entry",
-            "name": entry.name,
-            "path": full_path,
-            "callable": entry.handler if authorized else UNAUTHORIZED,
-            "doc": inspect.getdoc(entry.func) or entry.func.__doc__ or "",
-            "metadata": entry.metadata,
-        }
-
-        if mode == "openapi":
-            entry_info = target_router._entry_node_info(entry)
-            result["openapi"] = target_router._entry_info_to_openapi(entry.name, entry_info)
-
-        return result
+        # Case 5: No valid node found at all
+        return RouterNode({}, self, errors)
 
     def _translate_openapi(
         self,

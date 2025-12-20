@@ -5,7 +5,7 @@
 This module defines custom exceptions used throughout the routing system.
 """
 
-__all__ = ["NotFound", "NotAuthorized", "UNAUTHORIZED"]
+__all__ = ["NotFound", "NotAuthorized", "NotAuthenticated", "UNAUTHORIZED"]
 
 # Sentinel value for unauthorized callable in node() response
 UNAUTHORIZED = "--NA--"
@@ -33,10 +33,10 @@ class NotFound(Exception):
 
 
 class NotAuthorized(Exception):
-    """Raised when access to an existing route is denied by filters.
+    """Raised when access to an existing route is denied by filters (403).
 
-    This exception indicates that the path/selector exists but the current
-    filter parameters (e.g., tags) do not allow access to it.
+    This exception indicates that the path/selector exists and authentication
+    tags were provided, but they do not match the entry's requirements.
 
     Attributes:
         selector: The path that was denied.
@@ -50,4 +50,25 @@ class NotAuthorized(Exception):
             message = f"Access to '{selector}' denied in router '{router_name}'"
         else:
             message = f"Access to '{selector}' denied"
+        super().__init__(message)
+
+
+class NotAuthenticated(Exception):
+    """Raised when authentication is required but not provided (401).
+
+    This exception indicates that the path/selector exists and requires
+    authentication tags, but none were provided in the request.
+
+    Attributes:
+        selector: The path that requires authentication.
+        router_name: The router where authentication is required.
+    """
+
+    def __init__(self, selector: str, router_name: str | None = None) -> None:
+        self.selector = selector
+        self.router_name = router_name
+        if router_name:
+            message = f"Authentication required for '{selector}' in router '{router_name}'"
+        else:
+            message = f"Authentication required for '{selector}'"
         super().__init__(message)

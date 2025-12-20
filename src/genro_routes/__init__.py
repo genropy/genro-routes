@@ -5,6 +5,7 @@ plugin application, and complex service composition through descriptors.
 
 Public exports:
     - ``Router``: Main router class for binding methods to selectors
+    - ``RouterNode``: Wrapper returned by node() for handler access
     - ``RoutingClass``: Mixin for classes that expose routers
     - ``route``: Decorator for marking methods as route handlers
 
@@ -29,7 +30,8 @@ from importlib import import_module
 __version__ = "0.10.0"
 
 from .core import Router, RouterInterface, RoutingClass, RoutingContext, route
-from .exceptions import UNAUTHORIZED, NotAuthorized, NotFound
+from .core.router_node import RouterNode
+from .exceptions import UNAUTHORIZED, NotAuthenticated, NotAuthorized, NotFound
 
 # Import plugins to trigger auto-registration (lazy to avoid cycles)
 for _plugin in ("logging", "pydantic", "auth", "openapi"):
@@ -39,10 +41,12 @@ del _plugin
 __all__ = [
     "Router",
     "RouterInterface",
+    "RouterNode",
     "RoutingClass",
     "RoutingContext",
     "route",
     "NotFound",
     "NotAuthorized",
+    "NotAuthenticated",
     "UNAUTHORIZED",
 ]

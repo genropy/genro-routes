@@ -29,8 +29,8 @@ class OrdersAPI(RoutingClass):
         return {"status": "created", **payload}
 
 orders = OrdersAPI()
-orders.api.get("list")()  # Calls list()
-orders.api.get("create")({"name": "order-3"})  # Calls create()
+orders.api.node("list")()  # Calls list()
+orders.api.node("create")({"name": "order-3"})  # Calls create()
 ```
 
 ### Genro Routes vs function dictionary?
@@ -70,7 +70,7 @@ You can use Genro Routes **alongside** FastAPI to organize your internal handler
 **Answer**: A `Router` is an object that:
 
 1. **Registers handlers**: methods decorated with `@route()`
-2. **Resolves by name**: `router.get("method_name")` → callable
+2. **Resolves by name**: `router.node("method_name")` → callable RouterNode
 3. **Applies plugins**: intercepts decoration and execution
 4. **Is isolated per instance**: each object has its own router
 
@@ -86,8 +86,8 @@ class Service(RoutingClass):
 
 s1 = Service("alpha")
 s2 = Service("beta")
-s1.api.get("info")()  # "service:alpha"
-s2.api.get("info")()  # "service:beta"
+s1.api.node("info")()  # "service:alpha"
+s2.api.node("info")()  # "service:beta"
 ```
 
 Each instance (`s1`, `s2`) has a **separate and isolated** router.
@@ -146,8 +146,8 @@ class Dashboard(RoutingClass):
 
 dashboard = Dashboard()
 # Access with path separator
-dashboard.api.get("sales/report")()
-dashboard.api.get("finance/summary")()
+dashboard.api.node("sales/report")()
+dashboard.api.node("finance/summary")()
 ```
 
 ### How do I access child routers?
@@ -157,10 +157,10 @@ dashboard.api.get("finance/summary")()
 **Answer**: Use **path separator** `/`:
 ```python
 # Path separator
-dashboard.api.get("sales/report")()
+dashboard.api.node("sales/report")()
 
 # Or direct access
-dashboard.sales.api.get("report")()
+dashboard.sales.api.node("report")()
 
 # Introspection
 nodes = dashboard.api.nodes()
@@ -190,7 +190,7 @@ class Parent(RoutingClass):
 
 # Child automatically inherits logging plugin
 parent = Parent()
-parent.api.get("child/method")()  # Logs with level=debug
+parent.api.node("child/method")()  # Logs with level=debug
 ```
 
 ## Plugin System
@@ -221,7 +221,7 @@ parent.api.get("child/method")()  # Logs with level=debug
 **1. LoggingPlugin** - Automatic logging
 ```python
 router = Router(self, name="api").plug("logging", level="debug")
-router.api.get("method")()  # Auto-logs the call
+router.node("method")()  # Auto-logs the call
 ```
 
 **2. PydanticPlugin** - Input validation
@@ -239,8 +239,8 @@ def create(self, req: CreateRequest):
     return {"status": "created"}
 
 router.plug("pydantic")
-router.get("create")({"name": "test", "count": 5})  # OK
-router.get("create")({"name": "test"})  # ValidationError
+router.node("create")({"name": "test", "count": 5})  # OK
+router.node("create")({"name": "test"})  # ValidationError
 ```
 
 ### How do I configure plugins at runtime?
@@ -299,21 +299,84 @@ router = Router(self, name="api").plug("audit")
 
 **Question**: What happens if I call a non-existent handler?
 
-<!-- test: test_router_basic.py::test_get_with_default_returns_callable -->
-
-**Answer**: You can specify a **default handler**:
+**Answer**: Use the boolean value of `RouterNode` to check existence:
 
 ```python
-# Default handler
-def not_found():
-    return {"error": "handler not found"}
+# node() returns a RouterNode - check if it exists
+node = router.node("missing")
+if not node:
+    print("Handler not found")
 
-router = Router(self, name="api", default_handler=not_found)
-router.get("missing")()  # Returns {"error": "handler not found"}
+# RouterNode is callable if it exists
+node = router.node("my_handler")
+if node:
+    result = node()  # Invoke the handler
 
-# Without default
-router2 = Router(self, name="api2")
-router2.get("missing")()  # Raises KeyError
+# Calling a non-existent node raises NotFound
+from genro_routes import NotFound
+try:
+    router.node("missing")()
+except NotFound:
+    print("Handler not found")
+```
+
+### What exceptions can node() raise?
+
+**Question**: What exceptions should I catch when calling a RouterNode?
+
+**Answer**: Three main exceptions:
+
+- `NotFound`: Path not found, no default_entry, or varargs_required
+- `NotAuthorized`: Auth tags provided but don't match (403)
+- `NotAuthenticated`: Auth required but not provided (401)
+
+```python
+from genro_routes import NotFound, NotAuthorized, NotAuthenticated
+
+try:
+    router.node("handler")()
+except NotAuthenticated:
+    # 401 - no auth provided
+    pass
+except NotAuthorized:
+    # 403 - auth provided but wrong
+    pass
+except NotFound:
+    # 404 - path not found
+    pass
+```
+
+You can also map these to custom exceptions:
+
+```python
+node = router.node("handler", errors={
+    'not_found': HTTPNotFound,
+    'not_authorized': HTTPForbidden,
+    'not_authenticated': HTTPUnauthorized,
+})
+```
+
+### What is a root node?
+
+**Question**: What do I get when calling `node("/")`?
+
+**Answer**: A **root node** with `type="root"`:
+
+```python
+node = router.node("/")  # or node("")
+
+# Always present
+node.is_root  # True
+node.name     # router name
+node.path     # ""
+
+# If default_entry exists
+node.callable  # the handler
+node()         # calls default_entry
+
+# If no default_entry
+node.callable  # None
+node()         # raises NotFound
 ```
 
 ### How do I introspect the structure?
@@ -416,7 +479,7 @@ router.plug("logging")  # Child does NOT inherit
 
 1. PydanticPlugin attached: `router.plug("pydantic")`
 2. Type hint correct: `def method(self, req: MyModel)`
-3. Input is dict or model instance: `router.get("method")({"field": "value"})`
+3. Input is dict or model instance: `router.node("method")({"field": "value"})`
 
 ## Best Practices
 
@@ -460,8 +523,8 @@ def test_handler_logic():
 # Test via router
 def test_router_integration():
     obj = MyClass()
-    handler = obj.api.get("my_handler")
-    assert handler({"input": "test"}) == expected
+    node = obj.api.node("my_handler")
+    assert node({"input": "test"}) == expected
 ```
 
 ## Useful Links
