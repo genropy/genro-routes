@@ -17,6 +17,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from genro_routes.exceptions import (
+    UNAUTHENTICATED,
     UNAUTHORIZED,
     NotAuthenticated,
     NotAuthorized,
@@ -54,8 +55,9 @@ class RouterNode:
         description: Router description (for routers)
         owner_doc: Owner class docstring (for routers)
         default_entry: True if this is a default_entry resolution
-        partial_args: List of unconsumed path segments (when partial=True)
-        varargs_required: True if partial_args present but handler doesn't accept *args
+        partial_kwargs: Dict mapping parameter names to values from path (when partial=True)
+        extra_args: List of path segments beyond named parameters (for *args handlers)
+        varargs_required: True if extra_args present but handler doesn't accept *args
         openapi: OpenAPI schema (when mode="openapi")
 
     Class Attributes:
@@ -92,7 +94,8 @@ class RouterNode:
         "description",
         "owner_doc",
         "default_entry",
-        "partial_args",
+        "partial_kwargs",
+        "extra_args",
         "varargs_required",
         "openapi",
         "_router",
@@ -143,7 +146,8 @@ class RouterNode:
 
         # Partial resolution fields
         self.default_entry: bool = data.get("default_entry", False)
-        self.partial_args: list[str] = data.get("partial_args", [])
+        self.partial_kwargs: dict[str, str] = data.get("partial_kwargs", {})
+        self.extra_args: list[str] = data.get("extra_args", [])
         self.varargs_required: bool = data.get("varargs_required", False)
 
         # OpenAPI mode field
@@ -160,7 +164,8 @@ class RouterNode:
 
         Args:
             *args: Positional arguments passed to the handler.
-            **kwargs: Keyword arguments passed to the handler.
+            **kwargs: Keyword arguments passed to the handler. Note: kwargs that
+                conflict with partial_kwargs (from path) are ignored - path wins.
 
         Returns:
             The result of calling the handler.
@@ -179,18 +184,30 @@ class RouterNode:
             exc_class = self._exceptions.get("not_found", NotFound)
             raise exc_class(path, router_name)
 
+        if self.callable is UNAUTHENTICATED:
+            exc_class = self._exceptions.get("not_authenticated", NotAuthenticated)
+            raise exc_class(path, router_name)
+
         if self.callable is UNAUTHORIZED:
             exc_class = self._exceptions.get("not_authorized", NotAuthorized)
             raise exc_class(path, router_name)
 
-        # If partial_args present but function doesn't accept *args, raise not_found
+        # If extra_args present but function doesn't accept *args, raise not_found
         if self.varargs_required:
             exc_class = self._exceptions.get("not_found", NotFound)
             raise exc_class(path, router_name)
 
+        # Merge partial_kwargs with caller kwargs
+        # partial_kwargs (from path) have precedence - filter out conflicts from kwargs
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in self.partial_kwargs}
+        merged_kwargs = {**self.partial_kwargs, **filtered_kwargs}
+
+        # Prepend extra_args (if any) to caller args
+        all_args = (*self.extra_args, *args)
+
         # Call the handler, catching ValidationError if mapped
         try:
-            return self.callable(*args, **kwargs)
+            return self.callable(*all_args, **merged_kwargs)
         except Exception as e:
             # Check if this is a ValidationError and we have a custom mapping
             if ValidationError is not None and isinstance(e, ValidationError):
@@ -216,8 +233,8 @@ class RouterNode:
 
     @property
     def is_authorized(self) -> bool:
-        """Return True if this entry is authorized (callable is not UNAUTHORIZED)."""
-        return self.callable is not UNAUTHORIZED
+        """Return True if this entry is authorized (callable is not UNAUTHORIZED or UNAUTHENTICATED)."""
+        return self.callable is not UNAUTHORIZED and self.callable is not UNAUTHENTICATED
 
     def to_dict(self) -> dict[str, Any]:
         """Return the original dict data."""

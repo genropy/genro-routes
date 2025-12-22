@@ -49,7 +49,7 @@ def test_logging_plugin_runs_per_instance(monkeypatch):
     svc = LoggedService()
     svc.routes.logging._logger = DummyLogger()  # type: ignore[attr-defined]
 
-    assert svc.routes.get("hello")() == "ok"
+    assert svc.routes.node("hello")() == "ok"
     assert svc.calls == 1
     assert records and "hello" in records[0]
 
@@ -78,7 +78,7 @@ def test_logging_plugin_respects_route_plugin_flags():
             return "hi"
 
     svc = Service()
-    svc.api.get("hello")()
+    svc.api.node("hello")()
     assert records == []
 
 
@@ -104,7 +104,7 @@ def test_logging_plugin_respects_runtime_config_toggle():
     svc = Service()
     # Disable "before" and keep "after" via flags.
     svc.api.logging.configure(flags="before:off,after:on")
-    svc.api.get("ping")()
+    svc.api.node("ping")()
     assert records and records == ["ping end (0.00 ms)"]
 
 
@@ -128,7 +128,7 @@ def test_logging_plugin_print_sink_overrides_logger(capsys):
             return "hi"
 
     svc = Service()
-    svc.api.get("hello")()
+    svc.api.node("hello")()
     # Should bypass logger and print instead.
     captured = capsys.readouterr()
     assert records == []

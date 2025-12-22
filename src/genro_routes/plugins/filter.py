@@ -1,10 +1,11 @@
 # Copyright 2025 Softwell S.r.l.
 # Licensed under the Apache License, Version 2.0
 
-"""AuthPlugin - Authorization plugin with tag-based access control.
+"""FilterPlugin - Visibility filtering plugin with tag-based control.
 
-This plugin provides tag-based authorization for router entries. It evaluates
-authorization rules defined on endpoints against user tags.
+This plugin provides tag-based filtering for router entries. It controls
+which entries are visible/hidden based on filter expressions. Entries that
+don't match the filter are treated as if they don't exist (NotFound).
 
 Usage::
 
@@ -14,27 +15,29 @@ Usage::
         def __init__(self):
             self.api = Router(self, name="api")
 
-        @route("api", auth_tags="admin,internal")
-        def admin_action(self):
-            return "admin only"
+        @route("api", filter_tags="internal")
+        def internal_action(self):
+            return "internal only"
 
-        @route("api", auth_tags="public")
+        @route("api", filter_tags="public")
         def public_action(self):
             return "public"
 
     # Filter by tags
     obj = MyAPI()
-    obj.api.nodes(tags="admin")           # entries with 'admin' tag
-    obj.api.nodes(tags="admin,public")    # OR: admin OR public
-    obj.api.nodes(tags="admin&internal")  # AND: admin AND internal
-    obj.api.nodes(tags="!admin")          # NOT: not admin
-    obj.api.nodes(tags="(admin|public)&!internal")  # complex expression
+    obj.api.nodes(filter_tags="internal")     # entries with 'internal' tag
+    obj.api.nodes(filter_tags="public")       # entries with 'public' tag
+    obj.api.node("internal_action", filter_tags="public")  # → NotFound (filtered out)
 
 Operators:
     - ``,`` or ``|`` : OR
     - ``&`` : AND
     - ``!`` : NOT
     - ``()`` : grouping
+
+Note:
+    FilterPlugin controls **visibility**. For authorization (401/403),
+    use AuthPlugin with auth_tags.
 """
 
 from __future__ import annotations
@@ -48,14 +51,14 @@ from genro_routes.core.router_interface import RouterInterface
 
 from ._base_plugin import BasePlugin, MethodEntry
 
-__all__ = ["AuthPlugin"]
+__all__ = ["FilterPlugin"]
 
 
-class AuthPlugin(BasePlugin):
-    """Authorization plugin with tag-based access control."""
+class FilterPlugin(BasePlugin):
+    """Visibility filtering plugin with tag-based control."""
 
-    plugin_code = "auth"
-    plugin_description = "Authorization plugin with tag-based access control"
+    plugin_code = "filter"
+    plugin_description = "Visibility filtering plugin with tag-based control"
 
     def configure(  # type: ignore[override]
         self,
@@ -65,11 +68,11 @@ class AuthPlugin(BasePlugin):
         _target: str = "_all_",
         flags: str | None = None,
     ) -> None:
-        """Define authorization tags for this entry/router.
+        """Define filter tags for this entry/router.
 
         Args:
-            tags: Comma-separated tag names (e.g., "admin,internal")
-            enabled: Whether authorization is enabled (default True)
+            tags: Comma-separated tag names (e.g., "internal,public")
+            enabled: Whether filtering is enabled (default True)
             _target: Internal - target bucket name
             flags: Internal - flag string
         """
@@ -78,7 +81,7 @@ class AuthPlugin(BasePlugin):
     def on_attached_to_parent(self, parent_plugin: BasePlugin) -> None:
         """Merge parent tags with child tags (union).
 
-        AuthPlugin uses union semantics: parent tags are combined with
+        FilterPlugin uses union semantics: parent tags are combined with
         child tags, not replaced. This allows hierarchical tag inheritance
         where a parent router's tags apply to all children.
 
@@ -131,57 +134,26 @@ class AuthPlugin(BasePlugin):
         else:
             self.configure(tags="")
 
-    def allow_node(
-        self, node: MethodEntry | RouterInterface, **filters: Any
-    ) -> bool | str:
+    def allow_node(self, node: MethodEntry | RouterInterface, **filters: Any) -> bool:
         """Filter nodes (entries or routers) based on tag expression.
-
-        The entry has a **rule** (e.g., "!dimissionario", "admin&!guest").
-        The user has **tags** (e.g., "contabilita,dimissionario").
-        Check: does the user satisfy the entry's rule?
 
         Args:
             node: MethodEntry or Router being checked.
-            **filters: May contain 'tags' key with the user's tags.
+            **filters: Must contain 'tags' key with the filter expression.
 
         Returns:
-            True: Access allowed (entry has no rule, or user tags match).
-            "not_authenticated": Entry requires tags but user provided none (401).
-            "not_authorized": User provided tags but they don't match rule (403).
+            True if node matches (or has matching children), False otherwise.
         """
+        rule = filters.get("tags")
+        if not rule:
+            return True
         if isinstance(node, RouterInterface):
-            # For routers, check if any child is accessible
-            results = [self.allow_node(n, **filters) for n in node.values()]
-            # If any child returns True, router is accessible
-            if any(r is True for r in results):
-                return True
-            # Otherwise return first error (or True if no children)
-            return results[0] if results else True
-
-        # MethodEntry - read entry's rule from configuration
+            return any(self.allow_node(n, **filters) for n in node.values())
+        # MethodEntry - read from configuration
         config = self.configuration(node.name)
-        entry_rule = config.get("tags", "")
-
-        # If entry has no rule → always OK
-        if not entry_rule:
-            return True
-
-        # Entry has a rule - check user tags
-        user_tags = filters.get("tags")
-
-        # No user tags provided → not authenticated (401)
-        if not user_tags:
-            return "not_authenticated"
-
-        # Parse user tags
-        user_tags_set = {t.strip() for t in user_tags.split(",") if t.strip()}
-
-        # Check if user tags match the entry rule
-        if tags_match(entry_rule, user_tags_set):
-            return True
-
-        # Tags provided but don't match → not authorized (403)
-        return "not_authorized"
+        tags_str = config.get("tags", "")
+        entry_tags = {t.strip() for t in tags_str.split(",") if t.strip()}
+        return bool(tags_match(rule, entry_tags))
 
 
-Router.register_plugin(AuthPlugin)
+Router.register_plugin(FilterPlugin)

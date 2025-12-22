@@ -8,7 +8,7 @@ This allows external packages (like genro-asgi) to create router-compatible
 classes without depending on BaseRouter implementation details.
 
 Required methods:
-    - get(selector) -> handler or child router or None
+    - node(path) -> RouterNode with best-match resolution
     - nodes() -> introspection data dict
     - values() -> iterator over entries and children
 """
@@ -16,11 +16,12 @@ Required methods:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from genro_routes.core.base_router import MethodEntry
+    from genro_routes.core.router_node import RouterNode
 
 __all__ = ["RouterInterface"]
 
@@ -33,17 +34,21 @@ class RouterInterface(ABC):
     """
 
     @abstractmethod
-    def get(self, selector: str, **options: Any) -> Callable | RouterInterface | None:
-        """Resolve selector to handler, child router, or None.
+    def node(self, path: str, **kwargs: Any) -> RouterNode:
+        """Resolve path to a RouterNode using best-match resolution.
 
         Args:
-            selector: Path to resolve (e.g., "handler_name" or "child/handler").
-            **options: Implementation-specific options.
+            path: Path to resolve (e.g., "handler_name" or "child/handler").
+            **kwargs: Implementation-specific options (e.g., filter kwargs).
 
         Returns:
-            - Callable handler if selector points to a method/function
-            - RouterInterface if selector points to a child router
-            - None if not found
+            RouterNode containing:
+            - Entry info if path resolves to a handler
+            - Router info if path resolves to a child router
+            - Empty RouterNode if path cannot be resolved
+
+            The RouterNode is callable for entries. Unconsumed path segments
+            are available in partial_args.
         """
         ...
 

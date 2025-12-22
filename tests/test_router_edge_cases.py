@@ -124,7 +124,7 @@ def test_route_decorator_with_plugin_options():
 
     svc = Host()
     # Handler works and is registered
-    assert svc.api.get("run")() == "ok"
+    assert svc.api.node("run")() == "ok"
     # Entry is registered in nodes()
     info = svc.api.nodes()
     assert "run" in info["entries"]
@@ -147,7 +147,7 @@ def test_plugin_configure_after_binding():
     # Options from configure() call are accessible via get_config()
     assert svc.api.get_config("simple")["opt"] == "via_configure"
     # Handler still works
-    assert svc.api.get("hello")() == "hi"
+    assert svc.api.node("hello")() == "hi"
 
 
 def test_route_decorator_metadata_preserved():
@@ -163,7 +163,7 @@ def test_route_decorator_metadata_preserved():
 
     svc = Host()
     # Verify handler works
-    assert svc.api.get("hello")() == "hi"
+    assert svc.api.node("hello")() == "hi"
     # Verify entry is registered
     info = svc.api.nodes()
     assert "hello" in info["entries"]
@@ -179,7 +179,7 @@ def test_router_auto_registers_marked_methods_and_validates_plugins():
             return "ok"
 
     svc = Demo()
-    assert svc.api.get("alias")() == "ok"
+    assert svc.api.node("alias")() == "ok"
     ensure_plugin(SimplePlugin)
     svc.api.plug("simple")
     with pytest.raises(ValueError):
@@ -241,7 +241,7 @@ def test_attach_and_detach_instance_single_router_with_alias():
     info = parent.api.nodes()
     assert "sales" in info.get("routers", {})
     # Verify handler is accessible via path
-    assert parent.api.get("sales/ping")() == "pong"
+    assert parent.api.node("sales/ping")() == "pong"
 
     parent.api.detach_instance(parent.child)
     # Verify child is no longer accessible
@@ -263,9 +263,9 @@ def test_attach_instance_multiple_routers_requires_mapping():
     parent = Parent()
     # Auto-mapping when parent has a single router attaches both routers
     parent.api.attach_instance(parent.child)
-    # Verify both children are accessible via get()
-    assert parent.api.get("api") is parent.child.api
-    assert parent.api.get("admin") is parent.child.admin
+    # Verify both children are accessible via node()
+    assert parent.api.node("api").type == "router"
+    assert parent.api.node("admin").type == "router"
 
 
 def test_attach_instance_single_child_requires_alias_when_parent_multi():
@@ -283,8 +283,8 @@ def test_attach_instance_single_child_requires_alias_when_parent_multi():
     with pytest.raises(ValueError):
         parent.api.attach_instance(parent.child)
     parent.api.attach_instance(parent.child, name="child_alias")
-    # Verify child is accessible via get()
-    assert parent.api.get("child_alias") is parent.child.api
+    # Verify child is accessible via node()
+    assert parent.api.node("child_alias").type == "router"
 
 
 def test_attach_instance_allows_partial_mapping_and_skips_unmapped():
@@ -301,13 +301,13 @@ def test_attach_instance_allows_partial_mapping_and_skips_unmapped():
     parent = Parent()
     parent.api.attach_instance(parent.child, name="api:only_api")
     # Verify only mapped child is accessible
-    assert parent.api.get("only_api") is parent.child.api
-    assert parent.api.get("admin") is None
+    assert parent.api.node("only_api").type == "router"
+    assert not parent.api.node("admin")  # Not mapped, should be empty
 
     parent.api.attach_instance(parent.child, name="api:sales, admin:reports")
     # Verify both are now accessible
-    assert parent.api.get("sales") is parent.child.api
-    assert parent.api.get("reports") is parent.child.admin
+    assert parent.api.node("sales").type == "router"
+    assert parent.api.node("reports").type == "router"
 
 
 def test_attach_instance_name_collision():
@@ -374,7 +374,7 @@ def test_auto_detach_on_attribute_replacement():
     info = parent.api.nodes()
     assert "child" in info.get("routers", {})
     # Verify handler is accessible
-    assert parent.api.get("child/ping")() == "pong"
+    assert parent.api.node("child/ping")() == "pong"
 
     parent.child = None  # triggers auto-detach
     info = parent.api.nodes()
@@ -398,8 +398,8 @@ def test_attach_instance_rejects_other_parent_when_already_bound():
 
     # Bind to first parent
     first.api.attach_instance(first.child, name="child")
-    # Verify child is attached via get()
-    assert first.api.get("child") is first.child.api
+    # Verify child is attached via node()
+    assert first.api.node("child").type == "router"
 
     # Attempt to bind same child to another parent should fail
     with pytest.raises(ValueError):
@@ -460,8 +460,8 @@ def test_parent_router_creates_hierarchy():
     assert "orders" in info.get("routers", {})
 
     # Verify path resolution works
-    assert svc.api.call("users/list_users") == ["alice", "bob"]
-    assert svc.api.call("orders/list_orders") == ["order1", "order2"]
+    assert svc.api.node("users/list_users")() == ["alice", "bob"]
+    assert svc.api.node("orders/list_orders")() == ["order1", "order2"]
 
 
 def test_parent_router_requires_name():

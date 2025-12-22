@@ -173,7 +173,7 @@ class ConfigAPI(RoutingClass):
 config = ConfigAPI()
 
 # Call via router
-result = config.admin.get("configure_plugin")("api:logging/_all_", enabled=True)
+result = config.admin.node("configure_plugin")("api:logging/_all_", enabled=True)
 assert result["status"] == "ok"
 ```
 

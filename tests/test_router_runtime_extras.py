@@ -154,27 +154,27 @@ def test_plugin_on_decore_runs_for_existing_entries():
 def test_iter_marked_methods_skip_other_router_markers():
     """Test that each router only registers handlers marked for it."""
     svc = DualRoutes()
-    # Access via public API - get() triggers lazy binding
-    assert svc.one.get("shared") is not None
-    assert svc.two.get("two_alias") is not None
+    # Access via public API - node() triggers lazy binding
+    assert svc.one.node("shared")
+    assert svc.two.node("two_alias")
     # Verify routing isolation - shared is only in "one"
-    assert svc.two.get("shared") is None
+    assert not svc.two.node("shared")
 
 
 def test_iter_marked_methods_deduplicate_same_function():
     """Test that duplicate markers on same function don't cause double registration."""
     svc = DuplicateMarkers()
-    assert svc.api.get("original")() == "ok"
+    assert svc.api.node("original")() == "ok"
     # Verify only one entry via nodes()
     info = svc.api.nodes()
     assert len(info.get("entries", {})) == 1
 
 
-def test_router_call_and_nodes_structure():
-    """Test call() and nodes() work correctly."""
+def test_router_node_and_nodes_structure():
+    """Test node() and nodes() work correctly."""
     svc = ManualService()
     # auto is marked with @route, so it's available
-    assert svc.api.call("auto") == "auto"
+    assert svc.api.node("auto")() == "auto"
     tree = svc.api.nodes()
     assert tree["entries"]
     assert "routers" not in tree
@@ -278,8 +278,8 @@ def test_router_nodes_with_basepath():
     assert missing_nodes == {}
 
 
-def test_get_returns_child_router():
-    """Test get() returns child router when path points to one."""
+def test_node_returns_child_router():
+    """Test node() returns child router when path points to one."""
 
     class Child(RoutingClass):
         def __init__(self):
@@ -301,24 +301,24 @@ def test_get_returns_child_router():
 
     root = Root()
 
-    # get() returns handler when path points to handler
-    handler = root.api.get("root_action")
-    assert callable(handler)
-    assert handler() == "root"
+    # node() returns entry RouterNode when path points to handler
+    node = root.api.node("root_action")
+    assert node.type == "entry"
+    assert node() == "root"
 
-    # get() returns child router when path points to router
-    child_router = root.api.get("child")
-    assert isinstance(child_router, Router)
-    assert child_router.name == "api"
+    # node() returns router RouterNode when path points to router
+    child_node = root.api.node("child")
+    assert child_node.type == "router"
+    assert child_node.name == "api"
 
-    # get() returns None when path doesn't exist
-    result = root.api.get("nonexistent")
-    assert result is None
+    # node() returns empty RouterNode when path doesn't exist
+    result = root.api.node("nonexistent")
+    assert not result  # Empty RouterNode is falsy
 
-    # get() with path into child still works
-    child_handler = root.api.get("child/child_action")
-    assert callable(child_handler)
-    assert child_handler() == "child"
+    # node() with path into child still works
+    child_action_node = root.api.node("child/child_action")
+    assert child_action_node.type == "entry"
+    assert child_action_node() == "child"
 
 
 def test_nodes_lazy_returns_router_references():
@@ -583,14 +583,18 @@ def test_openapi_with_pydantic_model():
 
 
 def test_openapi_entry_filtering():
-    """Test openapi() respects plugin filtering."""
+    """Test openapi() respects plugin filtering via allow_node with kwargs."""
 
     class FilterPlugin(BasePlugin):
         plugin_code = "openapi_filter"
         plugin_description = "Filters entries for testing"
 
-        def allow_entry(self, router, entry, **kwargs):
-            return entry.name != "blocked"
+        def allow_node(self, node, **kwargs):
+            # Filter out entries named "blocked" when hide_blocked=True
+            if kwargs.get("hide_blocked"):
+                if hasattr(node, "name"):  # MethodEntry
+                    return node.name != "blocked"
+            return True
 
     if "openapi_filter" not in Router.available_plugins():
         Router.register_plugin(FilterPlugin)
@@ -608,11 +612,16 @@ def test_openapi_entry_filtering():
             return "blocked"
 
     svc = Service()
-    schema = svc.api.nodes(mode="openapi")
 
-    # blocked entry should be filtered out
-    assert "/allowed" in schema["paths"]
-    assert "/blocked" not in schema["paths"]
+    # Without filter kwargs, all entries are visible
+    schema_all = svc.api.nodes(mode="openapi")
+    assert "/allowed" in schema_all["paths"]
+    assert "/blocked" in schema_all["paths"]
+
+    # With filter kwargs (openapi_filter_hide_blocked=True), blocked entry is filtered out
+    schema_filtered = svc.api.nodes(mode="openapi", openapi_filter_hide_blocked=True)
+    assert "/allowed" in schema_filtered["paths"]
+    assert "/blocked" not in schema_filtered["paths"]
 
 
 def test_openapi_handler_without_type_hints():
@@ -1278,7 +1287,7 @@ def test_openapi_plugin_available():
 
 
 def test_node_returns_entry_info():
-    """Test node() returns info for a single entry."""
+    """Test node() returns RouterNode for a single entry."""
 
     class Svc(RoutingClass):
         def __init__(self):
@@ -1290,17 +1299,19 @@ def test_node_returns_entry_info():
             return {"id": item_id}
 
     svc = Svc()
-    info = svc.api.node("get_item")
+    node = svc.api.node("get_item")
 
-    assert info["type"] == "entry"
-    assert info["name"] == "get_item"
-    assert info["path"] == "get_item"
-    assert info["doc"] == "Get an item by ID."
-    assert "metadata" in info
+    assert node  # RouterNode is truthy
+    assert node.type == "entry"
+    assert node.name == "get_item"
+    assert node.path == "get_item"
+    assert node.doc == "Get an item by ID."
+    assert node.metadata is not None
+    assert node.partial_kwargs == {}  # Exact match has no partial kwargs
 
 
 def test_node_returns_router_info():
-    """Test node() returns info for a child router."""
+    """Test node() returns RouterNode for a child router."""
 
     class Child(RoutingClass):
         """Child service docstring."""
@@ -1319,20 +1330,22 @@ def test_node_returns_router_info():
             self.api.attach_instance(self.child, name="child")
 
     root = Root()
-    info = root.api.node("child")
+    node = root.api.node("child")
 
-    assert info["type"] == "router"
-    assert info["name"] == "api"
-    assert info["path"] == "child"
-    assert info["description"] == "Child API"
-    assert info["owner_doc"] == "Child service docstring."
+    assert node  # RouterNode is truthy
+    assert node.type == "router"
+    assert node.name == "api"
+    assert node.path == "child"
+    assert node.description == "Child API"
+    assert node.owner_doc == "Child service docstring."
 
 
-def test_node_returns_empty_for_missing_path():
-    """Test node() returns empty dict for non-existent path."""
+def test_node_returns_empty_for_missing_path_without_default_entry():
+    """Test node() returns empty RouterNode when path not found and no default_entry."""
 
     class Svc(RoutingClass):
         def __init__(self):
+            # No default_entry defined, and no entry named "index"
             self.api = Router(self, name="api")
 
         @route("api")
@@ -1340,9 +1353,12 @@ def test_node_returns_empty_for_missing_path():
             return "ok"
 
     svc = Svc()
-    info = svc.api.node("nonexistent")
+    node = svc.api.node("nonexistent")
 
-    assert info == {}
+    # With best-match: tries to find default_entry ("index") but it doesn't exist
+    # So returns empty RouterNode
+    assert not node  # RouterNode is falsy
+    assert node == {}  # Equals empty dict
 
 
 def test_node_with_nested_path():
@@ -1378,18 +1394,19 @@ def test_node_with_nested_path():
     root = Root()
 
     # Get entry via nested path
-    entry_info = root.api.node("child/grandchild/deep_action")
-    assert entry_info["type"] == "entry"
-    assert entry_info["name"] == "deep_action"
-    assert entry_info["path"] == "child/grandchild/deep_action"
-    assert entry_info["doc"] == "Deep action docstring."
+    entry_node = root.api.node("child/grandchild/deep_action")
+    assert entry_node.type == "entry"
+    assert entry_node.name == "deep_action"
+    assert entry_node.path == "child/grandchild/deep_action"
+    assert entry_node.doc == "Deep action docstring."
+    assert entry_node.partial_kwargs == {}
 
     # Get router via nested path
-    router_info = root.api.node("child/grandchild")
-    assert router_info["type"] == "router"
-    assert router_info["name"] == "api"
-    assert router_info["path"] == "child/grandchild"
-    assert router_info["description"] == "Grandchild API"
+    router_node = root.api.node("child/grandchild")
+    assert router_node.type == "router"
+    assert router_node.name == "api"
+    assert router_node.path == "child/grandchild"
+    assert router_node.description == "Grandchild API"
 
 
 def test_node_with_openapi_mode():
@@ -1405,14 +1422,14 @@ def test_node_with_openapi_mode():
             return {"id": item_id}
 
     svc = Svc()
-    info = svc.api.node("get_item", mode="openapi")
+    node = svc.api.node("get_item", mode="openapi")
 
-    assert info["type"] == "entry"
-    assert info["name"] == "get_item"
-    assert "openapi" in info
+    assert node.type == "entry"
+    assert node.name == "get_item"
+    assert node.openapi is not None
 
     # Check OpenAPI structure
-    openapi = info["openapi"]
+    openapi = node.openapi
     assert "post" in openapi  # has params = POST
     assert openapi["post"]["operationId"] == "get_item"
     assert openapi["post"]["summary"] == "Get an item by ID."
@@ -1436,11 +1453,11 @@ def test_node_openapi_mode_on_router_has_no_effect():
             self.api.attach_instance(self.child, name="child")
 
     root = Root()
-    info = root.api.node("child", mode="openapi")
+    node = root.api.node("child", mode="openapi")
 
     # mode="openapi" on router returns normal router info (no openapi key)
-    assert info["type"] == "router"
-    assert "openapi" not in info
+    assert node.type == "router"
+    assert node.openapi is None
 
 
 # -----------------------------------------------------------------------------

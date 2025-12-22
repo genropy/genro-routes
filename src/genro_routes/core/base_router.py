@@ -83,12 +83,13 @@ Hooks for subclasses
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Callable, Iterator
 from typing import Any, get_type_hints
 
 from genro_toolbox.typeutils import safe_is_instance
 
-from genro_routes.exceptions import UNAUTHORIZED
+from genro_routes.exceptions import UNAUTHENTICATED, UNAUTHORIZED
 from genro_routes.plugins._base_plugin import MethodEntry
 
 from .router_interface import RouterInterface
@@ -563,6 +564,7 @@ class BaseRouter(RouterInterface):
         basepath: str | None = None,
         lazy: bool = False,
         mode: str | None = None,
+        pattern: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Return a tree of routers/entries/metadata respecting filters.
@@ -581,6 +583,9 @@ class BaseRouter(RouterInterface):
                   - "h_openapi": Hierarchical OpenAPI format preserving
                     the router tree structure.
 
+            pattern: Optional regex pattern to filter entry names.
+                     Only entries whose name matches the pattern are included.
+                     Applied before plugin allow_entry() checks.
             **kwargs: Filter arguments passed to plugins via allow_entry().
 
         Returns:
@@ -609,13 +614,17 @@ class BaseRouter(RouterInterface):
                 target = target._children.get(segment)
             if target is None:
                 return {}
-            return target.nodes(lazy=lazy, mode=mode, **kwargs)
-        filter_args = self._prepare_filter_args(**kwargs)
+            return target.nodes(lazy=lazy, mode=mode, pattern=pattern, **kwargs)
+        allowing_args = self._prepare_allowing_args(**kwargs)
+
+        # Compile pattern once if provided
+        pattern_re = re.compile(pattern) if pattern else None
 
         entries = {
             entry.name: self._entry_node_info(entry)
             for entry in self._entries.values()
-            if self._allow_entry(entry, **filter_args)
+            if (pattern_re is None or pattern_re.search(entry.name))
+            and self._allow_entry(entry, **allowing_args) is True
         }
 
         routers: dict[str, Any]
@@ -624,7 +633,8 @@ class BaseRouter(RouterInterface):
             routers = dict(self._children)
         else:
             routers = {
-                child_name: child.nodes(**kwargs) for child_name, child in self._children.items()
+                child_name: child.nodes(pattern=pattern, **kwargs)
+                for child_name, child in self._children.items()
             }
             # Remove empty routers only in non-lazy mode
             routers = {k: v for k, v in routers.items() if v}
@@ -750,7 +760,7 @@ class BaseRouter(RouterInterface):
             Calling a router node (type="router") raises the 'not_found' exception.
             Calling a root node without default_entry raises the 'not_found' exception.
         """
-        filter_args = self._prepare_filter_args(**kwargs)
+        allowing_args = self._prepare_allowing_args(**kwargs)
 
         # Strip leading/trailing "/" for convenience (alfa/ == alfa)
         path = path.strip("/")
@@ -784,14 +794,15 @@ class BaseRouter(RouterInterface):
             # First check for entry at this level
             entry = current_router._entries.get(segment)
             if entry is not None:
-                # Found an entry - this becomes a candidate for last_valid_node
+                # Found an entry - remaining segments become partial_args for this entry
                 last_valid_node = entry
                 last_valid_router = current_router
                 last_valid_index = i
                 final_entry = entry
                 final_router = None
                 consumed_index = i
-                continue
+                # Entry found: stop walking, remaining segments go to partial_args
+                break
 
             # Check for child router
             child = current_router._children.get(segment)
@@ -825,17 +836,27 @@ class BaseRouter(RouterInterface):
         # Now determine what to return based on what we found
         full_path = path
 
+        # Helper to convert _allow_entry result to callable value
+        def _auth_to_callable(
+            auth_result: bool | str, handler: Any
+        ) -> Any:
+            if auth_result is True:
+                return handler
+            if auth_result == "not_authenticated":
+                return UNAUTHENTICATED
+            return UNAUTHORIZED  # "not_authorized" or any other string
+
         # Case 1: We found an entry exactly (no partial_args from path walking)
         if final_entry is not None and not partial_args:
-            authorized = not filter_args or current_router._allow_entry(final_entry, **filter_args)
+            auth_result = current_router._allow_entry(final_entry, **allowing_args)
             result_dict: dict[str, Any] = {
                 "type": "entry",
                 "name": final_entry.name,
                 "path": full_path,
-                "callable": final_entry.handler if authorized else UNAUTHORIZED,
+                "callable": _auth_to_callable(auth_result, final_entry.handler),
                 "doc": inspect.getdoc(final_entry.func) or final_entry.func.__doc__ or "",
                 "metadata": final_entry.metadata,
-                "partial_args": [],
+                "partial_kwargs": {},
             }
             if mode == "openapi":
                 entry_info = current_router._entry_node_info(final_entry)
@@ -844,34 +865,27 @@ class BaseRouter(RouterInterface):
 
         # Case 2: We found a router exactly (no partial_args from path walking)
         if final_router is not None and not partial_args:
+            # Always return type="router" - add callable if default_entry exists
+            result_dict = {
+                "type": "router",
+                "name": final_router.name,
+                "path": full_path,
+                "description": final_router.description,
+                "owner_doc": final_router.instance.__class__.__doc__,
+            }
             # Check if router has default_entry
             default_entry = final_router._entries.get(final_router.default_entry)
             if default_entry is not None:
-                # Return the default_entry callable
-                authorized = not filter_args or final_router._allow_entry(default_entry, **filter_args)
-                result_dict = {
-                    "type": "entry",
-                    "name": default_entry.name,
-                    "path": full_path,
-                    "callable": default_entry.handler if authorized else UNAUTHORIZED,
-                    "doc": inspect.getdoc(default_entry.func) or default_entry.func.__doc__ or "",
-                    "metadata": default_entry.metadata,
-                    "partial_args": [],
-                    "default_entry": True,
-                }
+                # Add callable from default_entry
+                auth_result = final_router._allow_entry(default_entry, **allowing_args)
+                result_dict["callable"] = _auth_to_callable(auth_result, default_entry.handler)
+                result_dict["doc"] = inspect.getdoc(default_entry.func) or default_entry.func.__doc__ or ""
+                result_dict["metadata"] = default_entry.metadata
+                result_dict["default_entry"] = True
                 if mode == "openapi":
                     entry_info = final_router._entry_node_info(default_entry)
                     result_dict["openapi"] = final_router._entry_info_to_openapi(default_entry.name, entry_info)
-                return RouterNode(result_dict, self, errors)
-            else:
-                # Router without default_entry - return router info (call will raise NotFound)
-                return RouterNode({
-                    "type": "router",
-                    "name": final_router.name,
-                    "path": full_path,
-                    "description": final_router.description,
-                    "owner_doc": final_router.instance.__class__.__doc__,
-                }, self, errors)
+            return RouterNode(result_dict, self, errors)
 
         # Case 3: Empty path - return root info with optional default_entry callable
         if not parts:
@@ -884,8 +898,8 @@ class BaseRouter(RouterInterface):
                 "owner_doc": self.instance.__class__.__doc__,
             }
             if default_entry is not None:
-                authorized = not filter_args or self._allow_entry(default_entry, **filter_args)
-                result_dict["callable"] = default_entry.handler if authorized else UNAUTHORIZED
+                auth_result = self._allow_entry(default_entry, **allowing_args)
+                result_dict["callable"] = _auth_to_callable(auth_result, default_entry.handler)
                 result_dict["doc"] = inspect.getdoc(default_entry.func) or default_entry.func.__doc__ or ""
                 result_dict["metadata"] = default_entry.metadata
                 result_dict["default_entry"] = True
@@ -894,34 +908,55 @@ class BaseRouter(RouterInterface):
                     result_dict["openapi"] = self._entry_info_to_openapi(default_entry.name, entry_info)
             return RouterNode(result_dict, self, errors)
 
-        # Case 4: Partial resolution - use last_valid_node with partial_args
+        # Case 4: Partial resolution - use last_valid_node with partial_kwargs
         if last_valid_node is not None:
-            # Calculate correct partial_args based on where last_valid_node was found
+            # Calculate correct partial values based on where last_valid_node was found
             # Root default_entry (-1) → all parts are partial, otherwise from last_valid_index+1
-            partial_args = parts if last_valid_index == -1 else parts[last_valid_index + 1:]
+            partial_values = parts if last_valid_index == -1 else parts[last_valid_index + 1:]
+
+            # Get signature to map partial values to parameter names
+            sig = inspect.signature(last_valid_node.func)
+
+            # Get parameter names that can accept positional args (excluding *args, **kwargs)
+            param_names = [
+                name
+                for name, p in sig.parameters.items()
+                if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            ]
 
             # Check if the function accepts *args
-            sig = inspect.signature(last_valid_node.func)
             has_var_positional = any(
                 p.kind == inspect.Parameter.VAR_POSITIONAL
                 for p in sig.parameters.values()
             )
 
-            authorized = not filter_args or last_valid_router._allow_entry(last_valid_node, **filter_args)
+            # Build partial_kwargs by mapping values to parameter names
+            partial_kwargs: dict[str, str] = {}
+            extra_args: list[str] = []
+            for i, value in enumerate(partial_values):
+                if i < len(param_names):
+                    partial_kwargs[param_names[i]] = value
+                else:
+                    extra_args.append(value)
+
+            auth_result = last_valid_router._allow_entry(last_valid_node, **allowing_args)
             result_dict = {
                 "type": "entry",
                 "name": last_valid_node.name,
                 "path": full_path,
-                "callable": last_valid_node.handler if authorized else UNAUTHORIZED,
+                "callable": _auth_to_callable(auth_result, last_valid_node.handler),
                 "doc": inspect.getdoc(last_valid_node.func) or last_valid_node.func.__doc__ or "",
                 "metadata": last_valid_node.metadata,
-                "partial_args": partial_args,
+                "partial_kwargs": partial_kwargs,
                 "default_entry": True,
             }
 
-            # If partial_args exist but function doesn't accept *args, mark for NotFound on call
-            if partial_args and not has_var_positional:
-                result_dict["varargs_required"] = True
+            # Include extra_args if any
+            if extra_args:
+                result_dict["extra_args"] = extra_args
+                # Mark varargs_required if function doesn't accept *args
+                if not has_var_positional:
+                    result_dict["varargs_required"] = True
 
             if mode == "openapi":
                 entry_info = last_valid_router._entry_node_info(last_valid_node)
@@ -1311,10 +1346,16 @@ class BaseRouter(RouterInterface):
         """Hook used by subclasses to inject extra description data."""
         return {}
 
-    def _prepare_filter_args(self, **raw_filters: Any) -> dict[str, Any]:
-        """Return normalized filters understood by subclasses (default: passthrough)."""
-        return {key: value for key, value in raw_filters.items() if value not in (None, False)}
+    def _prepare_allowing_args(self, **raw_args: Any) -> dict[str, Any]:
+        """Return normalized allowing args understood by subclasses (default: passthrough)."""
+        return {key: value for key, value in raw_args.items() if value not in (None, False)}
 
-    def _allow_entry(self, entry: MethodEntry, **filters: Any) -> bool:
-        """Hook used by subclasses to decide if an entry is exposed."""
+    def _allow_entry(self, entry: MethodEntry, **filters: Any) -> bool | str:
+        """Hook used by subclasses to decide if an entry is exposed.
+
+        Returns:
+            True: Entry is allowed.
+            "not_authenticated": Entry requires auth but no credentials provided (401).
+            "not_authorized": Credentials provided but insufficient (403).
+        """
         return True

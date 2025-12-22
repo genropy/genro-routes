@@ -39,8 +39,9 @@ def test_orders_quick_example():
             return {"status": "created", **payload}
 
     orders = OrdersAPI("acme")
-    assert orders.api.get("list")() == ["order-1", "order-2"]
-    assert orders.api.get("retrieve")("42") == "acme:42"
+    # Use node() and call it
+    assert orders.api.node("list")() == ["order-1", "order-2"]
+    assert orders.api.node("retrieve")("42") == "acme:42"
     overview = orders.api.nodes()
     assert set(overview["entries"].keys()) == {"list", "retrieve", "create"}
 
@@ -154,23 +155,23 @@ def test_instance_bound_methods_are_isolated():
     first = Service("alpha")
     second = Service("beta")
 
-    assert first.api.get("describe")() == "service:alpha"
-    assert second.api.get("describe")() == "service:beta"
+    assert first.api.node("describe")() == "service:alpha"
+    assert second.api.node("describe")() == "service:beta"
     # Ensure handlers are distinct objects (bound to each instance)
-    assert first.api.get("describe") != second.api.get("describe")
+    assert first.api.node("describe").callable != second.api.node("describe").callable
 
 
 def test_prefix_and_name_override():
     sub = SubService("users")
 
-    assert sub.routes.get("list")() == "users:list"
-    assert sub.routes.get("detail")(10) == "users:detail:10"
+    assert sub.routes.node("list")() == "users:list"
+    assert sub.routes.node("detail")(10) == "users:detail:10"
 
 
 def test_plugins_are_per_instance_and_accessible():
     svc = PluginService()
     assert svc.api.capture.calls == []
-    result = svc.api.get("do_work")()
+    result = svc.api.node("do_work")()
     assert result == "ok"
     assert svc.touched is True
     assert svc.api.capture.calls == ["wrap"]
@@ -180,63 +181,27 @@ def test_plugins_are_per_instance_and_accessible():
 
 def test_dynamic_router_add_entry_runtime():
     svc = DynamicRouterService()
-    assert svc.dynamic.get("dynamic_alpha")() == "alpha"
-    assert svc.dynamic.get("dynamic_beta")() == "beta"
+    assert svc.dynamic.node("dynamic_alpha")() == "alpha"
+    assert svc.dynamic.node("dynamic_beta")() == "beta"
     # Adding via string
     svc.dynamic._add_entry("dynamic_alpha", name="alpha_alias")
-    assert svc.dynamic.get("alpha_alias")() == "alpha"
-
-
-def test_get_with_default_returns_callable():
-    svc = PluginService()
-
-    def fallback():
-        return "fallback"
-
-    handler = svc.api.get("missing", default_handler=fallback)
-    assert handler() == "fallback"
-
-
-def test_get_uses_init_default_handler():
-    class DefaultService(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api", get_default_handler=lambda: "init-default")
-
-    svc = DefaultService()
-    handler = svc.api.get("missing")
-    assert handler() == "init-default"
-
-
-def test_get_runtime_override_init_default_handler():
-    class DefaultService(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api", get_default_handler=lambda: "init-default")
-
-    svc = DefaultService()
-    handler = svc.api.get("missing", default_handler=lambda: "runtime")
-    assert handler() == "runtime"
-
-
-def test_get_without_default_returns_none():
-    svc = PluginService()
-    result = svc.api.get("unknown")
-    assert result is None
+    assert svc.dynamic.node("alpha_alias")() == "alpha"
 
 
 def test_plugin_enable_disable_runtime_data():
     svc = ToggleService()
-    handler = svc.api.get("touch")
+    node = svc.api.node("touch")
     # Initially enabled
-    handler()
+    node()
     assert svc.api.get_runtime_data("touch", "toggle", "last") is True
     # Disable and verify
     svc.api.set_plugin_enabled("touch", "toggle", False)
     svc.api.set_runtime_data("touch", "toggle", "last", None)
-    handler()
+    node()
     assert svc.api.get_runtime_data("touch", "toggle", "last") is None
     # Re-enable
     svc.api.set_plugin_enabled("touch", "toggle", True)
-    handler()
+    node()
     assert svc.api.get_runtime_data("touch", "toggle", "last") is True
 
 
@@ -256,7 +221,7 @@ def test_dotted_path_and_nodes_with_attached_child():
             self.api.attach_instance(self.child, name="child")
 
     parent = Parent()
-    assert parent.api.get("child/ping")() == "pong"
+    assert parent.api.node("child/ping")() == "pong"
     tree = parent.api.nodes()
     assert "child" in tree["routers"]
 
@@ -287,8 +252,8 @@ class TestMainRouterAttribute:
                 return f"got:{key}"
 
         t = Table()
-        assert t.api.get("add")("x") == "added:x"
-        assert t.api.get("get")("y") == "got:y"
+        assert t.api.node("add")("x") == "added:x"
+        assert t.api.node("get")("y") == "got:y"
         assert set(t.api.nodes()["entries"].keys()) == {"add", "get"}
 
     def test_route_with_explicit_name_overrides_main_router(self):
@@ -310,8 +275,8 @@ class TestMainRouterAttribute:
                 return "secret"
 
         m = Mixed()
-        assert m.api.get("public")() == "public"
-        assert m.admin.get("secret")() == "secret"
+        assert m.api.node("public")() == "public"
+        assert m.admin.node("secret")() == "secret"
         assert "public" in m.api.nodes()["entries"]
         assert "secret" not in m.api.nodes()["entries"]
         assert "secret" in m.admin.nodes()["entries"]
@@ -334,8 +299,9 @@ class TestMainRouterAttribute:
                 return "registered"
 
         nd = NoDefault()
-        assert nd.api.get("registered")() == "registered"
-        assert nd.api.get("orphan") is None
+        assert nd.api.node("registered")() == "registered"
+        # orphan not registered - node returns empty
+        assert not nd.api.node("orphan")
         assert "orphan" not in nd.api.nodes()["entries"]
 
     def test_main_router_with_custom_entry_name(self):
@@ -352,7 +318,7 @@ class TestMainRouterAttribute:
                 return f"added:{data}"
 
         t = Table()
-        assert t.api.get("custom_add")("x") == "added:x"
+        assert t.api.node("custom_add")("x") == "added:x"
         assert "custom_add" in t.api.nodes()["entries"]
         assert "add_record" not in t.api.nodes()["entries"]
 
@@ -375,8 +341,8 @@ class TestMainRouterAttribute:
                 return "extended_add"
 
         t = ExtendedTable()
-        assert t.api.get("list")() == "base_list"
-        assert t.api.get("add")() == "extended_add"
+        assert t.api.node("list")() == "base_list"
+        assert t.api.node("add")() == "extended_add"
         entries = t.api.nodes()["entries"]
         assert "list" in entries
         assert "add" in entries
@@ -404,8 +370,8 @@ class TestMainRouterAttribute:
         t = ChildTable()
         # Both methods use ChildTable's main_router = "custom"
         # because main_router is resolved at registration time from instance's class
-        assert t.custom.get("base_method")() == "base"
-        assert t.custom.get("child_method")() == "child"
+        assert t.custom.node("base_method")() == "base"
+        assert t.custom.node("child_method")() == "child"
         entries = t.custom.nodes()["entries"]
         assert "base_method" in entries
         assert "child_method" in entries
@@ -521,176 +487,12 @@ class TestDefaultRouter:
 
 
 # -----------------------------------------------------------------------------
-# get() with partial=True tests
+# Tests for default_entry behavior with node()
 # -----------------------------------------------------------------------------
 
 
-class TestGetWithPartial:
-    """Tests for get() with partial=True option."""
-
-    def test_partial_returns_functools_partial_for_unresolved_path(self):
-        """get(partial=True) returns partial with default_entry handler for unresolved paths."""
-        import functools
-
-        class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def index(self, *args):
-                return f"index called with: {args}"
-
-        class Root(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.child = Child()
-                self.api.attach_instance(self.child, name="child")
-
-        root = Root()
-        # "child" exists, but "gamma/delta" doesn't
-        # Should use child's default_entry ("index") with unconsumed path as args
-        result = root.api.get("child/gamma/delta", partial=True)
-
-        assert isinstance(result, functools.partial)
-        # The partial should call the index handler with path segments as args
-        output = result()
-        assert output == "index called with: ('gamma', 'delta')"
-
-    def test_partial_can_be_called_later(self):
-        """partial result can be invoked later with bound args."""
-
-        class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def catch_all(self, *args):
-                return list(args)
-
-        svc = Service()
-        # "catch_all" exists, "extra/path" doesn't - should return partial on catch_all
-        result = svc.api.get("catch_all/extra/path", partial=True)
-
-        # Call the partial - args are already bound
-        output = result()
-        assert output == ["extra", "path"]
-
-    def test_partial_with_nested_hierarchy(self):
-        """partial works correctly with deeply nested router hierarchies."""
-        import functools
-
-        class GrandChild(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def index(self, *args):
-                return f"grandchild index: {args}"
-
-        class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.grandchild = GrandChild()
-                self.api.attach_instance(self.grandchild, name="grandchild")
-
-        class Root(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.child = Child()
-                self.api.attach_instance(self.child, name="child")
-
-        root = Root()
-        # Path "child/grandchild" exists, but "nonexistent/path" doesn't
-        # Should use grandchild's default_entry ("index") with unconsumed path as args
-        result = root.api.get("child/grandchild/nonexistent/path", partial=True)
-
-        assert isinstance(result, functools.partial)
-        # Call the partial and verify result
-        output = result()
-        assert output == "grandchild index: ('nonexistent', 'path')"
-
-    def test_partial_false_returns_none_for_unresolved(self):
-        """Without partial=True, get() returns None for unresolved paths."""
-
-        class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def action(self):
-                return "ok"
-
-        svc = Service()
-        # Default behavior - no partial
-        result = svc.api.get("nonexistent/path")
-        assert result is None
-
-        # Explicit partial=False
-        result = svc.api.get("nonexistent/path", partial=False)
-        assert result is None
-
-    def test_partial_with_single_segment_unresolved_returns_none(self):
-        """partial=True returns None for non-existent single segment (no router to resolve)."""
-
-        class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def action(self):
-                return "ok"
-
-        svc = Service()
-        # Single segment that doesn't exist - no router to get default_entry from
-        result = svc.api.get("nonexistent", partial=True)
-        assert result is None
-
-    def test_partial_resolved_path_returns_normal_result(self):
-        """When path is fully resolved, partial=True doesn't change behavior."""
-
-        class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def action(self, x=None):
-                return f"x={x}"
-
-        svc = Service()
-        # Path exists - should return the handler directly
-        result = svc.api.get("action", partial=True)
-
-        # Should be the actual handler, not a partial
-        assert callable(result)
-        assert result(x=42) == "x=42"
-
-    def test_partial_entry_with_extra_path_segments(self):
-        """When entry exists but has extra path, return partial with segments as args."""
-
-        class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def handler(self, *args):
-                return list(args)
-
-        svc = Service()
-        # "handler" exists, "extra/segments" are unconsumed
-        result = svc.api.get("handler/extra/segments", partial=True)
-
-        # Should be partial with extra segments as args
-        output = result()
-        assert output == ["extra", "segments"]
-
-
-# -----------------------------------------------------------------------------
-# Tests for default_entry with partial
-# -----------------------------------------------------------------------------
-
-
-class TestDefaultEntryWithPartial:
-    """Tests for Router.default_entry behavior with partial=True."""
+class TestDefaultEntry:
+    """Tests for Router.default_entry behavior with node()."""
 
     def test_default_entry_is_index_by_default(self):
         """Router default_entry is 'index' by default."""
@@ -720,9 +522,8 @@ class TestDefaultEntryWithPartial:
         svc = Service()
         assert svc.api.default_entry == "handle"
 
-    def test_partial_uses_default_entry_on_child_router(self):
-        """partial=True uses child router's default_entry (index) for unresolved path."""
-        import functools
+    def test_node_uses_default_entry_for_unresolved_path(self):
+        """node() uses default_entry for paths that don't resolve exactly."""
 
         class Child(RoutingClass):
             def __init__(self):
@@ -740,16 +541,18 @@ class TestDefaultEntryWithPartial:
 
         root = Root()
         # Path "child/extra/path" - child exists but "extra/path" doesn't
-        # Should return partial(child.api.index, "extra", "path")
-        result = root.api.get("child/extra/path", partial=True)
+        # Should return node with default_entry ("index") and extra_args
+        node = root.api.node("child/extra/path")
 
-        assert isinstance(result, functools.partial)
-        output = result()
-        assert output == "index called with ('extra', 'path')"
+        assert node
+        assert node.default_entry is True
+        assert node.extra_args == ["extra", "path"]
+        assert node.partial_kwargs == {}
+        # extra_args are automatically prepended when calling the node
+        assert node() == "index called with ('extra', 'path')"
 
-    def test_partial_uses_custom_default_entry(self):
-        """partial=True uses custom default_entry when configured."""
-        import functools
+    def test_node_uses_custom_default_entry(self):
+        """node() uses custom default_entry when configured."""
 
         class Child(RoutingClass):
             def __init__(self):
@@ -766,15 +569,17 @@ class TestDefaultEntryWithPartial:
                 self.api.attach_instance(self.child, name="child")
 
         root = Root()
-        result = root.api.get("child/extra/path", partial=True)
+        node = root.api.node("child/extra/path")
 
-        assert isinstance(result, functools.partial)
-        output = result()
-        assert output == "handle called with ('extra', 'path')"
+        assert node
+        assert node.default_entry is True
+        assert node.extra_args == ["extra", "path"]
+        assert node.partial_kwargs == {}
+        # extra_args are automatically prepended when calling the node
+        assert node() == "handle called with ('extra', 'path')"
 
-    def test_partial_raises_when_default_entry_missing(self):
-        """partial=True raises ValueError when default_entry doesn't exist."""
-        import pytest
+    def test_node_returns_empty_when_default_entry_missing(self):
+        """node() returns empty RouterNode when default_entry doesn't exist."""
 
         class Child(RoutingClass):
             def __init__(self):
@@ -791,95 +596,14 @@ class TestDefaultEntryWithPartial:
                 self.api.attach_instance(self.child, name="child")
 
         root = Root()
+        node = root.api.node("child/extra/path")
 
-        with pytest.raises(ValueError, match="No default entry 'index'"):
-            root.api.get("child/extra/path", partial=True)
-
-    def test_partial_on_router_single_segment_uses_default_entry(self):
-        """partial=True on single segment router uses default_entry."""
-        import functools
-
-        class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def index(self):
-                return "index"
-
-        class Root(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.child = Child()
-                self.api.attach_instance(self.child, name="child")
-
-        root = Root()
-        # Just "child" - resolves to router, partial=True should use default_entry
-        result = root.api.get("child", partial=True)
-
-        assert isinstance(result, functools.partial)
-        assert result() == "index"
-
-    def test_partial_false_returns_router_not_default_entry(self):
-        """Without partial=True, get() returns the router itself."""
-
-        class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def index(self):
-                return "index"
-
-        class Root(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.child = Child()
-                self.api.attach_instance(self.child, name="child")
-
-        root = Root()
-        result = root.api.get("child")
-
-        # Without partial=True, returns the router itself
-        assert result is root.child.api
-
-    def test_partial_empty_selector_uses_default_entry(self):
-        """partial=True with empty selector uses this router's default_entry."""
-        import functools
-
-        class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def index(self):
-                return "index called"
-
-        svc = Service()
-        result = svc.api.get("", partial=True)
-
-        assert isinstance(result, functools.partial)
-        assert result() == "index called"
-
-    def test_partial_empty_selector_raises_when_default_entry_missing(self):
-        """partial=True with empty selector raises when default_entry missing."""
-        import pytest
-
-        class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def action(self):  # Not "index"
-                return "action"
-
-        svc = Service()
-
-        with pytest.raises(ValueError, match="No default entry 'index'.*empty partial path"):
-            svc.api.get("", partial=True)
+        # No default_entry available, returns empty node
+        assert not node
+        assert node == {}
 
     def test_leading_slash_is_stripped(self):
-        """get() strips leading slash from selector."""
+        """node() strips leading slash from path."""
 
         class Service(RoutingClass):
             def __init__(self):
@@ -892,11 +616,11 @@ class TestDefaultEntryWithPartial:
         svc = Service()
 
         # Both should work identically
-        assert svc.api.get("action")() == "action result"
-        assert svc.api.get("/action")() == "action result"
+        assert svc.api.node("action")() == "action result"
+        assert svc.api.node("/action")() == "action result"
 
     def test_leading_slash_with_hierarchy(self):
-        """get() strips leading slash in hierarchical paths."""
+        """node() strips leading slash in hierarchical paths."""
 
         class Child(RoutingClass):
             def __init__(self):
@@ -915,5 +639,5 @@ class TestDefaultEntryWithPartial:
         root = Root()
 
         # Both should work identically
-        assert root.api.get("child/handler")() == "child handler"
-        assert root.api.get("/child/handler")() == "child handler"
+        assert root.api.node("child/handler")() == "child handler"
+        assert root.api.node("/child/handler")() == "child handler"

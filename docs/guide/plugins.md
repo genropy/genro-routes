@@ -31,7 +31,7 @@ class Service(RoutingClass):
         return f"processed:{data}"
 
 svc = Service()
-result = svc.api.get("process")("test")  # Automatically logged
+result = svc.api.node("process")("test")  # Automatically logged
 ```
 
 **PydanticPlugin** (`pydantic`):
@@ -46,8 +46,8 @@ class ValidatedService(RoutingClass):
         return f"{text}:{number}"
 
 svc = ValidatedService()
-svc.api.get("concat")("hello", 3)  # Valid
-# svc.api.get("concat")(123, "oops")  # ValidationError
+svc.api.node("concat")("hello", 3)  # Valid
+# svc.api.node("concat")(123, "oops")  # ValidationError
 ```
 
 See [Quick Start - Plugins](../quickstart.md#adding-plugins) for more examples.
@@ -109,7 +109,7 @@ class PluginService(RoutingClass):
         return "ok"
 
 svc = PluginService()
-result = svc.api.get("do_work")()
+result = svc.api.node("do_work")()
 assert svc.api.capture.calls == ["do_work"]
 ```
 
@@ -514,7 +514,7 @@ Router.register_plugin(CapturePlugin)
 svc1 = PluginService()
 svc2 = PluginService()
 
-svc1.api.get("do_work")()
+svc1.api.node("do_work")()
 assert svc1.api.capture.calls == ["do_work"]
 assert svc2.api.capture.calls == []  # Independent state
 ```

@@ -96,12 +96,12 @@ Prefer shallow hierarchies over deeply nested ones:
 
 ```python
 # Good: Shallow, navigable hierarchy
-app.api.get("users/list")
-app.api.get("orders/create")
-app.api.get("reports/sales")
+app.api.node("users/list")()
+app.api.node("orders/create")()
+app.api.node("reports/sales")()
 
 # Bad: Too deep, hard to navigate
-app.api.get("v1/internal/services/users/management/list")
+app.api.node("v1/internal/services/users/management/list")()
 ```
 
 ### Use Branch Routers for Organization
@@ -245,12 +245,12 @@ Test handler logic independently of routing:
 def test_user_service_list():
     svc = UserService()
     # Test via router
-    result = svc.api.get("list_users")()
+    result = svc.api.node("list_users")()
     assert isinstance(result, list)
 
 def test_user_service_create():
     svc = UserService()
-    result = svc.api.call("create_user", {"name": "Alice"})
+    result = svc.api.node("create_user")({"name": "Alice"})
     assert result["name"] == "Alice"
 ```
 
@@ -268,7 +268,7 @@ def test_application_hierarchy():
     assert "orders" in nodes["routers"]
 
     # Verify access
-    users = app.api.get("users/list_users")()
+    users = app.api.node("users/list_users")()
     assert isinstance(users, list)
 ```
 
@@ -279,7 +279,7 @@ Test that plugins affect handler execution:
 ```python
 def test_logging_plugin_called(caplog):
     svc = LoggedService()
-    svc.api.get("action")()
+    svc.api.node("action")()
 
     assert "action" in caplog.text
 ```
@@ -309,13 +309,13 @@ If calling the same handler repeatedly, cache the reference:
 
 ```python
 # Good: Cache for repeated calls
-handler = svc.api.get("process")
+node = svc.api.node("process")
 for item in items:
-    handler(item)
+    node(item)
 
 # Less efficient: Lookup every time
 for item in items:
-    svc.api.get("process")(item)
+    svc.api.node("process")(item)
 ```
 
 ## Anti-Patterns

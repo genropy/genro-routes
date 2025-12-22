@@ -26,7 +26,7 @@ Genro Routes provides a consistent, well-tested foundation for these patterns.
 
 1. **Instance-scoped routers** - Each object instantiates its own routers (`Router(self, ...)`) with isolated state.
 2. **Friendly registration** - `@route(...)` accepts explicit names, auto-strips prefixes, and supports custom metadata.
-3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutingClass instances with path access (`parent.api.get("child/method")`).
+3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutingClass instances with path access (`parent.api.node("child/method")`).
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
 5. **Runtime configuration** - `routing.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
 6. **Built-in plugins** - `logging`, `pydantic`, and `auth` plugins are included; SmartAsync wrapping is opt-in.
@@ -55,8 +55,8 @@ class OrdersAPI(RoutingClass):
         return {"status": "created", **payload}
 
 orders = OrdersAPI("acme")
-print(orders.api.get("list")())        # ["order-1", "order-2"]
-print(orders.api.get("retrieve")("42"))  # acme:42
+print(orders.api.node("list")())        # ["order-1", "order-2"]
+print(orders.api.node("retrieve")("42"))  # acme:42
 
 overview = orders.api.nodes()
 print(overview["entries"].keys())      # dict_keys(['list', 'retrieve', 'create'])
@@ -84,7 +84,7 @@ class Application(RoutingClass):
         self.api.attach_instance(self.users, name="users")
 
 app = Application()
-print(app.api.get("users/list")())  # ["alice", "bob"]
+print(app.api.node("users/list")())  # ["alice", "bob"]
 
 # Introspect hierarchy
 info = app.api.nodes()
@@ -112,8 +112,9 @@ pip install -e ".[all]"
 - **`RoutingClass`** - Mixin that tracks routers per instance and exposes the `routing` proxy
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
 - **`obj.routing`** - Proxy exposed by every RoutingClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
+- **`RouterNode`** - Callable wrapper returned by `node()`, supports `__bool__`, `is_authorized`, `partial_args` for best-match resolution.
 - **`NotFound` / `NotAuthorized`** - Exceptions for routing errors (entry not found vs. access denied by filters)
-- **`UNAUTHORIZED`** - Sentinel value returned by `node()` when entry is filtered out
+- **`UNAUTHORIZED`** - Sentinel value for unauthorized entries (check with `node.is_authorized`)
 
 ## Pattern Highlights
 

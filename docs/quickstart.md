@@ -32,8 +32,8 @@ class Service(RoutingClass):
 first = Service("alpha")
 second = Service("beta")
 
-assert first.api.get("describe")() == "service:alpha"
-assert second.api.get("describe")() == "service:beta"
+assert first.api.node("describe")() == "service:alpha"
+assert second.api.node("describe")() == "service:beta"
 ```
 
 **Key concept**: Routers are instantiated in `__init__` with `Router(self, ...)` - each instance gets its own isolated router.
@@ -63,10 +63,10 @@ class SubService(RoutingClass):
 sub = SubService("users")
 
 # Prefix stripped: "handle_list" → "list"
-assert sub.routes.get("list")() == "users:list"
+assert sub.routes.node("list")() == "users:list"
 
 # Custom name used: "handle_detail" → "detail"
-assert sub.routes.get("detail")(10) == "users:detail:10"
+assert sub.routes.node("detail")(10) == "users:detail:10"
 ```
 
 ## Default Router with `main_router`
@@ -87,7 +87,7 @@ class Table(RoutingClass):
         return f"added:{data}"
 
 t = Table()
-assert t.table.get("add")("x") == "added:x"
+assert t.table.node("add")("x") == "added:x"
 ```
 
 ## Building Hierarchies
@@ -111,8 +111,8 @@ class RootAPI(RoutingClass):
 root = RootAPI()
 
 # Access with path separator
-assert root.api.get("users/list")() == "users:list"
-assert root.api.get("products/detail")(5) == "products:detail:5"
+assert root.api.node("users/list")() == "users:list"
+assert root.api.node("products/detail")(5) == "products:detail:5"
 ```
 
 ## Adding Plugins
@@ -133,7 +133,7 @@ class PluginService(RoutingClass):
         return "ok"
 
 svc = PluginService()
-result = svc.api.get("do_work")()  # Automatically logged
+result = svc.api.node("do_work")()  # Automatically logged
 ```
 
 ## Validating Arguments
@@ -156,11 +156,11 @@ class ValidateService(RoutingClass):
 svc = ValidateService()
 
 # Valid inputs
-assert svc.api.get("concat")("hello", 3) == "hello:3"
-assert svc.api.get("concat")("hi") == "hi:1"
+assert svc.api.node("concat")("hello", 3) == "hello:3"
+assert svc.api.node("concat")("hi") == "hi:1"
 
 # Invalid inputs raise ValidationError
-# svc.api.get("concat")(123, "oops")  # ValidationError!
+# svc.api.node("concat")(123, "oops")  # ValidationError!
 ```
 
 ## Next Steps

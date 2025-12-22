@@ -30,10 +30,10 @@ class _FilterPlugin(BasePlugin):
         super().__init__(router, **config)
         self.calls: list[dict] = []
 
-    def allow_entry(self, router, entry, **filters):
+    def allow_node(self, node, **filters):
         self.calls.append(filters)
         # Hide when custom filter is present, otherwise keep entry visible.
-        return False if filters.get("hide") else None
+        return not filters.get("hide", False)
 
 
 class _BadMetadataPlugin(BasePlugin):
@@ -73,10 +73,16 @@ def test_allow_entry_respects_plugins():
     # hide filter triggers plugin veto (plugin receives extracted filter value without prefix)
     # filters come with plugin_code prefix, e.g., filtertest_hide=True -> {"hide": True}
     assert router._allow_entry(entry, filtertest_hide=True) is False
-    # without hide filter plugin returns None and entry passes through
+
+    # Plugin is ALWAYS consulted, even without kwargs (needed for auth 401/403 logic)
+    # With empty kwargs, _FilterPlugin returns True by default
     assert router._allow_entry(entry) is True
+
     plugin = router._plugins_by_name["filtertest"]
+    # 2 calls: plugin is always consulted
     assert len(plugin.calls) == 2
+    assert plugin.calls[0] == {"hide": True}
+    assert plugin.calls[1] == {}  # empty kwargs on second call
 
 
 def test_nodes_entry_extra_rejects_non_dict_from_plugin():

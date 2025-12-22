@@ -5,10 +5,13 @@
 This module defines custom exceptions used throughout the routing system.
 """
 
-__all__ = ["NotFound", "NotAuthorized", "NotAuthenticated", "UNAUTHORIZED"]
+__all__ = ["NotFound", "NotAuthorized", "NotAuthenticated", "UNAUTHORIZED", "UNAUTHENTICATED"]
 
-# Sentinel value for unauthorized callable in node() response
+# Sentinel value for unauthorized callable in node() response (403)
 UNAUTHORIZED = "--NA--"
+
+# Sentinel value for unauthenticated callable in node() response (401)
+UNAUTHENTICATED = "--401--"
 
 
 class NotFound(Exception):

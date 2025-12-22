@@ -34,7 +34,7 @@ from .core.router_node import RouterNode
 from .exceptions import UNAUTHORIZED, NotAuthenticated, NotAuthorized, NotFound
 
 # Import plugins to trigger auto-registration (lazy to avoid cycles)
-for _plugin in ("logging", "pydantic", "auth", "openapi"):
+for _plugin in ("logging", "pydantic", "auth", "filter", "openapi"):
     import_module(f"{__name__}.plugins.{_plugin}")
 del _plugin
 

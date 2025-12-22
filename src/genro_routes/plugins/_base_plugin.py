@@ -315,7 +315,7 @@ class BasePlugin:
         """
         return None
 
-    def allow_node(self, node: Any, **filters: Any) -> bool:  # pragma: no cover - optional hook
+    def allow_node(self, node: Any, **filters: Any) -> bool | str:  # pragma: no cover - optional hook
         """Override to control node visibility during introspection.
 
         Called by ``router.nodes()`` to decide if a node (entry or child router)
@@ -327,7 +327,10 @@ class BasePlugin:
             **filters: All filter criteria passed to ``nodes()``.
 
         Returns:
-            True to include, False to exclude.
+            True: Include the node.
+            "not_authenticated": Entry requires auth but no credentials (401).
+            "not_authorized": Credentials provided but insufficient (403).
+            False: Exclude from results (for backward compatibility).
         """
         return True
 

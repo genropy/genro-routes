@@ -35,8 +35,8 @@ class Service(RoutingClass):
 first = Service("alpha")
 second = Service("beta")
 
-assert first.api.get("describe")() == "service:alpha"
-assert second.api.get("describe")() == "service:beta"
+assert first.api.node("describe")() == "service:alpha"
+assert second.api.node("describe")() == "service:beta"
 ```
 
 **Key points**:
@@ -68,10 +68,10 @@ class API(RoutingClass):
 api = API()
 
 # Direct name resolution
-assert api.routes.get("echo")("hello") == "hello"
+assert api.routes.node("echo")("hello") == "hello"
 
 # Custom name resolution
-assert api.routes.get("alt_name")() == "executed"
+assert api.routes.node("alt_name")() == "executed"
 ```
 
 **Registration happens automatically** when you inherit from `RoutingClass` and instantiate routers in `__init__`.
@@ -102,8 +102,8 @@ class Table(RoutingClass):
         return "special"
 
 t = Table()
-assert t.table.get("add")("x") == "added:x"
-assert t.table.get("remove")(1) == "removed:1"
+assert t.table.node("add")("x") == "added:x"
+assert t.table.node("remove")(1) == "removed:1"
 ```
 
 **Benefits**:
@@ -144,9 +144,9 @@ assert m.default_router is m.admin  # main_router takes priority
 
 ## Calling Handlers
 
-<!-- test: test_router_runtime_extras.py::test_router_call_and_nodes_structure -->
+<!-- test: test_router_runtime_extras.py::test_router_node_and_nodes_structure -->
 
-Use `get()` to retrieve handlers and `call()` for direct invocation:
+Use `node()` to retrieve handlers - it returns a callable `RouterNode`:
 
 ```python
 class Calculator(RoutingClass):
@@ -159,19 +159,22 @@ class Calculator(RoutingClass):
 
 calc = Calculator()
 
-# Via get() - returns callable
-handler = calc.ops.get("add")
-assert handler(2, 3) == 5
+# node() returns a RouterNode which is callable
+node = calc.ops.node("add")
+assert node(2, 3) == 5
 
-# Via call() - invokes directly
-result = calc.ops.call("add", 10, 20)
-assert result == 30
+# RouterNode also provides metadata access
+assert node.name == "add"
+assert node.type == "entry"
+assert node.is_entry
 ```
 
-**Difference**:
+**RouterNode features**:
 
-- `get(name)` returns the callable (for reuse)
-- `call(name, *args, **kwargs)` invokes immediately
+- Callable: invoke directly with `node(*args, **kwargs)`
+- Boolean: `if node:` returns `True` if node exists
+- Metadata: access `node.name`, `node.type`, `node.metadata`, `node.doc`
+- Authorization: check `node.is_authorized` before calling
 
 ## Using Prefixes and Custom Names
 
@@ -196,10 +199,10 @@ class SubService(RoutingClass):
 sub = SubService("users")
 
 # Prefix stripped: "handle_list" → "list"
-assert sub.routes.get("list")() == "users:list"
+assert sub.routes.node("list")() == "users:list"
 
 # Custom name used: "handle_detail" → "detail"
-assert sub.routes.get("detail")(10) == "users:detail:10"
+assert sub.routes.node("detail")(10) == "users:detail:10"
 ```
 
 **Benefits**:
@@ -208,11 +211,11 @@ assert sub.routes.get("detail")(10) == "users:detail:10"
 - Explicit names provide cleaner external APIs
 - Router resolves both automatically
 
-## Default Handlers
+## Checking Node Existence
 
-<!-- test: test_router_basic.py::test_get_with_default_returns_callable -->
+<!-- test: test_router_runtime_extras.py::test_node_returns_child_router -->
 
-Provide fallback handlers when routes don't exist:
+Use the boolean value of `RouterNode` to check if a path exists:
 
 ```python
 class Fallback(RoutingClass):
@@ -225,39 +228,40 @@ class Fallback(RoutingClass):
 
 fb = Fallback()
 
-# Existing handler
-assert fb.api.get("known_action")() == "success"
+# Existing handler - node is truthy
+node = fb.api.node("known_action")
+if node:
+    assert node() == "success"
 
-# Non-existing with default
-default_fn = lambda: "fallback"
-assert fb.api.get("missing", default_handler=default_fn)() == "fallback"
-
-# Without default returns None
-assert fb.api.get("missing") is None
+# Non-existing - node is falsy (empty RouterNode)
+missing = fb.api.node("missing")
+if not missing:
+    print("Handler not found")
+assert missing == {}  # Empty RouterNode equals empty dict
 ```
 
-**Use defaults to**:
+**RouterNode boolean behavior**:
 
-- Handle optional functionality gracefully
-- Provide "not found" handlers
-- Implement fallback behavior
+- Truthy if node exists (has a `type`)
+- Falsy if path doesn't resolve to anything
+- Empty `RouterNode` compares equal to `{}`
 
-**Note**: `get()` can also return a child router if the path points to one (see [Hierarchies](hierarchies.md)).
+**Note**: `node()` can also return a child router if the path points to one (see [Hierarchies](hierarchies.md)).
 
 ## Exceptions: NotFound and NotAuthorized
 
-<!-- test: test_filter_plugin.py::TestGetAndCallWithFilters -->
+<!-- test: test_auth_plugin.py::TestNodeWithFilters -->
 
 Genro Routes provides two exceptions for handling routing errors:
 
 ```python
 from genro_routes import NotFound, NotAuthorized, UNAUTHORIZED
 
-# NotFound - raised when entry doesn't exist
+# NotFound - raised when calling node() on non-existent entry
 # NotAuthorized - raised when entry exists but access is denied by filters
 ```
 
-**When using filters with `get()` and `call()`**:
+**Using `node()` with filters**:
 
 ```python
 from genro_routes import RoutingClass, Router, route, NotFound, NotAuthorized
@@ -276,20 +280,27 @@ class SecureAPI(RoutingClass):
 
 api = SecureAPI()
 
-# Entry exists and tag matches - returns handler
-handler = api.api.get("admin_action", auth_tags="admin")
-assert handler() == "admin only"
+# Entry exists and tag matches - node is authorized
+node = api.api.node("admin_action", auth_tags="admin")
+assert node.is_authorized
+assert node() == "admin only"
 
-# Entry exists but tag doesn't match - raises NotAuthorized
+# Entry exists but tag doesn't match - node exists but is not authorized
+node = api.api.node("admin_action", auth_tags="public")
+assert node  # Node exists
+assert not node.is_authorized  # But not authorized
+# Calling raises NotAuthorized
 try:
-    api.api.get("admin_action", auth_tags="public")
+    node()
 except NotAuthorized as e:
     print(f"Access denied: {e.selector}")  # "admin_action"
 
-# Entry doesn't exist - get() returns None, call() raises NotFound
-result = api.api.get("nonexistent")  # None
+# Entry doesn't exist - empty node
+node = api.api.node("nonexistent")
+assert not node  # Falsy - doesn't exist
+# Calling raises NotFound
 try:
-    api.api.call("nonexistent")
+    node()
 except NotFound as e:
     print(f"Not found: {e.selector}")  # "nonexistent"
 ```
@@ -299,42 +310,31 @@ except NotFound as e:
 - `selector`: The path that was requested
 - `router_name`: The router where the error occurred
 
-**Using `node()` with filters**:
+**RouterNode authorization**:
 
-The `node()` method also supports filters and returns `callable: UNAUTHORIZED` when access is denied:
+- `node.is_authorized`: Returns `True` if callable is not `UNAUTHORIZED`
+- Calling an unauthorized node raises `NotAuthorized`
+- Calling a non-existent node raises `NotFound`
 
-```python
-from genro_routes import UNAUTHORIZED
+**Best-match resolution with partial_args**:
 
-info = api.api.node("admin_action", auth_tags="public")
-if info.get("callable") == UNAUTHORIZED:
-    print("Access denied")
-else:
-    handler = info["callable"]
-    result = handler()
-```
-
-**Using `node()` with partial resolution**:
-
-The `node()` method also supports `partial=True` for catch-all routing with metadata:
+The `node()` method uses best-match resolution - it walks the path as far as possible and returns unconsumed segments in `partial_args`:
 
 ```python
-info = router.node("unknown/path", partial=True)
-# Returns: {
-#     "type": "entry",
-#     "name": "index",  # default_entry handler
-#     "callable": functools.partial(handler, "unknown", "path"),
-#     "metadata": {...},
-#     "partial_args": ["unknown", "path"]
-# }
-result = info["callable"]()  # calls handler("unknown", "path")
+node = router.node("unknown/path")
+# Returns RouterNode with:
+#     type: "entry"
+#     name: "index"  # default_entry handler
+#     callable: functools.partial(handler, "unknown", "path")
+#     partial_args: ["unknown", "path"]
+result = node()  # calls handler("unknown", "path")
 ```
 
 ## Catch-All Routing with `default_entry`
 
 <!-- test: test_router_basic.py::TestDefaultEntryWithPartial -->
 
-Routers have a `default_entry` parameter (default: `"index"`) that enables catch-all routing patterns when combined with `partial=True`:
+Routers have a `default_entry` parameter (default: `"index"`) that enables catch-all routing patterns via best-match resolution:
 
 ```python
 class FileServer(RoutingClass):
@@ -348,19 +348,21 @@ class FileServer(RoutingClass):
 
 server = FileServer()
 
-# When partial=True and path can't be fully resolved,
-# unconsumed segments become arguments to the default_entry handler
-result = server.api.get("docs/api/reference", partial=True)
-# Returns: functools.partial(server.serve, "docs", "api", "reference")
-assert result() == "Serving: docs/api/reference"
+# node() uses best-match resolution - when path can't be fully resolved,
+# unconsumed segments become arguments via functools.partial
+node = server.api.node("docs/api/reference")
+# node.callable is: functools.partial(server.serve, "docs", "api", "reference")
+# node.partial_args is: ["docs", "api", "reference"]
+assert node() == "Serving: docs/api/reference"
 ```
 
 **Key behaviors**:
 
 - `default_entry` specifies which handler to use for unresolved paths (default: `"index"`)
-- `partial=True` enables this behavior, returning a `functools.partial`
-- Unconsumed path segments are passed as positional arguments
-- If `default_entry` handler doesn't exist, raises `ValueError`
+- Best-match resolution walks the path as far as possible
+- Unconsumed path segments are passed as positional arguments via `functools.partial`
+- Access unconsumed segments via `node.partial_args`
+- If `default_entry` handler doesn't exist, returns empty `RouterNode`
 
 **Use cases**:
 
@@ -400,8 +402,8 @@ class RootAPI(RoutingClass):
 root = RootAPI()
 
 # Access with path separator
-assert root.api.get("users/list")() == "users:list"
-assert root.api.get("products/detail")(5) == "products:detail:5"
+assert root.api.node("users/list")() == "users:list"
+assert root.api.node("products/detail")(5) == "products:detail:5"
 ```
 
 **Hierarchies enable**:
@@ -490,9 +492,9 @@ class MetadataAPI(RoutingClass):
 api = MetadataAPI()
 
 # Access metadata via node()
-info = api.api.node("get_data")
-assert info["metadata"]["meta"]["mimetype"] == "application/json"
-assert info["metadata"]["meta"]["deprecated"] is True
+node = api.api.node("get_data")
+assert node.metadata["meta"]["mimetype"] == "application/json"
+assert node.metadata["meta"]["deprecated"] is True
 
 # Or via nodes() for all entries
 all_info = api.api.nodes()

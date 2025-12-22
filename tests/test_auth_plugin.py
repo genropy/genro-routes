@@ -19,77 +19,133 @@ def _make_router():
 
 
 class TestAuthPluginIntegration:
-    """Test AuthPlugin with Router integration."""
+    """Test AuthPlugin with Router integration.
 
-    def test_nodes_filters_by_single_tag(self):
+    Semantics:
+    - Entry auth_tags = RULE (who can access this entry)
+    - User tags passed to nodes()/node() = USER CREDENTIALS
+
+    Example: entry with auth_tags="admin" requires user to have "admin" tag.
+    """
+
+    def test_user_with_matching_tag_can_access(self):
+        """User with 'admin' tag can access entry requiring 'admin'."""
         router = _make_router().plug("auth")
         router._add_entry(lambda: "admin", name="admin_action", auth_tags="admin")
         router._add_entry(lambda: "public", name="public_action", auth_tags="public")
 
+        # User has 'admin' tag - can access admin_action
         entries = router.nodes(auth_tags="admin").get("entries", {})
         assert "admin_action" in entries
-        assert "public_action" not in entries
+        assert "public_action" not in entries  # requires 'public', user has 'admin'
 
-    def test_nodes_filters_by_or(self):
+    def test_user_with_multiple_tags_can_access_matching_entries(self):
+        """User with multiple tags can access entries matching any of their tags."""
         router = _make_router().plug("auth")
         router._add_entry(lambda: "admin", name="admin_action", auth_tags="admin")
         router._add_entry(lambda: "public", name="public_action", auth_tags="public")
         router._add_entry(lambda: "internal", name="internal_action", auth_tags="internal")
 
+        # User has 'admin,public' tags - can access entries requiring admin OR public
         entries = router.nodes(auth_tags="admin,public").get("entries", {})
-        assert "admin_action" in entries
-        assert "public_action" in entries
-        assert "internal_action" not in entries
+        assert "admin_action" in entries  # requires admin, user has admin
+        assert "public_action" in entries  # requires public, user has public
+        assert "internal_action" not in entries  # requires internal, user doesn't have
 
-    def test_nodes_filters_by_and(self):
+    def test_entry_with_or_rule_accepts_user_with_any_tag(self):
+        """Entry with OR rule (admin,internal) accepts user with any matching tag."""
         router = _make_router().plug("auth")
-        router._add_entry(lambda: "both", name="both_action", auth_tags="admin,internal")
+        # Entry accepts admin OR internal users
+        router._add_entry(lambda: "flexible", name="flexible_action", auth_tags="admin,internal")
+        # Entry accepts only admin users
+        router._add_entry(lambda: "strict", name="strict_admin", auth_tags="admin")
+
+        # User has only 'internal' tag
+        entries = router.nodes(auth_tags="internal").get("entries", {})
+        assert "flexible_action" in entries  # accepts internal
+        assert "strict_admin" not in entries  # requires admin, user has only internal
+
+    def test_entry_with_and_rule_requires_all_tags(self):
+        """Entry with AND rule (admin&internal) requires user to have all tags."""
+        router = _make_router().plug("auth")
+        # Entry requires BOTH admin AND internal
+        router._add_entry(lambda: "strict", name="strict_action", auth_tags="admin&internal")
+        # Entry requires only admin
         router._add_entry(lambda: "admin", name="admin_only", auth_tags="admin")
 
-        entries = router.nodes(auth_tags="admin&internal").get("entries", {})
-        assert "both_action" in entries
-        assert "admin_only" not in entries
+        # User has both tags
+        entries = router.nodes(auth_tags="admin,internal").get("entries", {})
+        assert "strict_action" in entries  # user has both required tags
+        assert "admin_only" in entries  # user has admin
 
-    def test_nodes_filters_by_not(self):
+        # User has only admin
+        entries = router.nodes(auth_tags="admin").get("entries", {})
+        assert "strict_action" not in entries  # user missing internal
+        assert "admin_only" in entries
+
+    def test_entry_with_not_rule_excludes_user(self):
+        """Entry with NOT rule (!dimissionario) excludes users with that tag."""
+        router = _make_router().plug("auth")
+        # Entry excludes dimissionario users
+        router._add_entry(lambda: "active", name="active_only", auth_tags="!dimissionario")
+        # Entry for everyone (no rule)
+        router._add_entry(lambda: "all", name="for_all")
+
+        # User has 'dimissionario' tag
+        entries = router.nodes(auth_tags="dimissionario").get("entries", {})
+        assert "active_only" not in entries  # user is excluded by !dimissionario
+        assert "for_all" in entries  # no rule, always accessible
+
+        # User has 'contabilita' tag (not dimissionario)
+        entries = router.nodes(auth_tags="contabilita").get("entries", {})
+        assert "active_only" in entries  # user is not dimissionario
+        assert "for_all" in entries
+
+    def test_nodes_without_auth_tags_filters_protected_entries(self):
+        """nodes() without auth_tags filters out entries with rules (401 = not visible)."""
         router = _make_router().plug("auth")
         router._add_entry(lambda: "admin", name="admin_action", auth_tags="admin")
         router._add_entry(lambda: "public", name="public_action", auth_tags="public")
+        router._add_entry(lambda: "open", name="open_action")  # No rule
 
-        entries = router.nodes(auth_tags="!admin").get("entries", {})
-        assert "admin_action" not in entries
-        assert "public_action" in entries
-
-    def test_nodes_without_auth_tags_filter_returns_all(self):
-        router = _make_router().plug("auth")
-        router._add_entry(lambda: "admin", name="admin_action", auth_tags="admin")
-        router._add_entry(lambda: "public", name="public_action", auth_tags="public")
-
+        # No tags = only entries without rules are visible
         entries = router.nodes().get("entries", {})
-        assert "admin_action" in entries
-        assert "public_action" in entries
+        assert "admin_action" not in entries  # Has rule, no tags → 401 → filtered
+        assert "public_action" not in entries  # Has rule, no tags → 401 → filtered
+        assert "open_action" in entries  # No rule → always visible
 
-    def test_entry_without_tags_matches_not_expressions(self):
+    def test_entry_without_rule_always_accessible(self):
+        """Entry without auth_tags is always accessible to any user."""
         router = _make_router().plug("auth")
         router._add_entry(lambda: "tagged", name="tagged_action", auth_tags="admin")
-        router._add_entry(lambda: "untagged", name="untagged_action")
+        router._add_entry(lambda: "untagged", name="untagged_action")  # no rule
 
-        entries = router.nodes(auth_tags="!admin").get("entries", {})
-        assert "tagged_action" not in entries
-        assert "untagged_action" in entries
+        # User with 'public' tag can't access admin-only, but can access untagged
+        entries = router.nodes(auth_tags="public").get("entries", {})
+        assert "tagged_action" not in entries  # requires admin
+        assert "untagged_action" in entries  # no rule = accessible
 
-    def test_complex_expression(self):
+    def test_complex_rule_evaluation(self):
+        """Test complex rules with AND, OR, NOT combinations."""
         router = _make_router().plug("auth")
-        router._add_entry(lambda: "a", name="a", auth_tags="admin")
-        router._add_entry(lambda: "b", name="b", auth_tags="public")
-        router._add_entry(lambda: "c", name="c", auth_tags="admin,internal")
-        router._add_entry(lambda: "d", name="d", auth_tags="public,internal")
+        # Complex rule: (admin OR manager) AND NOT guest
+        router._add_entry(lambda: "a", name="complex_action", auth_tags="(admin|manager)&!guest")
 
-        # (admin OR public) AND NOT internal
-        entries = router.nodes(auth_tags="(admin|public)&!internal").get("entries", {})
-        assert "a" in entries  # admin, not internal
-        assert "b" in entries  # public, not internal
-        assert "c" not in entries  # admin but also internal
-        assert "d" not in entries  # public but also internal
+        # Admin without guest - OK
+        entries = router.nodes(auth_tags="admin").get("entries", {})
+        assert "complex_action" in entries
+
+        # Manager without guest - OK
+        entries = router.nodes(auth_tags="manager").get("entries", {})
+        assert "complex_action" in entries
+
+        # Admin AND guest - NOT OK (guest is excluded)
+        entries = router.nodes(auth_tags="admin,guest").get("entries", {})
+        assert "complex_action" not in entries
+
+        # Only guest - NOT OK (no admin/manager, plus guest excluded)
+        entries = router.nodes(auth_tags="guest").get("entries", {})
+        assert "complex_action" not in entries
 
     def test_auth_with_child_routers(self):
         """Test that authorization works with hierarchical routers."""
@@ -326,34 +382,11 @@ class TestDictLikeInterface:
         assert "child" in names
 
 
-class TestGetWithDefault:
-    """Test get() with default_handler parameter."""
+class TestNodeWithFilters:
+    """Test node() with filter parameters using new API."""
 
-    def test_get_missing_child_with_default_handler(self):
-        """Test get() returns default_handler when child path not found."""
-        router = _make_router()
-        router._add_entry(lambda: "a", name="entry_a")
-
-        def fallback():
-            return "fallback"
-
-        # Path with missing child should return default_handler
-        result = router.get("nonexistent/something", default_handler=fallback)
-        assert result is fallback
-
-    def test_get_missing_child_returns_none(self):
-        """Test get() returns None when child not found and no default."""
-        router = _make_router()
-
-        result = router.get("nonexistent/something")
-        assert result is None
-
-
-class TestGetAndCallWithFilters:
-    """Test get() and call() with filter parameters."""
-
-    def test_get_raises_not_authorized_when_filtered(self):
-        """get() raises NotAuthorized when entry exists but is filtered."""
+    def test_node_raises_not_authorized_when_filtered(self):
+        """node() returns UNAUTHORIZED callable when entry exists but is filtered."""
         from genro_routes import NotAuthorized, RoutingClass, route
 
         class Svc(RoutingClass):
@@ -365,15 +398,21 @@ class TestGetAndCallWithFilters:
                 return "admin"
 
         svc = Svc()
+        node = svc.api.node("admin_action", auth_tags="public")
 
+        # Node exists but is unauthorized
+        assert node
+        assert not node.is_authorized
+
+        # Calling raises NotAuthorized
         with pytest.raises(NotAuthorized) as exc_info:
-            svc.api.get("admin_action", auth_tags="public")
+            node()
 
         assert exc_info.value.selector == "admin_action"
         assert exc_info.value.router_name == "api"
 
-    def test_get_returns_handler_when_tag_matches(self):
-        """get() returns handler when tag matches."""
+    def test_node_returns_callable_when_tag_matches(self):
+        """node() returns callable RouterNode when tag matches."""
         from genro_routes import RoutingClass, route
 
         class Svc(RoutingClass):
@@ -385,12 +424,13 @@ class TestGetAndCallWithFilters:
                 return "admin"
 
         svc = Svc()
-        handler = svc.api.get("admin_action", auth_tags="admin")
-        assert handler is not None
-        assert handler() == "admin"
+        node = svc.api.node("admin_action", auth_tags="admin")
+        assert node
+        assert node.is_authorized
+        assert node() == "admin"
 
-    def test_get_returns_none_when_not_found(self):
-        """get() returns None when entry doesn't exist (no filters involved)."""
+    def test_node_returns_empty_when_not_found(self):
+        """node() returns empty RouterNode when entry doesn't exist."""
         from genro_routes import RoutingClass, route
 
         class Svc(RoutingClass):
@@ -402,45 +442,30 @@ class TestGetAndCallWithFilters:
                 return "admin"
 
         svc = Svc()
-        result = svc.api.get("nonexistent")
-        assert result is None
+        node = svc.api.node("nonexistent")
+        assert not node  # Empty RouterNode is falsy
+        assert node == {}  # Empty RouterNode equals empty dict
 
-    def test_get_without_filter_returns_handler(self):
-        """get() without filter tags returns handler normally."""
+    def test_node_without_filter_on_open_entry_returns_callable(self):
+        """node() without filter tags on entry without rule returns callable normally."""
         from genro_routes import RoutingClass, route
 
         class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("auth")
 
-            @route("api", auth_tags="admin")
-            def admin_action(self):
-                return "admin"
+            @route("api")  # No auth_tags = open entry
+            def open_action(self):
+                return "open"
 
         svc = Svc()
-        handler = svc.api.get("admin_action")
-        assert handler is not None
-        assert handler() == "admin"
+        node = svc.api.node("open_action")
+        assert node
+        assert node.is_authorized
+        assert node() == "open"
 
-    def test_call_raises_not_authorized_when_filtered(self):
-        """call() raises NotAuthorized when entry exists but is filtered."""
-        from genro_routes import NotAuthorized, RoutingClass, route
-
-        class Svc(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api").plug("auth")
-
-            @route("api", auth_tags="admin")
-            def admin_action(self):
-                return "admin"
-
-        svc = Svc()
-
-        with pytest.raises(NotAuthorized):
-            svc.api.call("admin_action", auth_tags="public")
-
-    def test_call_raises_not_found_when_missing(self):
-        """call() raises NotFound when entry doesn't exist."""
+    def test_node_call_raises_not_found_when_empty(self):
+        """Calling empty RouterNode raises NotFound."""
         from genro_routes import NotFound, RoutingClass, route
 
         class Svc(RoutingClass):
@@ -452,15 +477,16 @@ class TestGetAndCallWithFilters:
                 return "admin"
 
         svc = Svc()
+        node = svc.api.node("nonexistent")
 
         with pytest.raises(NotFound) as exc_info:
-            svc.api.call("nonexistent", auth_tags="admin")
+            node()
 
-        assert exc_info.value.selector == "nonexistent"
+        assert exc_info.value.selector == ""
         assert exc_info.value.router_name == "api"
 
-    def test_call_executes_when_tag_matches(self):
-        """call() executes handler when tag matches."""
+    def test_node_call_executes_when_tag_matches(self):
+        """Calling RouterNode executes handler when tag matches."""
         from genro_routes import RoutingClass, route
 
         class Svc(RoutingClass):
@@ -472,11 +498,11 @@ class TestGetAndCallWithFilters:
                 return "admin result"
 
         svc = Svc()
-        result = svc.api.call("admin_action", auth_tags="admin")
-        assert result == "admin result"
+        node = svc.api.node("admin_action", auth_tags="admin")
+        assert node() == "admin result"
 
-    def test_call_passes_args_to_handler(self):
-        """call() passes args and kwargs to handler (excluding filter args)."""
+    def test_node_call_passes_args_to_handler(self):
+        """Calling RouterNode passes args and kwargs to handler."""
         from genro_routes import RoutingClass, route
 
         class Svc(RoutingClass):
@@ -488,11 +514,12 @@ class TestGetAndCallWithFilters:
                 return f"x={x}, y={y}"
 
         svc = Svc()
-        result = svc.api.call("action", 5, y=20, auth_tags="admin")
+        node = svc.api.node("action", auth_tags="admin")
+        result = node(5, y=20)
         assert result == "x=5, y=20"
 
-    def test_call_with_partial(self):
-        """call() with _partial=True enables partial resolution."""
+    def test_node_best_match_with_extra_args(self):
+        """node() with best-match puts unconsumed segments in extra_args for *args handlers."""
         from genro_routes import RoutingClass, route
 
         class Svc(RoutingClass):
@@ -504,13 +531,262 @@ class TestGetAndCallWithFilters:
                 return f"caught: {args}"
 
         svc = Svc()
-        # _partial=True should work with call
-        result = svc.api.call("unknown/path", _partial=True, auth_tags="public")
+        # Best-match resolution finds "index" and puts rest in extra_args
+        node = svc.api.node("unknown/path", auth_tags="public")
+        assert node
+        assert node.name == "index"
+        # Handler accepts *args so path segments go to extra_args
+        assert node.extra_args == ["unknown", "path"]
+        assert node.partial_kwargs == {}
+        # When called, extra_args are prepended automatically
+        result = node()
         assert result == "caught: ('unknown', 'path')"
 
 
+class TestAuth401vs403:
+    """Test 401 (NotAuthenticated) vs 403 (NotAuthorized) distinction."""
+
+    def test_entry_without_tags_always_accessible(self):
+        """Entry without auth_tags is always accessible, no tags needed."""
+        from genro_routes import RoutingClass, route
+
+        class Svc(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("auth")
+
+            @route("api")  # No auth_tags
+            def public_action(self):
+                return "public"
+
+        svc = Svc()
+
+        # No tags passed - still works
+        node = svc.api.node("public_action")
+        assert node.is_authorized
+        assert node() == "public"
+
+        # With some tags - still works
+        node = svc.api.node("public_action", auth_tags="random")
+        assert node.is_authorized
+        assert node() == "public"
+
+    def test_entry_with_tags_no_user_tags_raises_401(self):
+        """Entry requires tags but user passes none → 401 NotAuthenticated."""
+        from genro_routes import NotAuthenticated, RoutingClass, route
+
+        class Svc(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("auth")
+
+            @route("api", auth_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+        svc = Svc()
+
+        # Entry requires tags, no tags passed → 401
+        node = svc.api.node("admin_action")
+        assert not node.is_authorized
+
+        with pytest.raises(NotAuthenticated) as exc_info:
+            node()
+
+        assert exc_info.value.selector == "admin_action"
+        assert exc_info.value.router_name == "api"
+
+    def test_entry_with_tags_user_tags_match_ok(self):
+        """Entry requires tags, user tags match → access granted."""
+        from genro_routes import RoutingClass, route
+
+        class Svc(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("auth")
+
+            @route("api", auth_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+        svc = Svc()
+
+        # User has matching tags → OK
+        node = svc.api.node("admin_action", auth_tags="admin")
+        assert node.is_authorized
+        assert node() == "admin"
+
+    def test_entry_with_tags_user_tags_dont_match_raises_403(self):
+        """Entry requires tags, user tags don't match → 403 NotAuthorized."""
+        from genro_routes import NotAuthorized, RoutingClass, route
+
+        class Svc(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("auth")
+
+            @route("api", auth_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+        svc = Svc()
+
+        # User passes tags that don't match → 403
+        node = svc.api.node("admin_action", auth_tags="public")
+        assert not node.is_authorized
+
+        with pytest.raises(NotAuthorized) as exc_info:
+            node()
+
+        assert exc_info.value.selector == "admin_action"
+        assert exc_info.value.router_name == "api"
+
+    def test_complex_rule_no_tags_raises_401(self):
+        """Complex rule like '!dimissionario', no tags passed → 401."""
+        from genro_routes import NotAuthenticated, RoutingClass, route
+
+        class Svc(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("auth")
+
+            @route("api", auth_tags="!dimissionario")
+            def non_dimissionario_action(self):
+                return "ok"
+
+        svc = Svc()
+
+        # Entry has rule, no tags passed → 401
+        node = svc.api.node("non_dimissionario_action")
+        assert not node.is_authorized
+
+        with pytest.raises(NotAuthenticated):
+            node()
+
+    def test_complex_rule_tags_match_ok(self):
+        """Complex rule like '!dimissionario', user tags satisfy rule → OK."""
+        from genro_routes import RoutingClass, route
+
+        class Svc(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("auth")
+
+            @route("api", auth_tags="!dimissionario")
+            def non_dimissionario_action(self):
+                return "ok"
+
+        svc = Svc()
+
+        # User has "contabilita" (not dimissionario) → matches !dimissionario
+        node = svc.api.node("non_dimissionario_action", auth_tags="contabilita")
+        assert node.is_authorized
+        assert node() == "ok"
+
+    def test_complex_rule_tags_dont_match_raises_403(self):
+        """Complex rule like '!dimissionario', user has dimissionario → 403."""
+        from genro_routes import NotAuthorized, RoutingClass, route
+
+        class Svc(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("auth")
+
+            @route("api", auth_tags="!dimissionario")
+            def non_dimissionario_action(self):
+                return "ok"
+
+        svc = Svc()
+
+        # User has "dimissionario" → doesn't match !dimissionario
+        node = svc.api.node("non_dimissionario_action", auth_tags="dimissionario")
+        assert not node.is_authorized
+
+        with pytest.raises(NotAuthorized):
+            node()
+
+    def test_nodes_filters_out_both_401_and_403(self):
+        """nodes() silently filters out entries that would be 401 or 403."""
+        from genro_routes import RoutingClass, route
+
+        class Svc(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("auth")
+
+            @route("api", auth_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+            @route("api", auth_tags="public")
+            def public_action(self):
+                return "public"
+
+            @route("api")  # No tags
+            def open_action(self):
+                return "open"
+
+        svc = Svc()
+
+        # With admin tags - sees admin and open, not public
+        entries = svc.api.nodes(auth_tags="admin").get("entries", {})
+        assert "admin_action" in entries
+        assert "open_action" in entries
+        assert "public_action" not in entries
+
+        # With public tags - sees public and open, not admin
+        entries = svc.api.nodes(auth_tags="public").get("entries", {})
+        assert "public_action" in entries
+        assert "open_action" in entries
+        assert "admin_action" not in entries
+
+        # Without any tags - only sees entries without rules (401 filtered out)
+        entries = svc.api.nodes().get("entries", {})
+        assert "admin_action" not in entries  # Has rule, no tags → 401
+        assert "public_action" not in entries  # Has rule, no tags → 401
+        assert "open_action" in entries  # No rule → always visible
+
+    def test_custom_exception_classes(self):
+        """Test that custom exception classes are used for 401 and 403."""
+        from genro_routes import RoutingClass, route
+
+        class Custom401(Exception):
+            def __init__(self, path, router_name):
+                self.path = path
+                self.router_name = router_name
+
+        class Custom403(Exception):
+            def __init__(self, path, router_name):
+                self.path = path
+                self.router_name = router_name
+
+        class Svc(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("auth")
+
+            @route("api", auth_tags="admin")
+            def admin_action(self):
+                return "admin"
+
+        svc = Svc()
+
+        # Test 401 with custom exception
+        node = svc.api.node("admin_action", errors={
+            "not_authenticated": Custom401
+        })
+        with pytest.raises(Custom401) as exc_info:
+            node()
+        assert exc_info.value.path == "admin_action"
+
+        # Test 403 with custom exception
+        node = svc.api.node("admin_action", auth_tags="public", errors={
+            "not_authorized": Custom403
+        })
+        with pytest.raises(Custom403) as exc_info:
+            node()
+        assert exc_info.value.path == "admin_action"
+
+
 class TestAuthPluginAllowNode:
-    """Test allow_node with RouterInterface directly."""
+    """Test allow_node with RouterInterface directly.
+
+    Note: allow_node now returns bool | str:
+    - True: access allowed
+    - "not_authenticated": entry has rule but no tags provided
+    - "not_authorized": tags provided but don't match rule
+    """
 
     def test_allow_node_with_router_interface(self):
         """Test allow_node checks children when passed a RouterInterface."""
@@ -536,7 +812,8 @@ class TestAuthPluginAllowNode:
         # Note: allow_node receives kwargs without prefix (already extracted by _allow_entry)
         assert plugin.allow_node(child.api, tags="admin") is True
         assert plugin.allow_node(child.api, tags="public") is True
-        assert plugin.allow_node(child.api, tags="nonexistent") is False
+        # No entry matches "nonexistent" tags → returns first child error (not_authorized)
+        assert plugin.allow_node(child.api, tags="nonexistent") == "not_authorized"
 
     def test_allow_node_empty_router(self):
         """Test allow_node with router that has no matching entries."""
@@ -549,7 +826,7 @@ class TestAuthPluginAllowNode:
 
         plugin = router._plugins_by_name["auth"]
 
-        # Filter for "admin" - no entries match
-        assert plugin.allow_node(router, tags="admin") is False
+        # Filter for "admin" - entry requires "internal", user has "admin" → not_authorized
+        assert plugin.allow_node(router, tags="admin") == "not_authorized"
         # Filter for "internal" - one entry matches
         assert plugin.allow_node(router, tags="internal") is True

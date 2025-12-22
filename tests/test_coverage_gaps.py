@@ -201,7 +201,8 @@ def test_pydantic_handler_without_param_hints():
 
     svc = Svc()
     # Should work without validation (passthrough)
-    result = svc.api.get("no_hints")("a", "b")
+    node = svc.api.node("no_hints")
+    result = node("a", "b")
     assert result == "a:b"
 
 
@@ -218,7 +219,8 @@ def test_pydantic_handler_only_return_hint():
 
     svc = Svc()
     # Should work without validation (no param hints after removing return)
-    result = svc.api.get("only_return")("a", "b")
+    node = svc.api.node("only_return")
+    result = node("a", "b")
     assert result == "a:b"
 
 
@@ -249,7 +251,7 @@ def test_pydantic_hint_not_in_signature_raises():
     # Error is raised at first use (lazy binding)
     svc = Svc()
     with pytest.raises(ValueError, match="type hint for 'phantom'.*not in the function signature"):
-        svc.api.get("handler")
+        svc.api.node("handler")
 
 
 # --- pydantic.py:159-167 - get_model disabled/no model ---
@@ -301,18 +303,18 @@ def test_pydantic_get_model_no_model():
     assert result is None
 
 
-# --- pydantic.py:171-174 - entry_metadata no meta ---
+# --- pydantic.py:164-173 - entry_metadata with signature info ---
 
 
-def test_pydantic_entry_metadata_no_meta():
-    """Test entry_metadata returns empty dict when no pydantic metadata."""
+def test_pydantic_entry_metadata_no_hints():
+    """Test entry_metadata returns signature info even without type hints."""
 
     class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
         @route("api")
-        def no_hints(self, x, y):  # No type hints = no pydantic metadata
+        def no_hints(self, x, y):  # No type hints but signature is captured
             return f"{x}:{y}"
 
     svc = Svc()
@@ -320,7 +322,10 @@ def test_pydantic_entry_metadata_no_meta():
     entry = svc.api._entries["no_hints"]
 
     result = svc.api.pydantic.entry_metadata(svc.api, entry)
-    assert result == {}
+    # Now always returns signature info (accepts_varargs, hints)
+    assert result["accepts_varargs"] is False
+    assert result["hints"] == {}
+    assert result["model"] is None
 
 
 def test_pydantic_entry_metadata_with_meta():
@@ -341,7 +346,9 @@ def test_pydantic_entry_metadata_with_meta():
     result = svc.api.pydantic.entry_metadata(svc.api, entry)
     assert "model" in result
     assert "hints" in result
+    assert "accepts_varargs" in result
     assert result["hints"] == {"text": str, "num": int}
+    assert result["accepts_varargs"] is False
 
 
 # --- Plugin inheritance: clone + config copy ---

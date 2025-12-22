@@ -72,39 +72,46 @@ class PydanticPlugin(BasePlugin):
         pass  # Storage is handled by the wrapper
 
     def on_decore(self, route: Router, func: Callable, entry: MethodEntry) -> None:
-        """Build Pydantic model from handler type hints."""
+        """Build Pydantic model from handler type hints and capture signature info."""
+        # Always capture signature info (even without type hints)
+        sig = inspect.signature(func)
+        accepts_varargs = any(
+            p.kind == inspect.Parameter.VAR_POSITIONAL
+            for p in sig.parameters.values()
+        )
+
         try:
             hints = get_type_hints(func, include_extras=True)
         except Exception:
-            # No hints resolvable, no model created
-            return
+            hints = {}
 
         hints.pop("return", None)
-        if not hints:
-            # No parameter hints, no model needed
-            return
 
-        sig = inspect.signature(func)
-        fields = {}
-        for param_name, hint in hints.items():
-            param = sig.parameters.get(param_name)
-            if param is None:
-                raise ValueError(
-                    f"Handler '{func.__name__}' has type hint for '{param_name}' "
-                    f"which is not in the function signature"
-                )
-            elif param.default is inspect.Parameter.empty:
-                fields[param_name] = (hint, ...)
-            else:
-                fields[param_name] = (hint, param.default)
-
-        validation_model = create_model(f"{func.__name__}_Model", **fields)  # type: ignore
-
-        entry.metadata["pydantic"] = {
-            "model": validation_model,
-            "hints": hints,
+        # Always save signature metadata
+        pydantic_meta: dict[str, Any] = {
             "signature": sig,
+            "accepts_varargs": accepts_varargs,
+            "hints": hints,
         }
+
+        if hints:
+            # Build validation model only if we have hints
+            fields = {}
+            for param_name, hint in hints.items():
+                param = sig.parameters.get(param_name)
+                if param is None:
+                    raise ValueError(
+                        f"Handler '{func.__name__}' has type hint for '{param_name}' "
+                        f"which is not in the function signature"
+                    )
+                elif param.default is inspect.Parameter.empty:
+                    fields[param_name] = (hint, ...)
+                else:
+                    fields[param_name] = (hint, param.default)
+
+            pydantic_meta["model"] = create_model(f"{func.__name__}_Model", **fields)  # type: ignore
+
+        entry.metadata["pydantic"] = pydantic_meta
 
     def wrap_handler(self, route: Router, entry: MethodEntry, call_next: Callable):
         """Validate annotated parameters with the cached Pydantic model before calling."""
@@ -162,6 +169,7 @@ class PydanticPlugin(BasePlugin):
         return {
             "model": meta.get("model"),
             "hints": meta.get("hints"),
+            "accepts_varargs": meta.get("accepts_varargs", False),
         }
 
 
