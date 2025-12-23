@@ -30,7 +30,7 @@ except ImportError:  # pragma: no cover
     ValidationError = None  # type: ignore[misc, assignment]
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .base_router import BaseRouter
+    from .router_interface import RouterInterface
 
 __all__ = ["RouterNode"]
 
@@ -105,7 +105,7 @@ class RouterNode:
     def __init__(
         self,
         data: dict[str, Any],
-        router: BaseRouter | None = None,
+        router: RouterInterface | None = None,
         errors: dict[str, type[Exception]] | None = None,
     ) -> None:
         """Initialize RouterNode from a dict.

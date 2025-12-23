@@ -31,7 +31,12 @@ class RouterInterface(ABC):
 
     Any class implementing this interface can be used where a router is expected,
     enabling duck-typed routing for static files, virtual resources, etc.
+
+    Attributes:
+        name: Router name for identification and debugging.
     """
+
+    name: str | None
 
     @abstractmethod
     def node(self, path: str, **kwargs: Any) -> RouterNode:
