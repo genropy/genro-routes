@@ -36,8 +36,8 @@ def route(
     """Mark a bound method for inclusion in the given router.
 
     Args:
-        router: Router identifier (e.g. ``"api"``). If None, uses the class's
-            ``main_router`` attribute at registration time.
+        router: Router identifier (e.g. ``"api"``). If None, uses the default
+            router (only works if the class has exactly one router).
         name: Optional explicit entry name (overrides function name/prefix stripping).
         **kwargs: Extra metadata merged into handler entry (e.g. plugin flags).
 
@@ -54,18 +54,29 @@ def route(
         def get_user(self, user_id):
             return {"id": user_id}
 
-        # With main_router class attribute:
+        # With single router - @route() works without arguments:
         class Table(RoutingClass):
-            main_router = "table"
+            def __init__(self):
+                self.api = Router(self, name="api")  # single router
 
-            @route()  # Uses main_router automatically
+            @route()  # Uses the only router automatically
             def add(self, data):
+                ...
+
+        # With multiple routers - must specify:
+        class Service(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+                self.admin = Router(self, name="admin")
+
+            @route("api")  # Must specify router name
+            def public(self):
                 ...
     """
 
     def decorator(func: Callable) -> Callable:
         markers = list(getattr(func, "_route_decorator_kw", []))
-        payload: dict[str, Any] = {"name": router}  # None means "use main_router"
+        payload: dict[str, Any] = {"name": router}  # None means "use default_router"
         if name is not None:
             payload["entry_name"] = name
         for key, value in kwargs.items():

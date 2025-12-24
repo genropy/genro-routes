@@ -227,19 +227,17 @@ def test_dotted_path_and_nodes_with_attached_child():
 
 
 # ============================================================================
-# main_router class attribute tests
+# Single router default tests (@route() without arguments)
 # ============================================================================
 
 
-class TestMainRouterAttribute:
-    """Test @route() with main_router class attribute."""
+class TestSingleRouterDefault:
+    """Test @route() without arguments when class has a single router."""
 
-    def test_route_without_args_uses_main_router(self):
-        """@route() without arguments uses main_router class attribute."""
+    def test_route_without_args_uses_single_router(self):
+        """@route() without arguments uses the single router."""
 
         class Table(RoutingClass):
-            main_router = "table"
-
             def __init__(self):
                 self.api = Router(self, name="table")
 
@@ -256,60 +254,37 @@ class TestMainRouterAttribute:
         assert t.api.node("get")("y") == "got:y"
         assert set(t.api.nodes()["entries"].keys()) == {"add", "get"}
 
-    def test_route_with_explicit_name_overrides_main_router(self):
-        """@route('other') ignores main_router."""
+    def test_route_without_args_ignored_with_multiple_routers(self):
+        """@route() without arguments is ignored when multiple routers exist."""
 
-        class Mixed(RoutingClass):
-            main_router = "api"
-
+        class MultiRouter(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.admin = Router(self, name="admin")
 
-            @route()  # Uses main_router = "api"
-            def public(self):
-                return "public"
-
-            @route("admin")  # Explicit, ignores main_router
-            def secret(self):
-                return "secret"
-
-        m = Mixed()
-        assert m.api.node("public")() == "public"
-        assert m.admin.node("secret")() == "secret"
-        assert "public" in m.api.nodes()["entries"]
-        assert "secret" not in m.api.nodes()["entries"]
-        assert "secret" in m.admin.nodes()["entries"]
-
-    def test_route_without_main_router_is_ignored(self):
-        """@route() without main_router is not registered anywhere."""
-
-        class NoDefault(RoutingClass):
-            # No main_router defined
-
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route()  # No router specified, no main_router - ignored
+            @route()  # Ignored - multiple routers, no default
             def orphan(self):
                 return "orphan"
 
             @route("api")
-            def registered(self):
-                return "registered"
+            def public(self):
+                return "public"
 
-        nd = NoDefault()
-        assert nd.api.node("registered")() == "registered"
-        # orphan not registered - node returns empty
-        assert not nd.api.node("orphan")
-        assert "orphan" not in nd.api.nodes()["entries"]
+            @route("admin")
+            def secret(self):
+                return "secret"
 
-    def test_main_router_with_custom_entry_name(self):
-        """@route(name='custom') works with main_router."""
+        m = MultiRouter()
+        assert m.api.node("public")() == "public"
+        assert m.admin.node("secret")() == "secret"
+        # orphan not registered anywhere
+        assert not m.api.node("orphan")
+        assert not m.admin.node("orphan")
+
+    def test_route_with_custom_entry_name(self):
+        """@route(name='custom') works with single router."""
 
         class Table(RoutingClass):
-            main_router = "table"
-
             def __init__(self):
                 self.api = Router(self, name="table")
 
@@ -322,12 +297,10 @@ class TestMainRouterAttribute:
         assert "custom_add" in t.api.nodes()["entries"]
         assert "add_record" not in t.api.nodes()["entries"]
 
-    def test_main_router_inheritance(self):
-        """Subclass inherits main_router from parent."""
+    def test_route_inheritance_with_single_router(self):
+        """Subclass with single router inherits @route() methods."""
 
         class BaseTable(RoutingClass):
-            main_router = "table"
-
             @route()
             def list(self):
                 return "base_list"
@@ -347,41 +320,10 @@ class TestMainRouterAttribute:
         assert "list" in entries
         assert "add" in entries
 
-    def test_main_router_override_in_subclass(self):
-        """Subclass can override main_router - affects all methods including inherited."""
-
-        class BaseTable(RoutingClass):
-            main_router = "table"
-
-            @route()
-            def base_method(self):
-                return "base"
-
-        class ChildTable(BaseTable):
-            main_router = "custom"  # Override - affects ALL @route() including inherited
-
-            def __init__(self):
-                self.custom = Router(self, name="custom")
-
-            @route()
-            def child_method(self):
-                return "child"
-
-        t = ChildTable()
-        # Both methods use ChildTable's main_router = "custom"
-        # because main_router is resolved at registration time from instance's class
-        assert t.custom.node("base_method")() == "base"
-        assert t.custom.node("child_method")() == "child"
-        entries = t.custom.nodes()["entries"]
-        assert "base_method" in entries
-        assert "child_method" in entries
-
-    def test_main_router_with_plugin_kwargs(self):
-        """@route() with kwargs works with main_router."""
+    def test_route_with_plugin_kwargs(self):
+        """@route() with kwargs works with single router."""
 
         class TaggedTable(RoutingClass):
-            main_router = "table"
-
             def __init__(self):
                 self.api = Router(self, name="table").plug("auth")
 
@@ -440,8 +382,8 @@ class TestDefaultRouter:
         svc = SingleRouter()
         assert svc.default_router is svc.api
 
-    def test_default_router_multiple_routers_no_main(self):
-        """default_router returns None when multiple routers and no main_router."""
+    def test_default_router_multiple_routers(self):
+        """default_router returns None when multiple routers exist."""
 
         class MultiRouter(RoutingClass):
             def __init__(self):
@@ -451,19 +393,6 @@ class TestDefaultRouter:
         svc = MultiRouter()
         assert svc.default_router is None
 
-    def test_default_router_uses_main_router_attribute(self):
-        """default_router respects main_router class attribute."""
-
-        class WithMainRouter(RoutingClass):
-            main_router = "admin"
-
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.admin = Router(self, name="admin")
-
-        svc = WithMainRouter()
-        assert svc.default_router is svc.admin
-
     def test_default_router_no_routers(self):
         """default_router returns None when no routers registered."""
 
@@ -471,18 +400,6 @@ class TestDefaultRouter:
             pass
 
         svc = NoRouters()
-        assert svc.default_router is None
-
-    def test_default_router_main_router_not_found(self):
-        """default_router returns None when main_router name doesn't match any router."""
-
-        class BadMainRouter(RoutingClass):
-            main_router = "nonexistent"
-
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-        svc = BadMainRouter()
         assert svc.default_router is None
 
 
