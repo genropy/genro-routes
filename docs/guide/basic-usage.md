@@ -76,70 +76,58 @@ assert api.routes.node("alt_name")() == "executed"
 
 **Registration happens automatically** when you inherit from `RoutingClass` and instantiate routers in `__init__`.
 
-## Default Router with `main_router`
+## Single Router Default
 
-<!-- test: test_router_basic.py::TestMainRouterAttribute::test_route_without_args_uses_main_router -->
+<!-- test: test_router_basic.py::TestSingleRouterDefault::test_route_without_args_uses_single_router -->
 
-When a class uses a single router consistently, you can define `main_router` as a class attribute to avoid repeating the router name:
+When a class has exactly one router, `@route()` without arguments uses it automatically:
 
 ```python
 class Table(RoutingClass):
-    main_router = "table"  # Default router for @route()
-
     def __init__(self):
         self.table = Router(self, name="table")
 
-    @route()  # Uses main_router automatically
+    @route()  # Uses the only router automatically
     def add(self, data):
         return f"added:{data}"
 
-    @route()  # Also uses main_router
+    @route()  # Also uses the single router
     def remove(self, id):
         return f"removed:{id}"
-
-    @route("other")  # Explicit name overrides main_router
-    def special(self):
-        return "special"
 
 t = Table()
 assert t.table.node("add")("x") == "added:x"
 assert t.table.node("remove")(1) == "removed:1"
 ```
 
-**Benefits**:
+**Rules**:
 
-- Less repetition when all methods target the same router
-- Explicit `@route("name")` still works to override
-- Inheritance works: subclasses can override `main_router`
+- If the class has exactly one router: `@route()` works without arguments
+- If the class has multiple routers: `@route()` requires an explicit router name
 
 ### Accessing the Default Router
 
-You can also access the default router programmatically via the `default_router` property:
+You can access the default router programmatically via the `default_router` property:
 
 ```python
 class SingleAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
-    @route("api")
+    @route()
     def ping(self):
         return "pong"
 
 svc = SingleAPI()
+assert svc.default_router is svc.api  # Only one router = default
 
-# When there's only one router, it becomes the default
-assert svc.default_router is svc.api
-
-# With main_router defined, it takes priority
 class MultiAPI(RoutingClass):
-    main_router = "admin"
-
     def __init__(self):
         self.api = Router(self, name="api")
         self.admin = Router(self, name="admin")
 
 m = MultiAPI()
-assert m.default_router is m.admin  # main_router takes priority
+assert m.default_router is None  # Multiple routers = no default
 ```
 
 ## Calling Handlers

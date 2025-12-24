@@ -69,26 +69,26 @@ assert sub.routes.node("list")() == "users:list"
 assert sub.routes.node("detail")(10) == "users:detail:10"
 ```
 
-## Default Router with `main_router`
+## Single Router Default
 
-<!-- test: test_router_basic.py::TestMainRouterAttribute::test_route_without_args_uses_main_router -->
+<!-- test: test_router_basic.py::TestSingleRouterDefault::test_route_without_args_uses_single_router -->
 
-Avoid repeating the router name with a class attribute:
+When a class has exactly one router, `@route()` without arguments uses it automatically:
 
 ```python
 class Table(RoutingClass):
-    main_router = "table"
-
     def __init__(self):
         self.table = Router(self, name="table")
 
-    @route()  # Uses main_router automatically
+    @route()  # Uses the only router automatically
     def add(self, data):
         return f"added:{data}"
 
 t = Table()
 assert t.table.node("add")("x") == "added:x"
 ```
+
+If the class has multiple routers, you must specify the router name explicitly.
 
 ## Building Hierarchies
 
