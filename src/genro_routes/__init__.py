@@ -31,10 +31,17 @@ __version__ = "0.10.0"
 
 from .core import Router, RouterInterface, RoutingClass, RoutingContext, route
 from .core.router_node import RouterNode
-from .exceptions import UNAUTHORIZED, NotAuthenticated, NotAuthorized, NotFound
+from .exceptions import (
+    NOT_AVAILABLE,
+    UNAUTHORIZED,
+    NotAuthenticated,
+    NotAuthorized,
+    NotAvailable,
+    NotFound,
+)
 
 # Import plugins to trigger auto-registration (lazy to avoid cycles)
-for _plugin in ("logging", "pydantic", "auth", "filter", "openapi"):
+for _plugin in ("logging", "pydantic", "auth", "allow", "openapi"):
     import_module(f"{__name__}.plugins.{_plugin}")
 del _plugin
 
@@ -48,5 +55,7 @@ __all__ = [
     "NotFound",
     "NotAuthorized",
     "NotAuthenticated",
+    "NotAvailable",
     "UNAUTHORIZED",
+    "NOT_AVAILABLE",
 ]

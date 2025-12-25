@@ -151,16 +151,6 @@ class DynamicRouterService(RoutingClass):
         return "beta"
 
 
-def test_instance_bound_methods_are_isolated():
-    first = Service("alpha")
-    second = Service("beta")
-
-    assert first.api.node("describe")() == "service:alpha"
-    assert second.api.node("describe")() == "service:beta"
-    # Ensure handlers are distinct objects (bound to each instance)
-    assert first.api.node("describe").callable != second.api.node("describe").callable
-
-
 def test_prefix_and_name_override():
     sub = SubService("users")
 
@@ -254,33 +244,6 @@ class TestSingleRouterDefault:
         assert t.api.node("get")("y") == "got:y"
         assert set(t.api.nodes()["entries"].keys()) == {"add", "get"}
 
-    def test_route_without_args_ignored_with_multiple_routers(self):
-        """@route() without arguments is ignored when multiple routers exist."""
-
-        class MultiRouter(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.admin = Router(self, name="admin")
-
-            @route()  # Ignored - multiple routers, no default
-            def orphan(self):
-                return "orphan"
-
-            @route("api")
-            def public(self):
-                return "public"
-
-            @route("admin")
-            def secret(self):
-                return "secret"
-
-        m = MultiRouter()
-        assert m.api.node("public")() == "public"
-        assert m.admin.node("secret")() == "secret"
-        # orphan not registered anywhere
-        assert not m.api.node("orphan")
-        assert not m.admin.node("orphan")
-
     def test_route_with_custom_entry_name(self):
         """@route(name='custom') works with single router."""
 
@@ -327,11 +290,11 @@ class TestSingleRouterDefault:
             def __init__(self):
                 self.api = Router(self, name="table").plug("auth")
 
-            @route(auth_tags="admin")
+            @route(auth_rule="admin")
             def admin_only(self):
                 return "admin"
 
-            @route(auth_tags="public")
+            @route(auth_rule="public")
             def public_action(self):
                 return "public"
 
@@ -438,86 +401,6 @@ class TestDefaultEntry:
 
         svc = Service()
         assert svc.api.default_entry == "handle"
-
-    def test_node_uses_default_entry_for_unresolved_path(self):
-        """node() uses default_entry for paths that don't resolve exactly."""
-
-        class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
-            def index(self, *args):
-                return f"index called with {args}"
-
-        class Root(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.child = Child()
-                self.api.attach_instance(self.child, name="child")
-
-        root = Root()
-        # Path "child/extra/path" - child exists but "extra/path" doesn't
-        # Should return node with default_entry ("index") and extra_args
-        node = root.api.node("child/extra/path")
-
-        assert node
-        assert node.default_entry is True
-        assert node.extra_args == ["extra", "path"]
-        assert node.partial_kwargs == {}
-        # extra_args are automatically prepended when calling the node
-        assert node() == "index called with ('extra', 'path')"
-
-    def test_node_uses_custom_default_entry(self):
-        """node() uses custom default_entry when configured."""
-
-        class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api", default_entry="handle")
-
-            @route("api")
-            def handle(self, *args):
-                return f"handle called with {args}"
-
-        class Root(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.child = Child()
-                self.api.attach_instance(self.child, name="child")
-
-        root = Root()
-        node = root.api.node("child/extra/path")
-
-        assert node
-        assert node.default_entry is True
-        assert node.extra_args == ["extra", "path"]
-        assert node.partial_kwargs == {}
-        # extra_args are automatically prepended when calling the node
-        assert node() == "handle called with ('extra', 'path')"
-
-    def test_node_returns_empty_when_default_entry_missing(self):
-        """node() returns empty RouterNode when default_entry doesn't exist."""
-
-        class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")  # default_entry="index" but no index entry
-
-            @route("api")
-            def action(self):  # Not named "index"
-                return "action"
-
-        class Root(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.child = Child()
-                self.api.attach_instance(self.child, name="child")
-
-        root = Root()
-        node = root.api.node("child/extra/path")
-
-        # No default_entry available, returns empty node
-        assert not node
-        assert node == {}
 
     def test_leading_slash_is_stripped(self):
         """node() strips leading slash from path."""

@@ -139,70 +139,15 @@ def on_parent_config_changed(
 - If equal (child was following parent) → update to `new_config`
 - If different (child made own choices) → ignore the change
 
-### AuthPlugin Inheritance (Special Case)
+### RuleBasedPlugin (No Inheritance)
 
-AuthPlugin has specific inheritance semantics for tags:
+`AuthPlugin` and `AllowPlugin` inherit from `RuleBasedPlugin`, which does **not**
+inherit configuration from parent routers. Each router and entry defines its own
+`rule` independently.
 
-#### Tag Semantics
-
-- **Entry without tags** → always visible (public)
-- **Entry with tags** → visible only if filter matches at least one tag
-
-#### Inheritance via Union
-
-AuthPlugin overrides `on_attached_to_parent` to perform **union** of tags:
-
-```
-parent._all_.tags = "corporate"
-child._all_.tags = "internal"
-→ child._all_.tags effective = "corporate,internal" (union)
-
-child._all_.tags effective = "corporate,internal"
-entry.tags = "admin"
-→ entry.tags effective = "corporate,internal,admin" (union)
-```
-
-The tag chain is:
-
-```
-parent._all_ ∪ child._all_ = child._all_ effective
-child._all_ effective ∪ entry.tags = entry.tags effective
-```
-
-**Why union?** Tags represent "who can see this". A router marked `corporate` means
-all its content requires corporate access. An entry additionally marked `admin`
-requires corporate OR admin access (more permissive, not more restrictive).
-
-#### Example
-
-```python
-class Parent(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api").plug("auth", tags="corporate")
-        self.child = Child()
-
-class Child(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api").plug("auth", tags="internal")
-
-    @route("api", auth_tags="admin")
-    def admin_only(self): ...
-
-    @route("api")
-    def general(self): ...
-
-parent = Parent()
-parent.api.attach_instance(parent.child, name="child")
-
-# child.api._all_ effective tags: "corporate,internal"
-# admin_only effective tags: "corporate,internal,admin"
-# general effective tags: "corporate,internal" (inherits from _all_)
-
-# nodes(tags="corporate") → sees both admin_only and general
-# nodes(tags="admin") → sees only admin_only
-# nodes(tags="internal") → sees both
-# nodes() without filter → sees both (no filtering)
-```
+This is intentional: rules are boolean expressions that would require complex
+merging logic (AND vs OR) and the semantics are not always clear. Instead,
+each entry explicitly declares its own access requirements.
 
 ### Plugin API
 - `BasePlugin` requires `plugin_code` and `plugin_description` class attributes.

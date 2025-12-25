@@ -269,7 +269,7 @@ With Context, avatar could carry tags:
 ```python
 context.avatar.tags = {"admin", "hr"}
 
-@route("api", auth_tags="admin")
+@route("api", auth_rule="admin")
 def delete_user(self): ...
 
 # AuthPlugin reads context.avatar.tags automatically

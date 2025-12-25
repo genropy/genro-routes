@@ -65,26 +65,6 @@ def _make_router():
     return Router(Owner(), name="api")
 
 
-def test_allow_entry_respects_plugins():
-    Router.register_plugin(_FilterPlugin)
-    router = _make_router().plug("filtertest")
-    entry = MethodEntry("demo", lambda: None, router, plugins=[])
-
-    # hide filter triggers plugin veto (plugin receives extracted filter value without prefix)
-    # filters come with plugin_code prefix, e.g., filtertest_hide=True -> {"hide": True}
-    assert router._allow_entry(entry, filtertest_hide=True) is False
-
-    # Plugin is ALWAYS consulted, even without kwargs (needed for auth 401/403 logic)
-    # With empty kwargs, _FilterPlugin returns True by default
-    assert router._allow_entry(entry) is True
-
-    plugin = router._plugins_by_name["filtertest"]
-    # 2 calls: plugin is always consulted
-    assert len(plugin.calls) == 2
-    assert plugin.calls[0] == {"hide": True}
-    assert plugin.calls[1] == {}  # empty kwargs on second call
-
-
 def test_nodes_entry_extra_rejects_non_dict_from_plugin():
     Router.register_plugin(_BadMetadataPlugin)
     router = _make_router().plug("badmetadata")
@@ -94,12 +74,3 @@ def test_nodes_entry_extra_rejects_non_dict_from_plugin():
         router._describe_entry_extra(entry, {})
 
 
-def test_nodes_respects_plugin_allow_skip():
-    Router.register_plugin(_FilterPlugin)
-    router = _make_router().plug("filtertest")
-    router._add_entry(lambda: "ok", name="hidden")
-
-    # Filter is passed with plugin_code prefix; plugin receives extracted value
-    # e.g., filtertest_hide=True -> plugin receives {"hide": True}
-    tree = router.nodes(filtertest_hide=True)
-    assert tree == {}

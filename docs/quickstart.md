@@ -2,6 +2,8 @@
 
 Get started with Genro Routes in 5 minutes.
 
+Genro Routes is a **transport-agnostic routing engine** - you define your handlers once, then expose them via HTTP (using [genro-asgi](https://github.com/genropy/genro-asgi)), CLI, or any other transport.
+
 ## Installation
 
 ```bash

@@ -258,11 +258,11 @@ class SecureAPI(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("auth")
 
-    @route("api", auth_tags="admin")
+    @route("api", auth_rule="admin")
     def admin_action(self):
         return "admin only"
 
-    @route("api", auth_tags="public")
+    @route("api", auth_rule="public")
     def public_action(self):
         return "public"
 

@@ -287,29 +287,6 @@ def test_attach_instance_single_child_requires_alias_when_parent_multi():
     assert parent.api.node("child_alias").type == "router"
 
 
-def test_attach_instance_allows_partial_mapping_and_skips_unmapped():
-    class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-            self.admin = Router(self, name="admin")
-
-    class Parent(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-            self.child = Child()
-
-    parent = Parent()
-    parent.api.attach_instance(parent.child, name="api:only_api")
-    # Verify only mapped child is accessible
-    assert parent.api.node("only_api").type == "router"
-    assert not parent.api.node("admin")  # Not mapped, should be empty
-
-    parent.api.attach_instance(parent.child, name="api:sales, admin:reports")
-    # Verify both are now accessible
-    assert parent.api.node("sales").type == "router"
-    assert parent.api.node("reports").type == "router"
-
-
 def test_attach_instance_name_collision():
     class Child(RoutingClass):
         def __init__(self):

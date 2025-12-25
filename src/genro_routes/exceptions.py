@@ -5,13 +5,24 @@
 This module defines custom exceptions used throughout the routing system.
 """
 
-__all__ = ["NotFound", "NotAuthorized", "NotAuthenticated", "UNAUTHORIZED", "UNAUTHENTICATED"]
+__all__ = [
+    "NotFound",
+    "NotAuthorized",
+    "NotAuthenticated",
+    "NotAvailable",
+    "UNAUTHORIZED",
+    "UNAUTHENTICATED",
+    "NOT_AVAILABLE",
+]
 
 # Sentinel value for unauthorized callable in node() response (403)
 UNAUTHORIZED = "--NA--"
 
 # Sentinel value for unauthenticated callable in node() response (401)
 UNAUTHENTICATED = "--401--"
+
+# Sentinel value for capability not available in node() response (501)
+NOT_AVAILABLE = "--501--"
 
 
 class NotFound(Exception):
@@ -74,4 +85,25 @@ class NotAuthenticated(Exception):
             message = f"Authentication required for '{selector}' in router '{router_name}'"
         else:
             message = f"Authentication required for '{selector}'"
+        super().__init__(message)
+
+
+class NotAvailable(Exception):
+    """Raised when a required capability is not available (501).
+
+    This exception indicates that the path/selector exists but requires
+    capabilities that are not present in the system.
+
+    Attributes:
+        selector: The path that requires capabilities.
+        router_name: The router where capabilities are required.
+    """
+
+    def __init__(self, selector: str, router_name: str | None = None) -> None:
+        self.selector = selector
+        self.router_name = router_name
+        if router_name:
+            message = f"Capability not available for '{selector}' in router '{router_name}'"
+        else:
+            message = f"Capability not available for '{selector}'"
         super().__init__(message)

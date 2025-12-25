@@ -12,15 +12,32 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-**Genro Routes** is a fully runtime routing engine that lets you expose Python methods as "endpoints" (CLI tools, orchestrators, internal services) without global blueprints or shared registries. Each instance creates its own routers, can attach child routers, configure plugins, and provides ready-to-use runtime introspection.
+**Genro Routes** is a **transport-agnostic routing engine** that decouples method routing from how those methods are exposed. Define your handlers once, then expose them via HTTP, CLI, WebSocket, or any other transport layer.
 
-Use Genro Routes when you need to:
+The routing logic lives in your application objects - the transport adapter (like [genro-asgi](https://github.com/genropy/genro-asgi) for HTTP) simply maps external requests to router entries.
 
-- Compose internal services with many handlers (application APIs, orchestrators, CLI automation)
-- Build dashboards/portals that register routers dynamically and need runtime introspection
-- Extend handler behavior with plugins (logging, validation, audit trails)
+## Why Transport-Agnostic?
 
-Genro Routes provides a consistent, well-tested foundation for these patterns.
+Traditional web frameworks tightly couple routing to HTTP. Genro Routes separates these concerns:
+
+| Layer | Responsibility |
+|-------|---------------|
+| **genro-routes** | Method registration, hierarchies, plugins, introspection |
+| **Transport adapter** | Protocol handling, request/response mapping |
+
+This separation enables:
+
+- **Same handlers, multiple transports** - Expose your API via HTTP and CLI without duplication
+- **Runtime introspection** - Query available routes, generate documentation, build admin UIs
+- **Testability** - Test business logic without HTTP overhead
+- **Flexibility** - Swap transports without changing application code
+
+## Use Cases
+
+- **HTTP APIs** - Via [genro-asgi](https://github.com/genropy/genro-asgi) adapter
+- **Internal services** - Direct method invocation with plugin pipeline
+- **CLI tools** - Map commands to router entries
+- **Admin dashboards** - Runtime introspection for dynamic UIs
 
 ## Key Features
 
@@ -173,8 +190,9 @@ Genro Routes is currently in **beta** (v0.10.0). The core API is stable with com
 
 ## Roadmap
 
+- **[genro-asgi](https://github.com/genropy/genro-asgi)** - ASGI adapter for HTTP exposure (in development)
 - Additional plugins (async, storage, audit trail, metrics)
-- Benchmarks and performance comparison
+- CLI adapter for command-line exposure
 - Example applications and use cases
 
 ## Contributing

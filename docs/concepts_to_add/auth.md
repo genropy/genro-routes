@@ -11,8 +11,8 @@ authorization rules defined on endpoints against user tags from the execution co
 
 | Concept | Location | Description |
 |---------|----------|-------------|
-| `auth_tags` | `@route(...)` | Authorization rule the endpoint requires |
-| `avatar.tags` | `context.avatar` | Tags the current user has |
+| `auth_rule` | `@route(...)` | Authorization rule the endpoint requires |
+| `auth_tags` | `nodes()`, `node()` | Tags the current user has (query parameter) |
 | `AuthPlugin` | Plugin | Evaluates rules against user tags |
 
 ## Usage
@@ -24,52 +24,59 @@ from genro_routes import Router, RoutingClass, route
 
 class AdminAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")
+        self.api = Router(self, name="api").plug("auth")
 
-    @route("api", auth_tags="admin")
+    @route("api", auth_rule="admin")
     def delete_user(self, user_id):
         """Only users with 'admin' tag can access."""
         return f"Deleted {user_id}"
 
-    @route("api", auth_tags="admin | manager")
+    @route("api", auth_rule="admin|manager")
     def view_reports(self):
         """Users with 'admin' OR 'manager' tag can access."""
         return "Reports..."
 
-    @route("api", auth_tags="admin & hr")
+    @route("api", auth_rule="admin&hr")
     def manage_salaries(self):
         """Users with BOTH 'admin' AND 'hr' tags can access."""
         return "Salaries..."
 
     @route("api")
     def public_info(self):
-        """No auth_tags = public access."""
+        """No auth_rule = public access."""
         return "Public info"
 ```
 
 ### Rule Syntax
 
+**IMPORTANT**: Comma is NOT allowed in `auth_rule`. Use `|` for OR, `&` for AND.
+
 | Syntax | Meaning | Example |
 |--------|---------|---------|
 | `"admin"` | Single tag required | User must have "admin" |
-| `"admin,hr"` | OR (comma shortcut) | User must have "admin" OR "hr" |
-| `"admin \| hr"` | OR (explicit) | User must have "admin" OR "hr" |
-| `"admin & hr"` | AND | User must have "admin" AND "hr" |
+| `"admin\|hr"` | OR | User must have "admin" OR "hr" |
+| `"admin&hr"` | AND | User must have "admin" AND "hr" |
 | `"!guest"` | NOT | User must NOT have "guest" |
-| `"(admin \| manager) & !suspended"` | Complex | Admin or manager, not suspended |
+| `"(admin\|manager)&!suspended"` | Complex | Admin or manager, not suspended |
+
+Keywords `and`, `or`, `not` are also supported (case-insensitive):
+
+- `"admin or manager"` is equivalent to `"admin|manager"`
+- `"admin and hr"` is equivalent to `"admin&hr"`
+- `"not guest"` is equivalent to `"!guest"`
 
 ### Runtime Filtering
 
 ```python
 api = AdminAPI()
 
-# Filter visible entries by user tags
-api.api.nodes(tags="admin")           # entries requiring 'admin'
-api.api.nodes(tags="admin,manager")   # entries requiring 'admin' OR 'manager'
+# Filter visible entries by user tags (comma = user has multiple tags)
+api.api.nodes(auth_tags="admin")           # user has 'admin' tag
+api.api.nodes(auth_tags="admin,manager")   # user has both 'admin' AND 'manager' tags
 
-# Access control on get/call
-handler = api.api.get("delete_user", auth_tags="admin")  # raises NotAuthorized if filtered
-result = api.api.call("delete_user", auth_tags="admin", args=["user123"])
+# Access control on node/call
+handler = api.api.node("delete_user", auth_tags="admin")  # raises NotAuthorized if filtered
+result = api.api.node("delete_user", auth_tags="admin")("user123")
 ```
 
 ## Integration with Context (Future)
@@ -87,30 +94,12 @@ app.context = ASGIContext(request, app, server)
 result = app.api.call("manage_salaries")  # checks context.avatar.tags vs auth_tags
 ```
 
-## Tag Inheritance
-
-Tags inherit from parent routers using union semantics:
-
-```python
-class App(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-        self.admin = AdminSubService()
-
-        # All admin routes require "corporate" tag
-        self.api.auth.configure(tags="corporate")
-        self.api.attach_instance(self.admin, name="admin")
-
-# AdminSubService entries now require "corporate" + their own tags
-# @route("api", auth_tags="admin") becomes effectively "corporate & admin"
-```
-
 ## Configuration
 
 ### Per-Handler
 
 ```python
-@route("api", auth_tags="admin")
+@route("api", auth_rule="admin")
 def handler(self): ...
 ```
 
@@ -120,8 +109,8 @@ def handler(self): ...
 # Disable auth for specific handler
 svc.routing.configure("api:auth/handler_name", enabled=False)
 
-# Add tags to all handlers
-svc.routing.configure("api:auth/_all_", tags="internal")
+# Add rule to all handlers
+svc.routing.configure("api:auth/_all_", rule="internal")
 ```
 
 ## Exceptions
@@ -154,15 +143,14 @@ if info is UNAUTHORIZED:
     print("Not authorized to view this entry")
 ```
 
-## Migration from FilterPlugin
+## Access Control Plugins
 
-The `AuthPlugin` replaces `FilterPlugin` with clearer semantics:
+There are now two access control plugins with different purposes:
 
-| Old (FilterPlugin) | New (AuthPlugin) |
-|-------------------|------------------|
-| `filter_tags="admin"` | `auth_tags="admin"` |
-| `filter.py` | `auth.py` |
-| `FilterPlugin` | `AuthPlugin` |
-| `.plug("filter")` | `.plug("auth")` |
+| Plugin | Purpose | HTTP Code | Usage |
+|--------|---------|-----------|-------|
+| `AuthPlugin` | User authorization | 401/403 | `auth_rule="admin"` on entry, `auth_tags="admin"` at query |
+| `AllowPlugin` | System capabilities | 501 | `allow_rule="pyjwt"` on entry, `allow_capabilities="pyjwt"` at query |
 
-The functionality is identical - only names changed to better reflect the authorization purpose.
+**AuthPlugin** checks if the user has the required permissions.
+**AllowPlugin** checks if the system has the required capabilities (e.g., optional dependencies).

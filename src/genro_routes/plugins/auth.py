@@ -14,174 +14,51 @@ Usage::
         def __init__(self):
             self.api = Router(self, name="api")
 
-        @route("api", auth_tags="admin,internal")
+        @route("api", auth_rule="admin&internal")
         def admin_action(self):
             return "admin only"
 
-        @route("api", auth_tags="public")
+        @route("api", auth_rule="public")
         def public_action(self):
             return "public"
 
-    # Filter by tags
+    # Query with user's tags (comma-separated list of tags the user has)
     obj = MyAPI()
-    obj.api.nodes(tags="admin")           # entries with 'admin' tag
-    obj.api.nodes(tags="admin,public")    # OR: admin OR public
-    obj.api.nodes(tags="admin&internal")  # AND: admin AND internal
-    obj.api.nodes(tags="!admin")          # NOT: not admin
-    obj.api.nodes(tags="(admin|public)&!internal")  # complex expression
+    obj.api.node("admin_action", auth_tags="admin,internal")  # user has both tags
+    obj.api.nodes(auth_tags="admin")           # user has admin tag
+    obj.api.nodes(auth_tags="admin,public")    # user has admin AND public tags
 
-Operators:
-    - ``,`` or ``|`` : OR
-    - ``&`` : AND
-    - ``!`` : NOT
+Rule syntax (on entry auth_rule):
+    - ``|`` : OR (user must have at least one)
+    - ``&`` : AND (user must have all)
+    - ``!`` : NOT (user must not have)
     - ``()`` : grouping
+
+NOTE: Comma is NOT allowed in auth_rule. Use ``|`` for OR, ``&`` for AND.
+      Comma in auth_tags means the user has multiple tags (always AND).
+
+Example: auth_rule="admin|manager" means "user must have admin OR manager"
+Example: auth_rule="admin&!guest" means "user must have admin AND NOT guest"
 """
 
 from __future__ import annotations
 
-from typing import Any
-
-from genro_toolbox import tags_match
-
 from genro_routes.core.router import Router
-from genro_routes.core.router_interface import RouterInterface
 
-from ._base_plugin import BasePlugin, MethodEntry
+from ._rule_based import RuleBasedPlugin
 
 __all__ = ["AuthPlugin"]
 
 
-class AuthPlugin(BasePlugin):
+class AuthPlugin(RuleBasedPlugin):
     """Authorization plugin with tag-based access control."""
 
     plugin_code = "auth"
     plugin_description = "Authorization plugin with tag-based access control"
 
-    def configure(  # type: ignore[override]
-        self,
-        *,
-        tags: str = "",
-        enabled: bool = True,
-        _target: str = "_all_",
-        flags: str | None = None,
-    ) -> None:
-        """Define authorization tags for this entry/router.
-
-        Args:
-            tags: Comma-separated tag names (e.g., "admin,internal")
-            enabled: Whether authorization is enabled (default True)
-            _target: Internal - target bucket name
-            flags: Internal - flag string
-        """
-        pass  # Storage handled by wrapper
-
-    def on_attached_to_parent(self, parent_plugin: BasePlugin) -> None:
-        """Merge parent tags with child tags (union).
-
-        AuthPlugin uses union semantics: parent tags are combined with
-        child tags, not replaced. This allows hierarchical tag inheritance
-        where a parent router's tags apply to all children.
-
-        Example:
-            parent._all_.tags = "corporate"
-            child._all_.tags = "internal"
-            → child._all_.tags effective = "corporate,internal"
-        """
-        # Let base class handle common config (enabled, etc.)
-        super().on_attached_to_parent(parent_plugin)
-
-        # Store original child tags for later delta calculations
-        my_tags_str = self.configuration().get("tags", "")
-        self._own_tags = {t.strip() for t in my_tags_str.split(",") if t.strip()}
-
-        # Then handle tags with union semantics
-        parent_tags_str = parent_plugin.configuration().get("tags", "")
-        parent_tags = {t.strip() for t in parent_tags_str.split(",") if t.strip()}
-
-        merged = parent_tags | self._own_tags
-        if merged:
-            self.configure(tags=",".join(sorted(merged)))
-
-    def on_parent_config_changed(
-        self, _old_config: dict[str, Any], new_config: dict[str, Any]
-    ) -> None:
-        """Propagate parent tag changes with union semantics.
-
-        When parent tags change, recalculate child's effective tags:
-        - Remove old parent tags
-        - Add new parent tags
-        - Keep child's own tags
-
-        Example:
-            parent: "corporate" → "corporate,hr"
-            child own: "internal"
-            child effective: "corporate,internal" → "corporate,hr,internal"
-        """
-        new_parent_tags_str = new_config.get("tags", "")
-        new_parent_tags = {t.strip() for t in new_parent_tags_str.split(",") if t.strip()}
-
-        # Get child's own tags (stored at attach time)
-        own_tags: set[str] = getattr(self, "_own_tags", set())
-
-        # Calculate new effective tags: own + new parent
-        new_effective = own_tags | new_parent_tags
-
-        if new_effective:
-            self.configure(tags=",".join(sorted(new_effective)))
-        else:
-            self.configure(tags="")
-
-    def allow_node(
-        self, node: MethodEntry | RouterInterface, **filters: Any
-    ) -> bool | str:
-        """Filter nodes (entries or routers) based on tag expression.
-
-        The entry has a **rule** (e.g., "!dimissionario", "admin&!guest").
-        The user has **tags** (e.g., "contabilita,dimissionario").
-        Check: does the user satisfy the entry's rule?
-
-        Args:
-            node: MethodEntry or Router being checked.
-            **filters: May contain 'tags' key with the user's tags.
-
-        Returns:
-            True: Access allowed (entry has no rule, or user tags match).
-            "not_authenticated": Entry requires tags but user provided none (401).
-            "not_authorized": User provided tags but they don't match rule (403).
-        """
-        if isinstance(node, RouterInterface):
-            # For routers, check if any child is accessible
-            results = [self.allow_node(n, **filters) for n in node.values()]
-            # If any child returns True, router is accessible
-            if any(r is True for r in results):
-                return True
-            # Otherwise return first error (or True if no children)
-            return results[0] if results else True
-
-        # MethodEntry - read entry's rule from configuration
-        config = self.configuration(node.name)
-        entry_rule = config.get("tags", "")
-
-        # If entry has no rule → always OK
-        if not entry_rule:
-            return True
-
-        # Entry has a rule - check user tags
-        user_tags = filters.get("tags")
-
-        # No user tags provided → not authenticated (401)
-        if not user_tags:
-            return "not_authenticated"
-
-        # Parse user tags
-        user_tags_set = {t.strip() for t in user_tags.split(",") if t.strip()}
-
-        # Check if user tags match the entry rule
-        if tags_match(entry_rule, user_tags_set):
-            return True
-
-        # Tags provided but don't match → not authorized (403)
-        return "not_authorized"
+    filter_key = "tags"
+    no_values_error = "not_authenticated"
+    mismatch_error = "not_authorized"
 
 
 Router.register_plugin(AuthPlugin)

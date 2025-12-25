@@ -55,6 +55,42 @@ def test_something():
 - Test di plugin che devono accedere a `_plugins_by_name` per verificare la registrazione
 - Devono essere esplicitamente marcati con commento `# Testing internal plugin registration`
 
+## Coding Style Rules
+
+### Rule: Minimal Code - No Redundant Lines
+
+**Mai aggiungere righe di codice ridondanti o controlli inutili.**
+
+Meno righe = meno rischio di errori = codice più leggibile.
+
+**Pattern SBAGLIATI**:
+
+```python
+# ❌ if ridondante prima di for su dizionario vuoto
+options = data.get("config", {})
+if options:
+    for key, val in options.items():
+        process(key, val)
+
+# ❌ variabile intermedia non necessaria
+bucket = store.get(name, {})
+entry = bucket.setdefault(key, {})
+entry["value"] = x
+```
+
+**Pattern CORRETTI**:
+
+```python
+# ✅ for itera zero volte su dizionario vuoto
+for key, val in data.get("config", {}).items():
+    process(key, val)
+
+# ✅ concatenare setdefault
+store.get(name, {}).setdefault(key, {})["value"] = x
+```
+
+**Regola generale**: prima di creare una variabile intermedia o aggiungere un `if`, chiedersi se è davvero necessaria.
+
 ---
 
 **All general policies are inherited from the parent document.**

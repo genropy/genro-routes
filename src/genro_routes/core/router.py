@@ -333,30 +333,30 @@ class Router(BaseRouter):
             self._rebuild_handlers()
 
     def _after_entry_registered(self, entry: MethodEntry) -> None:  # type: ignore[override]
-        plugin_options = entry.metadata.get("plugin_config", {})
-        if plugin_options:
-            for pname, cfg in plugin_options.items():
+        for pname, cfg in entry.metadata.get("plugin_config", {}).items():
+            plugin = self._plugins_by_name.get(pname)
+            if plugin:
+                plugin.configure(_target=entry.name, **cfg)
+            else:
                 bucket = self._plugin_info.setdefault(
                     pname, {"_all_": {"config": {}, "locals": {}}}
                 )
-                entry_bucket = bucket.setdefault(entry.name, {"config": {}, "locals": {}})
-                entry_bucket["config"].update(cfg)
+                bucket.setdefault(entry.name, {"config": {}, "locals": {}})["config"].update(cfg)
         for plugin in self._plugins:
             if plugin.name not in entry.plugins:
                 entry.plugins.append(plugin.name)
             plugin.on_decore(self, entry.func, entry)
 
     def _allow_entry(self, entry: MethodEntry, **allowing_args: Any) -> bool | str:
-        base_result = super()._allow_entry(entry, **allowing_args)
-        if base_result is not True:
-            return base_result  # pragma: no cover - base hook currently always True
+        # Filter out None and False values
+        allowing_args = {k: v for k, v in allowing_args.items() if v not in (None, False)}
         for plugin in self._plugins:
             # Extract kwargs for this specific plugin using its plugin_code prefix
             plugin_kwargs = dictExtract(
                 allowing_args, f"{plugin.plugin_code}_", slice_prefix=True, pop=False
             )
             # Always consult plugin - it decides based on entry rules and user kwargs
-            result = plugin.allow_node(entry, **plugin_kwargs)
+            result = plugin.allow_entry(entry, **plugin_kwargs)
             if result is not True:
                 return result
         return True

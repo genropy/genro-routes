@@ -296,38 +296,18 @@ class BasePlugin:
         """
         return call_next
 
-    def allow_entry(
-        self, router: Any, entry: MethodEntry, **filters: Any
-    ) -> bool | None:  # pragma: no cover - optional hook
-        """Override to control handler visibility during introspection.
+    def allow_entry(self, entry: Any, **filters: Any) -> bool | str:  # pragma: no cover - optional hook
+        """Override to control entry visibility during introspection.
 
-        Called by ``router.nodes()`` to decide if a handler should be
-        included in results. Return True to include, False to exclude,
-        or None to defer the decision to other plugins.
+        Called by ``router.nodes()`` and ``router.node()`` to decide if an entry
+        should be included in results or allowed for execution.
 
         Args:
-            router: The Router instance.
             entry: MethodEntry being checked.
-            **filters: All filter criteria passed to ``nodes()``.
+            **filters: All filter criteria passed to ``nodes()`` or ``node()``.
 
         Returns:
-            True to include, False to exclude, None to defer.
-        """
-        return None
-
-    def allow_node(self, node: Any, **filters: Any) -> bool | str:  # pragma: no cover - optional hook
-        """Override to control node visibility during introspection.
-
-        Called by ``router.nodes()`` to decide if a node (entry or child router)
-        should be included in results. For routers, returning True means at least
-        one child matches; returning False prunes the entire branch.
-
-        Args:
-            node: MethodEntry or Router being checked.
-            **filters: All filter criteria passed to ``nodes()``.
-
-        Returns:
-            True: Include the node.
+            True: Include/allow the entry.
             "not_authenticated": Entry requires auth but no credentials (401).
             "not_authorized": Credentials provided but insufficient (403).
             False: Exclude from results (for backward compatibility).

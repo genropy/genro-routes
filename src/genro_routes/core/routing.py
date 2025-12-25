@@ -68,6 +68,7 @@ class RoutingClass:
         "__genro_routes_router_registry__",
         "_routing_parent",
         "_context",
+        "_capabilities",
     )
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -182,6 +183,56 @@ class RoutingClass:
         if len(routers) == 1:
             return next(iter(routers.values()))
         return None
+
+    @property
+    def capabilities(self) -> set[str]:
+        """Return the capabilities declared by this instance.
+
+        Capabilities represent what features/dependencies this service has
+        available at runtime. Used by AllowPlugin to filter entries based
+        on capability requirements.
+
+        Subclasses can override this property to compute capabilities
+        dynamically based on runtime state (e.g., which optional
+        dependencies are installed, which services are configured).
+
+        Returns:
+            A set of capability strings. Empty set by default.
+
+        Example::
+
+            class PaymentService(RoutingClass):
+                @property
+                def capabilities(self) -> set[str]:
+                    caps = set()
+                    if self._stripe_configured:
+                        caps.add("stripe")
+                    if self._paypal_configured:
+                        caps.add("paypal")
+                    return caps
+        """
+        return getattr(self, "_capabilities", None) or set()
+
+    @capabilities.setter
+    def capabilities(self, value: set[str] | list[str] | str | None) -> None:
+        """Set the capabilities for this instance.
+
+        Args:
+            value: Capabilities as set, list, comma-separated string, or None.
+
+        Raises:
+            TypeError: If value is not a valid type.
+        """
+        if value is None:
+            object.__setattr__(self, "_capabilities", set())
+        elif isinstance(value, set):
+            object.__setattr__(self, "_capabilities", value)
+        elif isinstance(value, (list, tuple)):
+            object.__setattr__(self, "_capabilities", set(value))
+        elif isinstance(value, str):
+            object.__setattr__(self, "_capabilities", {v.strip() for v in value.split(",") if v.strip()})
+        else:
+            raise TypeError(f"capabilities must be set, list, str, or None, got {type(value).__name__}")
 
 
 class _RoutingProxy:

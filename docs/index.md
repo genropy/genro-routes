@@ -4,21 +4,32 @@
   <img src="_static/logo.png" alt="Genro Routes Logo" width="200"/>
 </p>
 
-**Genro Routes** is an instance-scoped routing engine for Python that enables dynamic method dispatch through a plugin-based architecture.
+**Genro Routes** is a **transport-agnostic routing engine** that decouples method routing from how those methods are exposed. Define your handlers once, then expose them via HTTP, CLI, WebSocket, or any other transport layer.
 
-## What is Genro Routes?
+## Why Transport-Agnostic?
 
-Genro Routes allows you to organize and dispatch method calls dynamically based on string identifiers (routes). Each object instance gets its own isolated router with independent plugin stacks, making it ideal for building modular, extensible services where behavior can be customized per-instance without global state.
+Traditional web frameworks tightly couple routing to HTTP. Genro Routes separates these concerns:
 
-## What Does Genro Routes Do?
+| Layer | Responsibility |
+|-------|---------------|
+| **genro-routes** | Method registration, hierarchies, plugins, introspection |
+| **Transport adapter** | Protocol handling, request/response mapping |
 
-Genro Routes provides:
+The routing logic lives in your application objects - the transport adapter (like [genro-asgi](https://github.com/genropy/genro-asgi) for HTTP) simply maps external requests to router entries.
 
-- **Dynamic method dispatch**: Call methods by string name (`router.node("method_name")()`)
-- **Instance isolation**: Instantiate routers inside `__init__` with `Router(self, ...)` so each object tracks its own configuration
-- **Hierarchical routing**: Build nested router trees with path access (`root.api.node("users/list")()`)
-- **Plugin system**: Extend behavior with composable plugins (logging, validation, etc.)
-- **Plugin inheritance**: Child routers automatically inherit parent plugins
+## What Does This Enable?
+
+- **Same handlers, multiple transports** - Expose your API via HTTP and CLI without duplication
+- **Runtime introspection** - Query available routes, generate documentation, build admin UIs
+- **Testability** - Test business logic without HTTP overhead
+- **Flexibility** - Swap transports without changing application code
+
+## Use Cases
+
+- **HTTP APIs** - Via [genro-asgi](https://github.com/genropy/genro-asgi) adapter
+- **Internal services** - Direct method invocation with plugin pipeline
+- **CLI tools** - Map commands to router entries
+- **Admin dashboards** - Runtime introspection for dynamic UIs
 
 ## Key Features
 

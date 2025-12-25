@@ -431,7 +431,7 @@ class Child(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("auth", tags="internal")
 
-    @route("api", auth_tags="admin")
+    @route("api", auth_rule="admin")
     def admin_only(self): ...
 
 parent = Parent()
