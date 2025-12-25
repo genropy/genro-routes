@@ -43,22 +43,88 @@ Example: auth_rule="admin&!guest" means "user must have admin AND NOT guest"
 
 from __future__ import annotations
 
-from genro_routes.core.router import Router
+from typing import Any
 
-from ._rule_based import RuleBasedPlugin
+from genro_toolbox import tags_match
+
+from genro_routes.core.router import Router
+from genro_routes.core.router_interface import RouterInterface
+
+from ._base_plugin import BasePlugin, MethodEntry
 
 __all__ = ["AuthPlugin"]
 
 
-class AuthPlugin(RuleBasedPlugin):
+class AuthPlugin(BasePlugin):
     """Authorization plugin with tag-based access control."""
 
     plugin_code = "auth"
     plugin_description = "Authorization plugin with tag-based access control"
 
-    filter_key = "tags"
-    no_values_error = "not_authenticated"
-    mismatch_error = "not_authorized"
+    def configure(
+        self,
+        *,
+        rule: str = "",
+        enabled: bool = True,
+        _target: str = "_all_",
+        flags: str | None = None,
+    ) -> None:
+        """Define authorization rule for this entry/router.
+
+        Args:
+            rule: Boolean rule expression (e.g., "admin&internal", "!guest").
+                  Use ``|`` for OR, ``&`` for AND. Comma is not allowed.
+            enabled: Whether the plugin is enabled (default True)
+            _target: Internal - target bucket name
+            flags: Internal - flag string
+
+        Raises:
+            ValueError: If rule contains comma (use ``|`` for OR instead).
+        """
+        if "," in rule:
+            raise ValueError(
+                f"Comma not allowed in auth_rule: {rule!r}. "
+                "Use '|' for OR (e.g., 'admin|manager') or '&' for AND (e.g., 'admin&hr')."
+            )
+        pass  # Storage handled by wrapper
+
+    def allow_entry(
+        self, entry: MethodEntry | RouterInterface, **filters: Any
+    ) -> bool | str:
+        """Filter entries based on authorization rule.
+
+        Args:
+            entry: MethodEntry or Router being checked.
+            **filters: May contain ``tags`` with user's tags.
+
+        Returns:
+            True: Access allowed (entry has no rule, or tags match).
+            "not_authenticated": Entry requires tags but none provided.
+            "not_authorized": Tags provided but don't match rule.
+        """
+        if isinstance(entry, RouterInterface):
+            results = [self.allow_entry(n, **filters) for n in entry.values()]
+            if any(r is True for r in results):
+                return True
+            return results[0] if results else True
+
+        config = self.configuration(entry.name)
+        entry_rule = config.get("rule", "")
+
+        if not entry_rule:
+            return True
+
+        user_tags = filters.get("tags")
+
+        if not user_tags:
+            return "not_authenticated"
+
+        tags_set = {v.strip() for v in user_tags.split(",") if v.strip()}
+
+        if tags_match(entry_rule, tags_set):
+            return True
+
+        return "not_authorized"
 
 
 Router.register_plugin(AuthPlugin)

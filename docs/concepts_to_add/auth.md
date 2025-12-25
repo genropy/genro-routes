@@ -150,7 +150,7 @@ There are now two access control plugins with different purposes:
 | Plugin | Purpose | HTTP Code | Usage |
 |--------|---------|-----------|-------|
 | `AuthPlugin` | User authorization | 401/403 | `auth_rule="admin"` on entry, `auth_tags="admin"` at query |
-| `AllowPlugin` | System capabilities | 501 | `allow_rule="pyjwt"` on entry, `allow_capabilities="pyjwt"` at query |
+| `EnvPlugin` | System capabilities | 501 | `env_requires="pyjwt"` on entry, `env_capabilities="pyjwt"` at query |
 
 **AuthPlugin** checks if the user has the required permissions.
-**AllowPlugin** checks if the system has the required capabilities (e.g., optional dependencies).
+**EnvPlugin** checks if the system has the required capabilities (e.g., optional dependencies).

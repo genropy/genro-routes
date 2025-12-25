@@ -1,14 +1,14 @@
 # Copyright 2025 Softwell S.r.l.
 # Licensed under the Apache License, Version 2.0
 
-"""AllowPlugin - Capability-based access control plugin.
+"""EnvPlugin - Environment capability-based access control plugin.
 
 This plugin provides capability-based filtering for router entries. It evaluates
 capability requirements defined on endpoints against system capabilities.
 
 Capabilities can come from two sources:
 
-1. **Request capabilities**: Passed explicitly via ``allow_capabilities`` parameter
+1. **Request capabilities**: Passed explicitly via ``env_capabilities`` parameter
 2. **Instance capabilities**: Declared on RoutingClass instances via the
    ``capabilities`` property
 
@@ -22,20 +22,20 @@ Usage::
 
     class MyAPI(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("allow")
+            self.api = Router(self, name="api").plug("env")
             self.capabilities = {"redis"}  # This instance provides redis
 
-        @route("api", allow_rule="pyjwt&redis")
+        @route("api", env_requires="pyjwt&redis")
         def create_jwt(self):
             return "jwt created"
 
-        @route("api", allow_rule="paypal|stripe")
+        @route("api", env_requires="paypal|stripe")
         def process_payment(self):
             return "payment processed"
 
     # Query with additional request capabilities
     obj = MyAPI()
-    obj.api.node("create_jwt", allow_capabilities="pyjwt")  # OK: pyjwt from request + redis from instance
+    obj.api.node("create_jwt", env_capabilities="pyjwt")  # OK: pyjwt from request + redis from instance
     obj.api.node("create_jwt")  # not_available: only redis from instance, missing pyjwt
 
     # Dynamic capabilities via property override
@@ -47,17 +47,17 @@ Usage::
                 caps.add("stripe")
             return caps
 
-Rule syntax (on entry allow_rule):
+Rule syntax (on entry env_requires):
     - ``|`` : OR (system must have at least one)
     - ``&`` : AND (system must have all)
     - ``!`` : NOT (system must not have)
     - ``()`` : grouping
 
-NOTE: Comma is NOT allowed in allow_rule. Use ``|`` for OR, ``&`` for AND.
-      Comma in allow_capabilities means the system has multiple capabilities.
+NOTE: Comma is NOT allowed in env_requires. Use ``|`` for OR, ``&`` for AND.
+      Comma in env_capabilities means the system has multiple capabilities.
 
-Example: allow_rule="pyjwt&redis" means "system must have pyjwt AND redis"
-Example: allow_rule="paypal|stripe" means "system must have paypal OR stripe"
+Example: env_requires="pyjwt&redis" means "system must have pyjwt AND redis"
+Example: env_requires="paypal|stripe" means "system must have paypal OR stripe"
 """
 
 from __future__ import annotations
@@ -67,41 +67,59 @@ from typing import Any
 from genro_toolbox import tags_match
 
 from genro_routes.core.router import Router
-from genro_routes.core.router_interface import RouterInterface
-from genro_routes.plugins._base_plugin import MethodEntry
+from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
 
-from ._rule_based import RuleBasedPlugin
-
-__all__ = ["AllowPlugin"]
+__all__ = ["EnvPlugin"]
 
 
-class AllowPlugin(RuleBasedPlugin):
-    """Capability-based access control plugin.
+class EnvPlugin(BasePlugin):
+    """Environment capability-based access control plugin.
 
     Accumulates capabilities from RoutingClass instances along the
     router hierarchy, combining them with request capabilities.
     """
 
-    plugin_code = "allow"
-    plugin_description = "Capability-based access control plugin"
+    plugin_code = "env"
+    plugin_description = "Environment capability-based access control plugin"
 
-    filter_key = "capabilities"
-    no_values_error = "not_available"
-    mismatch_error = "not_available"
+    def configure(
+        self,
+        *,
+        requires: str = "",
+        enabled: bool = True,
+        _target: str = "_all_",
+        flags: str | None = None,
+    ) -> None:
+        """Define capability requirements for this entry/router.
 
-    def allow_entry(
-        self, entry: MethodEntry | RouterInterface, **filters: Any
-    ) -> bool | str:
+        Args:
+            requires: Boolean rule expression (e.g., "pyjwt&redis", "paypal|stripe").
+                      Use ``|`` for OR, ``&`` for AND. Comma is not allowed.
+            enabled: Whether the plugin is enabled (default True)
+            _target: Internal - target bucket name
+            flags: Internal - flag string
+
+        Raises:
+            ValueError: If requires contains comma (use ``|`` for OR instead).
+        """
+        if "," in requires:
+            raise ValueError(
+                f"Comma not allowed in env_requires: {requires!r}. "
+                "Use '|' for OR (e.g., 'pyjwt|redis') or '&' for AND (e.g., 'pyjwt&redis')."
+            )
+        pass  # Storage handled by wrapper
+
+    def allow_entry(self, entry: MethodEntry, **filters: Any) -> bool | str:
         """Filter entries based on capability requirements.
 
         Capabilities are accumulated from:
         1. Router capabilities (``router_capabilities`` if pre-computed, else from router)
         2. Request capabilities (``capabilities`` parameter)
 
-        The combined set is checked against the entry's ``allow_rule``.
+        The combined set is checked against the entry's ``env_requires``.
 
         Args:
-            entry: MethodEntry or Router being checked.
+            entry: MethodEntry being checked.
             **filters: May contain ``router_capabilities`` (pre-computed) and/or
                       ``capabilities`` (from request).
 
@@ -110,14 +128,8 @@ class AllowPlugin(RuleBasedPlugin):
             "not_available": Entry requires capabilities but none available,
                            or capabilities don't match rule.
         """
-        if isinstance(entry, RouterInterface):
-            results = [self.allow_entry(n, **filters) for n in entry.values()]
-            if any(r is True for r in results):
-                return True
-            return results[0] if results else True
-
         config = self.configuration(entry.name)
-        entry_rule = config.get("rule", "")
+        entry_rule = config.get("requires", "")
 
         if not entry_rule:
             return True
@@ -128,7 +140,7 @@ class AllowPlugin(RuleBasedPlugin):
             router_caps = self._router.current_capabilities
 
         # Parse request capabilities
-        request_caps_str = filters.get(self.filter_key)
+        request_caps_str = filters.get("capabilities")
         request_caps: set[str] = set()
         if request_caps_str:
             request_caps = {v.strip() for v in request_caps_str.split(",") if v.strip()}
@@ -137,12 +149,12 @@ class AllowPlugin(RuleBasedPlugin):
         all_caps = router_caps | request_caps
 
         if not all_caps:
-            return self.no_values_error
+            return "not_available"
 
         if tags_match(entry_rule, all_caps):
             return True
 
-        return self.mismatch_error
+        return "not_available"
 
 
-Router.register_plugin(AllowPlugin)
+Router.register_plugin(EnvPlugin)

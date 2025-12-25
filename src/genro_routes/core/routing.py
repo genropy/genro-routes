@@ -189,7 +189,7 @@ class RoutingClass:
         """Return the capabilities declared by this instance.
 
         Capabilities represent what features/dependencies this service has
-        available at runtime. Used by AllowPlugin to filter entries based
+        available at runtime. Used by EnvPlugin to filter entries based
         on capability requirements.
 
         Subclasses can override this property to compute capabilities

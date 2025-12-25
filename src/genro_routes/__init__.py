@@ -41,7 +41,7 @@ from .exceptions import (
 )
 
 # Import plugins to trigger auto-registration (lazy to avoid cycles)
-for _plugin in ("logging", "pydantic", "auth", "allow", "openapi"):
+for _plugin in ("logging", "pydantic", "auth", "env", "openapi"):
     import_module(f"{__name__}.plugins.{_plugin}")
 del _plugin
 

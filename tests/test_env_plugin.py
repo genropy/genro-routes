@@ -1,7 +1,7 @@
 # Copyright 2025 Softwell S.r.l.
 # Licensed under the Apache License, Version 2.0
 
-"""Tests for AllowPlugin with capability accumulation."""
+"""Tests for EnvPlugin with capability accumulation."""
 
 from __future__ import annotations
 
@@ -10,15 +10,15 @@ import pytest
 from genro_routes import NOT_AVAILABLE, NotAvailable, Router, RoutingClass, route
 
 
-class TestAllowPluginBasic:
-    """Basic AllowPlugin functionality tests."""
+class TestEnvPluginBasic:
+    """Basic EnvPlugin functionality tests."""
 
     def test_entry_without_rule_always_accessible(self):
-        """Entry without allow_rule is always accessible."""
+        """Entry without env_requires is always accessible."""
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
 
             @route("api")
             def public(self):
@@ -29,13 +29,13 @@ class TestAllowPluginBasic:
         assert "public" in entries
 
     def test_entry_with_rule_requires_capabilities(self):
-        """Entry with allow_rule requires matching capabilities."""
+        """Entry with env_requires requires matching capabilities."""
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
 
-            @route("api", allow_rule="redis")
+            @route("api", env_requires="redis")
             def cached(self):
                 return "cached"
 
@@ -46,7 +46,7 @@ class TestAllowPluginBasic:
         assert "cached" not in entries
 
         # With matching capability - entry accessible
-        entries = svc.api.nodes(allow_capabilities="redis").get("entries", {})
+        entries = svc.api.nodes(env_capabilities="redis").get("entries", {})
         assert "cached" in entries
 
     def test_or_rule_accepts_any_capability(self):
@@ -54,24 +54,24 @@ class TestAllowPluginBasic:
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
 
-            @route("api", allow_rule="stripe|paypal")
+            @route("api", env_requires="stripe|paypal")
             def payment(self):
                 return "payment"
 
         svc = Service()
 
         # With stripe - accessible
-        entries = svc.api.nodes(allow_capabilities="stripe").get("entries", {})
+        entries = svc.api.nodes(env_capabilities="stripe").get("entries", {})
         assert "payment" in entries
 
         # With paypal - accessible
-        entries = svc.api.nodes(allow_capabilities="paypal").get("entries", {})
+        entries = svc.api.nodes(env_capabilities="paypal").get("entries", {})
         assert "payment" in entries
 
         # Without either - not accessible
-        entries = svc.api.nodes(allow_capabilities="bitcoin").get("entries", {})
+        entries = svc.api.nodes(env_capabilities="bitcoin").get("entries", {})
         assert "payment" not in entries
 
     def test_and_rule_requires_all_capabilities(self):
@@ -79,24 +79,24 @@ class TestAllowPluginBasic:
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
 
-            @route("api", allow_rule="pyjwt&redis")
+            @route("api", env_requires="pyjwt&redis")
             def jwt_cached(self):
                 return "jwt_cached"
 
         svc = Service()
 
         # With only pyjwt - not accessible
-        entries = svc.api.nodes(allow_capabilities="pyjwt").get("entries", {})
+        entries = svc.api.nodes(env_capabilities="pyjwt").get("entries", {})
         assert "jwt_cached" not in entries
 
         # With both - accessible
-        entries = svc.api.nodes(allow_capabilities="pyjwt,redis").get("entries", {})
+        entries = svc.api.nodes(env_capabilities="pyjwt,redis").get("entries", {})
         assert "jwt_cached" in entries
 
 
-class TestAllowPluginInstanceCapabilities:
+class TestEnvPluginInstanceCapabilities:
     """Test capability accumulation from RoutingClass instances."""
 
     def test_instance_capabilities_from_attribute(self):
@@ -104,14 +104,14 @@ class TestAllowPluginInstanceCapabilities:
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
                 self.capabilities = {"redis", "pyjwt"}
 
-            @route("api", allow_rule="redis")
+            @route("api", env_requires="redis")
             def cached(self):
                 return "cached"
 
-            @route("api", allow_rule="postgres")
+            @route("api", env_requires="postgres")
             def db_only(self):
                 return "db"
 
@@ -127,7 +127,7 @@ class TestAllowPluginInstanceCapabilities:
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
                 self._has_stripe = True
                 self._has_paypal = False
 
@@ -140,11 +140,11 @@ class TestAllowPluginInstanceCapabilities:
                     caps.add("paypal")
                 return caps
 
-            @route("api", allow_rule="stripe")
+            @route("api", env_requires="stripe")
             def stripe_payment(self):
                 return "stripe"
 
-            @route("api", allow_rule="paypal")
+            @route("api", env_requires="paypal")
             def paypal_payment(self):
                 return "paypal"
 
@@ -165,10 +165,10 @@ class TestAllowPluginInstanceCapabilities:
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
                 self.capabilities = {"redis"}
 
-            @route("api", allow_rule="redis&pyjwt")
+            @route("api", env_requires="redis&pyjwt")
             def jwt_cached(self):
                 return "jwt_cached"
 
@@ -179,7 +179,7 @@ class TestAllowPluginInstanceCapabilities:
         assert "jwt_cached" not in entries
 
         # Pass pyjwt via request - now has both
-        entries = svc.api.nodes(allow_capabilities="pyjwt").get("entries", {})
+        entries = svc.api.nodes(env_capabilities="pyjwt").get("entries", {})
         assert "jwt_cached" in entries
 
     def test_capabilities_as_string(self):
@@ -187,10 +187,10 @@ class TestAllowPluginInstanceCapabilities:
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
                 self.capabilities = "redis,pyjwt"
 
-            @route("api", allow_rule="redis&pyjwt")
+            @route("api", env_requires="redis&pyjwt")
             def jwt_cached(self):
                 return "jwt_cached"
 
@@ -203,10 +203,10 @@ class TestAllowPluginInstanceCapabilities:
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
                 self.capabilities = ["redis", "pyjwt"]
 
-            @route("api", allow_rule="redis&pyjwt")
+            @route("api", env_requires="redis&pyjwt")
             def jwt_cached(self):
                 return "jwt_cached"
 
@@ -215,7 +215,7 @@ class TestAllowPluginInstanceCapabilities:
         assert "jwt_cached" in entries
 
 
-class TestAllowPluginHierarchyAccumulation:
+class TestEnvPluginHierarchyAccumulation:
     """Test capability accumulation across router hierarchy."""
 
     def test_child_inherits_parent_capabilities(self):
@@ -226,13 +226,13 @@ class TestAllowPluginHierarchyAccumulation:
                 self.api = Router(self, name="api")
                 self.capabilities = {"pyjwt"}
 
-            @route("api", allow_rule="redis&pyjwt")
+            @route("api", env_requires="redis&pyjwt")
             def jwt_cached(self):
                 return "jwt_cached"
 
         class ParentService(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
                 self.capabilities = {"redis"}
                 self.child = ChildService()
                 self.api.attach_instance(self.child, name="child")
@@ -254,7 +254,7 @@ class TestAllowPluginHierarchyAccumulation:
                 self.api = Router(self, name="api")
                 self.capabilities = {"level3"}
 
-            @route("api", allow_rule="level1&level2&level3")
+            @route("api", env_requires="level1&level2&level3")
             def deep_action(self):
                 return "deep"
 
@@ -267,7 +267,7 @@ class TestAllowPluginHierarchyAccumulation:
 
         class Level1(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
                 self.capabilities = {"level1"}
                 self.level2 = Level2()
                 self.api.attach_instance(self.level2, name="level2")
@@ -288,13 +288,13 @@ class TestAllowPluginHierarchyAccumulation:
                 self.api = Router(self, name="api")
                 self.capabilities = {"child_cap"}
 
-            @route("api", allow_rule="parent_cap&child_cap&request_cap")
+            @route("api", env_requires="parent_cap&child_cap&request_cap")
             def action(self):
                 return "action"
 
         class Parent(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
                 self.capabilities = {"parent_cap"}
                 self.child = Child()
                 self.api.attach_instance(self.child, name="child")
@@ -306,22 +306,22 @@ class TestAllowPluginHierarchyAccumulation:
         assert not node.is_callable
 
         # With request_cap - accessible
-        node = root.api.node("child/action", allow_capabilities="request_cap")
+        node = root.api.node("child/action", env_capabilities="request_cap")
         assert node
         assert node.is_callable
 
 
-class TestAllowPluginNodeBehavior:
-    """Test node() behavior with AllowPlugin."""
+class TestEnvPluginNodeBehavior:
+    """Test node() behavior with EnvPlugin."""
 
     def test_node_returns_not_available_when_filtered(self):
         """node() returns NOT_AVAILABLE sentinel when capability missing."""
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
 
-            @route("api", allow_rule="required_cap")
+            @route("api", env_requires="required_cap")
             def protected(self):
                 return "protected"
 
@@ -335,9 +335,9 @@ class TestAllowPluginNodeBehavior:
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
 
-            @route("api", allow_rule="required_cap")
+            @route("api", env_requires="required_cap")
             def protected(self):
                 return "protected"
 
@@ -352,10 +352,10 @@ class TestAllowPluginNodeBehavior:
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
                 self.capabilities = {"required_cap"}
 
-            @route("api", allow_rule="required_cap")
+            @route("api", env_requires="required_cap")
             def protected(self):
                 return "protected"
 
@@ -364,29 +364,29 @@ class TestAllowPluginNodeBehavior:
         assert node() == "protected"
 
 
-class TestAllowPluginRuleValidation:
+class TestEnvPluginRuleValidation:
     """Test rule validation."""
 
-    def test_comma_in_allow_rule_raises_error(self):
-        """Comma in allow_rule raises ValueError."""
+    def test_comma_in_env_requires_raises_error(self):
+        """Comma in env_requires raises ValueError."""
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
 
         svc = Service()
 
         with pytest.raises(ValueError, match="Comma not allowed"):
-            svc.routing.configure("api:allow/_all_", rule="stripe,paypal")
+            svc.routing.configure("api:env/_all_", requires="stripe,paypal")
 
-    def test_pipe_in_allow_rule_works(self):
-        """Pipe (|) in allow_rule works for OR."""
+    def test_pipe_in_env_requires_works(self):
+        """Pipe (|) in env_requires works for OR."""
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("allow")
+                self.api = Router(self, name="api").plug("env")
 
-            @route("api", allow_rule="stripe|paypal")
+            @route("api", env_requires="stripe|paypal")
             def payment(self):
                 return "payment"
 
@@ -394,6 +394,63 @@ class TestAllowPluginRuleValidation:
         svc.capabilities = {"stripe"}
         entries = svc.api.nodes().get("entries", {})
         assert "payment" in entries
+
+
+class TestEnvPluginSubRouterFiltering:
+    """Test sub-router filtering based on entry accessibility."""
+
+    def test_subrouter_visible_when_has_accessible_entries(self):
+        """Sub-router is visible when at least one entry is accessible."""
+
+        class Child(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+                self.capabilities = {"cap1"}
+
+            @route("api", env_requires="cap1")
+            def action1(self):
+                return "action1"
+
+            @route("api", env_requires="cap2")
+            def action2(self):
+                return "action2"
+
+        class Parent(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("env")
+                self.child = Child()
+                self.api.attach_instance(self.child, name="child")
+
+        parent = Parent()
+
+        # Child router has cap1, so action1 is accessible
+        # When checking "child" sub-router, should return True (at least one accessible)
+        routers = parent.api.nodes().get("routers", {})
+        assert "child" in routers
+
+    def test_subrouter_hidden_when_all_entries_blocked(self):
+        """Sub-router is hidden when all entries are blocked."""
+
+        class Child(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+            @route("api", env_requires="missing_cap")
+            def action1(self):
+                return "action1"
+
+        class Parent(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("env")
+                self.child = Child()
+                self.api.attach_instance(self.child, name="child")
+
+        parent = Parent()
+
+        # Child router has no capabilities, entry requires missing_cap
+        # Router should be filtered out
+        routers = parent.api.nodes().get("routers", {})
+        assert "child" not in routers
 
 
 class TestCapabilitiesSetter:

@@ -2,6 +2,27 @@
 
 **Parent Document**: This project follows all policies from the central [meta-genro-modules CLAUDE.md](https://github.com/softwellsrl/meta-genro-modules/blob/main/CLAUDE.md)
 
+## REGOLA FONDAMENTALE: LE DECISIONI LE PRENDE L'UTENTE
+
+**ESTREMAMENTE IMPORTANTE: MAI prendere decisioni autonome su cosa aggiungere o rimuovere dal codice.**
+
+Questo include:
+- Rimuovere codice (anche se sembra "dead code" o non coperto)
+- Aggiungere ottimizzazioni
+- Semplificare implementazioni
+- Cambiare approcci architetturali
+
+**SEMPRE chiedere PRIMA di fare qualsiasi modifica che implichi una scelta.**
+
+Se identifichi un problema (es. branch non coperto, codice apparentemente inutile), DEVI:
+1. Spiegare il problema
+2. Proporre le possibili soluzioni
+3. **ASPETTARE** la decisione dell'utente
+
+**MAI procedere con una soluzione senza approvazione esplicita.**
+
+---
+
 ## Project-Specific Context
 
 ### Current Status

@@ -139,11 +139,10 @@ def on_parent_config_changed(
 - If equal (child was following parent) → update to `new_config`
 - If different (child made own choices) → ignore the change
 
-### RuleBasedPlugin (No Inheritance)
+### Rule-Based Plugins (No Inheritance)
 
-`AuthPlugin` and `AllowPlugin` inherit from `RuleBasedPlugin`, which does **not**
-inherit configuration from parent routers. Each router and entry defines its own
-`rule` independently.
+`AuthPlugin` and `EnvPlugin` do **not** inherit configuration from parent routers.
+Each router and entry defines its own rule independently.
 
 This is intentional: rules are boolean expressions that would require complex
 merging logic (AND vs OR) and the semantics are not always clear. Instead,

@@ -692,7 +692,7 @@ class BaseRouter(RouterInterface):
             entry.name: self._entry_node_info(entry)
             for entry in self._entries.values()
             if (pattern_re is None or pattern_re.search(entry.name))
-            and self._allow_entry(entry, allow_router_capabilities=router_caps, **kwargs) is True
+            and self._allow_entry(entry, env_router_capabilities=router_caps, **kwargs) is True
         }
 
         routers: dict[str, Any]
