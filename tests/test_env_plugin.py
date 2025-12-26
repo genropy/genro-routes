@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from genro_routes import NOT_AVAILABLE, NotAvailable, Router, RoutingClass, route
+from genro_routes import NotAvailable, Router, RoutingClass, route
 
 
 class TestEnvPluginBasic:
@@ -315,7 +315,7 @@ class TestEnvPluginNodeBehavior:
     """Test node() behavior with EnvPlugin."""
 
     def test_node_returns_not_available_when_filtered(self):
-        """node() returns NOT_AVAILABLE sentinel when capability missing."""
+        """node() returns RouterNode with error='not_available' when capability missing."""
 
         class Service(RoutingClass):
             def __init__(self):

@@ -33,8 +33,6 @@ __version__ = "0.10.0"
 from .core import Router, RouterInterface, RoutingClass, RoutingContext, route
 from .core.router_node import RouterNode
 from .exceptions import (
-    NOT_AVAILABLE,
-    UNAUTHORIZED,
     NotAuthenticated,
     NotAuthorized,
     NotAvailable,
@@ -57,6 +55,4 @@ __all__ = [
     "NotAuthorized",
     "NotAuthenticated",
     "NotAvailable",
-    "UNAUTHORIZED",
-    "NOT_AVAILABLE",
 ]

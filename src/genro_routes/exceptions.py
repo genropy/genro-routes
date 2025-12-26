@@ -10,19 +10,7 @@ __all__ = [
     "NotAuthorized",
     "NotAuthenticated",
     "NotAvailable",
-    "UNAUTHORIZED",
-    "UNAUTHENTICATED",
-    "NOT_AVAILABLE",
 ]
-
-# Sentinel value for unauthorized callable in node() response (403)
-UNAUTHORIZED = "--NA--"
-
-# Sentinel value for unauthenticated callable in node() response (401)
-UNAUTHENTICATED = "--401--"
-
-# Sentinel value for capability not available in node() response (501)
-NOT_AVAILABLE = "--501--"
 
 
 class NotFound(Exception):
