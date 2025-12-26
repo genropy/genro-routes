@@ -8,6 +8,118 @@ from __future__ import annotations
 import pytest
 
 from genro_routes import NotAvailable, Router, RoutingClass, route
+from genro_routes.plugins.env import CapabilitiesSet, capability
+
+
+# ---------------------------------------------------------------------------
+# CapabilitiesSet helper classes for tests
+# ---------------------------------------------------------------------------
+
+
+class EmptyCapabilities(CapabilitiesSet):
+    """No capabilities."""
+
+    pass
+
+
+class RedisCapabilities(CapabilitiesSet):
+    """Redis capability only."""
+
+    @capability
+    def redis(self) -> bool:
+        return True
+
+
+class RedisPyjwtCapabilities(CapabilitiesSet):
+    """Redis and pyjwt capabilities."""
+
+    @capability
+    def redis(self) -> bool:
+        return True
+
+    @capability
+    def pyjwt(self) -> bool:
+        return True
+
+
+class PyjwtCapabilities(CapabilitiesSet):
+    """Pyjwt capability only."""
+
+    @capability
+    def pyjwt(self) -> bool:
+        return True
+
+
+class StripeCapabilities(CapabilitiesSet):
+    """Stripe capability only."""
+
+    @capability
+    def stripe(self) -> bool:
+        return True
+
+
+class PaypalCapabilities(CapabilitiesSet):
+    """Paypal capability only."""
+
+    @capability
+    def paypal(self) -> bool:
+        return True
+
+
+class Cap1Capabilities(CapabilitiesSet):
+    """cap1 capability."""
+
+    @capability
+    def cap1(self) -> bool:
+        return True
+
+
+class ChildCapCapabilities(CapabilitiesSet):
+    """child_cap capability."""
+
+    @capability
+    def child_cap(self) -> bool:
+        return True
+
+
+class ParentCapCapabilities(CapabilitiesSet):
+    """parent_cap capability."""
+
+    @capability
+    def parent_cap(self) -> bool:
+        return True
+
+
+class Level1Capabilities(CapabilitiesSet):
+    """level1 capability."""
+
+    @capability
+    def level1(self) -> bool:
+        return True
+
+
+class Level2Capabilities(CapabilitiesSet):
+    """level2 capability."""
+
+    @capability
+    def level2(self) -> bool:
+        return True
+
+
+class Level3Capabilities(CapabilitiesSet):
+    """level3 capability."""
+
+    @capability
+    def level3(self) -> bool:
+        return True
+
+
+class RequiredCapCapabilities(CapabilitiesSet):
+    """required_cap capability."""
+
+    @capability
+    def required_cap(self) -> bool:
+        return True
 
 
 class TestEnvPluginBasic:
@@ -105,7 +217,7 @@ class TestEnvPluginInstanceCapabilities:
         class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("env")
-                self.capabilities = {"redis", "pyjwt"}
+                self.capabilities = RedisPyjwtCapabilities()
 
             @route("api", env_requires="redis")
             def cached(self):
@@ -122,23 +234,29 @@ class TestEnvPluginInstanceCapabilities:
         assert "cached" in entries
         assert "db_only" not in entries  # needs postgres, instance doesn't have it
 
-    def test_instance_capabilities_from_property(self):
-        """Capabilities computed via property are used for filtering."""
+    def test_instance_capabilities_from_dynamic_class(self):
+        """Capabilities computed via CapabilitiesSet are used for filtering."""
+
+        class DynamicPaymentCapabilities(CapabilitiesSet):
+            """Dynamic payment capabilities based on runtime state."""
+
+            def __init__(self, svc):
+                self._svc = svc
+
+            @capability
+            def stripe(self) -> bool:
+                return self._svc._has_stripe
+
+            @capability
+            def paypal(self) -> bool:
+                return self._svc._has_paypal
 
         class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("env")
                 self._has_stripe = True
                 self._has_paypal = False
-
-            @property
-            def capabilities(self) -> set[str]:
-                caps = set()
-                if self._has_stripe:
-                    caps.add("stripe")
-                if self._has_paypal:
-                    caps.add("paypal")
-                return caps
+                self.capabilities = DynamicPaymentCapabilities(self)
 
             @route("api", env_requires="stripe")
             def stripe_payment(self):
@@ -166,7 +284,7 @@ class TestEnvPluginInstanceCapabilities:
         class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("env")
-                self.capabilities = {"redis"}
+                self.capabilities = RedisCapabilities()
 
             @route("api", env_requires="redis&pyjwt")
             def jwt_cached(self):
@@ -182,38 +300,6 @@ class TestEnvPluginInstanceCapabilities:
         entries = svc.api.nodes(env_capabilities="pyjwt").get("entries", {})
         assert "jwt_cached" in entries
 
-    def test_capabilities_as_string(self):
-        """Capabilities can be set as comma-separated string."""
-
-        class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api").plug("env")
-                self.capabilities = "redis,pyjwt"
-
-            @route("api", env_requires="redis&pyjwt")
-            def jwt_cached(self):
-                return "jwt_cached"
-
-        svc = Service()
-        entries = svc.api.nodes().get("entries", {})
-        assert "jwt_cached" in entries
-
-    def test_capabilities_as_list(self):
-        """Capabilities can be set as list."""
-
-        class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api").plug("env")
-                self.capabilities = ["redis", "pyjwt"]
-
-            @route("api", env_requires="redis&pyjwt")
-            def jwt_cached(self):
-                return "jwt_cached"
-
-        svc = Service()
-        entries = svc.api.nodes().get("entries", {})
-        assert "jwt_cached" in entries
-
 
 class TestEnvPluginHierarchyAccumulation:
     """Test capability accumulation across router hierarchy."""
@@ -224,7 +310,7 @@ class TestEnvPluginHierarchyAccumulation:
         class ChildService(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
-                self.capabilities = {"pyjwt"}
+                self.capabilities = PyjwtCapabilities()
 
             @route("api", env_requires="redis&pyjwt")
             def jwt_cached(self):
@@ -233,7 +319,7 @@ class TestEnvPluginHierarchyAccumulation:
         class ParentService(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("env")
-                self.capabilities = {"redis"}
+                self.capabilities = RedisCapabilities()
                 self.child = ChildService()
                 self.api.attach_instance(self.child, name="child")
 
@@ -252,7 +338,7 @@ class TestEnvPluginHierarchyAccumulation:
         class Level3(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
-                self.capabilities = {"level3"}
+                self.capabilities = Level3Capabilities()
 
             @route("api", env_requires="level1&level2&level3")
             def deep_action(self):
@@ -261,14 +347,14 @@ class TestEnvPluginHierarchyAccumulation:
         class Level2(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
-                self.capabilities = {"level2"}
+                self.capabilities = Level2Capabilities()
                 self.level3 = Level3()
                 self.api.attach_instance(self.level3, name="level3")
 
         class Level1(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("env")
-                self.capabilities = {"level1"}
+                self.capabilities = Level1Capabilities()
                 self.level2 = Level2()
                 self.api.attach_instance(self.level2, name="level2")
 
@@ -286,7 +372,7 @@ class TestEnvPluginHierarchyAccumulation:
         class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
-                self.capabilities = {"child_cap"}
+                self.capabilities = ChildCapCapabilities()
 
             @route("api", env_requires="parent_cap&child_cap&request_cap")
             def action(self):
@@ -295,7 +381,7 @@ class TestEnvPluginHierarchyAccumulation:
         class Parent(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("env")
-                self.capabilities = {"parent_cap"}
+                self.capabilities = ParentCapCapabilities()
                 self.child = Child()
                 self.api.attach_instance(self.child, name="child")
 
@@ -353,7 +439,7 @@ class TestEnvPluginNodeBehavior:
         class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("env")
-                self.capabilities = {"required_cap"}
+                self.capabilities = RequiredCapCapabilities()
 
             @route("api", env_requires="required_cap")
             def protected(self):
@@ -391,7 +477,7 @@ class TestEnvPluginRuleValidation:
                 return "payment"
 
         svc = Service()
-        svc.capabilities = {"stripe"}
+        svc.capabilities = StripeCapabilities()
         entries = svc.api.nodes().get("entries", {})
         assert "payment" in entries
 
@@ -405,7 +491,7 @@ class TestEnvPluginSubRouterFiltering:
         class Child(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
-                self.capabilities = {"cap1"}
+                self.capabilities = Cap1Capabilities()
 
             @route("api", env_requires="cap1")
             def action1(self):
@@ -456,19 +542,16 @@ class TestEnvPluginSubRouterFiltering:
 class TestCapabilitiesSetter:
     """Test capabilities property setter."""
 
-    def test_capabilities_setter_with_none(self):
-        """Setting capabilities to None results in empty set."""
+    def test_capabilities_setter_with_capabilities_set(self):
+        """Setting capabilities with CapabilitiesSet works."""
 
         class Service(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
         svc = Service()
-        svc.capabilities = {"redis"}
-        assert svc.capabilities == {"redis"}
-
-        svc.capabilities = None
-        assert svc.capabilities == set()
+        svc.capabilities = RedisCapabilities()
+        assert "redis" in svc.capabilities
 
     def test_capabilities_setter_invalid_type_raises(self):
         """Setting capabilities to invalid type raises TypeError."""
@@ -479,8 +562,68 @@ class TestCapabilitiesSetter:
 
         svc = Service()
 
-        with pytest.raises(TypeError, match="must be set, list, str, CapabilitiesSet, or None"):
-            svc.capabilities = 123
+        with pytest.raises(TypeError, match="must be a CapabilitiesSet instance"):
+            svc.capabilities = {"redis"}  # type: ignore[assignment]
+
+    def test_capabilities_setter_rejects_set(self):
+        """Setting capabilities to set raises TypeError."""
+
+        class Service(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        svc = Service()
+
+        with pytest.raises(TypeError, match="must be a CapabilitiesSet instance"):
+            svc.capabilities = {"redis", "pyjwt"}  # type: ignore[assignment]
+
+    def test_capabilities_setter_rejects_string(self):
+        """Setting capabilities to string raises TypeError."""
+
+        class Service(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        svc = Service()
+
+        with pytest.raises(TypeError, match="must be a CapabilitiesSet instance"):
+            svc.capabilities = "redis,pyjwt"  # type: ignore[assignment]
+
+    def test_capabilities_setter_rejects_list(self):
+        """Setting capabilities to list raises TypeError."""
+
+        class Service(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        svc = Service()
+
+        with pytest.raises(TypeError, match="must be a CapabilitiesSet instance"):
+            svc.capabilities = ["redis", "pyjwt"]  # type: ignore[assignment]
+
+    def test_capabilities_setter_rejects_none(self):
+        """Setting capabilities to None raises TypeError."""
+
+        class Service(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        svc = Service()
+
+        with pytest.raises(TypeError, match="must be a CapabilitiesSet instance"):
+            svc.capabilities = None  # type: ignore[assignment]
+
+    def test_capabilities_setter_rejects_int(self):
+        """Setting capabilities to int raises TypeError."""
+
+        class Service(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        svc = Service()
+
+        with pytest.raises(TypeError, match="must be a CapabilitiesSet instance"):
+            svc.capabilities = 123  # type: ignore[assignment]
 
 
 class TestNodesForbiddenParameter:
@@ -608,3 +751,88 @@ class TestNodesForbiddenParameter:
         assert entry["name"] == "needs_redis"
         assert entry["doc"] == "This action requires redis."
         assert "callable" in entry  # Still has callable for introspection
+
+
+class TestCapabilitiesSetClass:
+    """Test CapabilitiesSet class behavior."""
+
+    def test_capabilities_set_iteration(self):
+        """CapabilitiesSet iterates over active capabilities."""
+
+        class DynamicCaps(CapabilitiesSet):
+            def __init__(self):
+                self._redis_active = True
+                self._pyjwt_active = False
+
+            @capability
+            def redis(self) -> bool:
+                return self._redis_active
+
+            @capability
+            def pyjwt(self) -> bool:
+                return self._pyjwt_active
+
+        caps = DynamicCaps()
+        assert set(caps) == {"redis"}
+
+        caps._pyjwt_active = True
+        assert set(caps) == {"redis", "pyjwt"}
+
+    def test_capabilities_set_contains(self):
+        """CapabilitiesSet supports 'in' operator."""
+
+        class MyCaps(CapabilitiesSet):
+            @capability
+            def redis(self) -> bool:
+                return True
+
+            @capability
+            def postgres(self) -> bool:
+                return False
+
+        caps = MyCaps()
+        assert "redis" in caps
+        assert "postgres" not in caps
+        assert "unknown" not in caps
+
+    def test_capabilities_set_len(self):
+        """CapabilitiesSet supports len()."""
+
+        class MyCaps(CapabilitiesSet):
+            @capability
+            def redis(self) -> bool:
+                return True
+
+            @capability
+            def pyjwt(self) -> bool:
+                return True
+
+            @capability
+            def postgres(self) -> bool:
+                return False
+
+        caps = MyCaps()
+        assert len(caps) == 2  # redis and pyjwt are active
+
+    def test_capabilities_set_dynamic_evaluation(self):
+        """Capabilities are evaluated dynamically on each access."""
+
+        class TimeDependentCaps(CapabilitiesSet):
+            def __init__(self):
+                self.counter = 0
+
+            @capability
+            def dynamic(self) -> bool:
+                self.counter += 1
+                return self.counter % 2 == 1  # True on odd calls
+
+        caps = TimeDependentCaps()
+
+        # First check - counter=1, True
+        assert "dynamic" in caps
+
+        # Second check - counter=2, False
+        assert "dynamic" not in caps
+
+        # Third check - counter=3, True
+        assert "dynamic" in caps

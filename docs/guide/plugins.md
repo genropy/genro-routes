@@ -69,10 +69,17 @@ node = svc.api.node("admin_only", auth_tags="guest")  # Not authorized
 **EnvPlugin** (`env`):
 
 ```python
+from genro_routes.plugins.env import CapabilitiesSet, capability
+
+class ServerCapabilities(CapabilitiesSet):
+    @capability
+    def redis(self) -> bool:
+        return True  # Check if redis is available
+
 class CapabilityService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("env")
-        self.capabilities = {"redis"}  # Instance capabilities
+        self.capabilities = ServerCapabilities()
 
     @route("api", env_requires="redis")
     def cached_action(self):

@@ -185,61 +185,61 @@ class RoutingClass:
         return None
 
     @property
-    def capabilities(self) -> set[str]:
+    def capabilities(self):
         """Return the capabilities declared by this instance.
 
         Capabilities represent what features/dependencies this service has
         available at runtime. Used by EnvPlugin to filter entries based
         on capability requirements.
 
-        Subclasses can override this property to compute capabilities
-        dynamically based on runtime state (e.g., which optional
-        dependencies are installed, which services are configured).
+        Capabilities must be a ``CapabilitiesSet`` subclass instance. Each
+        capability is defined as a method decorated with ``@capability``
+        that returns ``True`` if the capability is currently available.
 
         Returns:
-            A set of capability strings. Empty set by default.
+            A CapabilitiesSet instance, or empty set if not configured.
 
         Example::
 
+            from genro_routes.plugins.env import CapabilitiesSet, capability
+
+            class PaymentCapabilities(CapabilitiesSet):
+                def __init__(self, service):
+                    self._service = service
+
+                @capability
+                def stripe(self) -> bool:
+                    return self._service._stripe_configured
+
+                @capability
+                def paypal(self) -> bool:
+                    return self._service._paypal_configured
+
             class PaymentService(RoutingClass):
-                @property
-                def capabilities(self) -> set[str]:
-                    caps = set()
-                    if self._stripe_configured:
-                        caps.add("stripe")
-                    if self._paypal_configured:
-                        caps.add("paypal")
-                    return caps
+                def __init__(self):
+                    self.api = Router(self, name="api").plug("env")
+                    self._stripe_configured = True
+                    self._paypal_configured = False
+                    self.capabilities = PaymentCapabilities(self)
         """
         return getattr(self, "_capabilities", None) or set()
 
     @capabilities.setter
-    def capabilities(self, value: set[str] | list[str] | str | None) -> None:
+    def capabilities(self, value) -> None:
         """Set the capabilities for this instance.
 
         Args:
-            value: Capabilities as set, list, comma-separated string, None,
-                   or a CapabilitiesSet instance for dynamic evaluation.
+            value: A CapabilitiesSet instance for dynamic capability evaluation.
 
         Raises:
-            TypeError: If value is not a valid type.
+            TypeError: If value is not a CapabilitiesSet.
         """
         # Import here to avoid circular imports
         from genro_routes.plugins.env import CapabilitiesSet
 
-        if value is None:
-            object.__setattr__(self, "_capabilities", set())
-        elif isinstance(value, CapabilitiesSet):
-            # Store directly for dynamic evaluation
-            object.__setattr__(self, "_capabilities", value)
-        elif isinstance(value, set):
-            object.__setattr__(self, "_capabilities", value)
-        elif isinstance(value, (list, tuple)):
-            object.__setattr__(self, "_capabilities", set(value))
-        elif isinstance(value, str):
-            object.__setattr__(self, "_capabilities", {v.strip() for v in value.split(",") if v.strip()})
-        else:
-            raise TypeError(f"capabilities must be set, list, str, CapabilitiesSet, or None, got {type(value).__name__}")
+        if not isinstance(value, CapabilitiesSet):
+            raise TypeError(f"capabilities must be a CapabilitiesSet instance, got {type(value).__name__}")
+        object.__setattr__(self, "_capabilities", value)
 
 
 class _RoutingProxy:

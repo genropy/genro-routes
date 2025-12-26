@@ -9,8 +9,8 @@ capability requirements defined on endpoints against system capabilities.
 Capabilities can come from two sources:
 
 1. **Request capabilities**: Passed explicitly via ``env_capabilities`` parameter
-2. **Instance capabilities**: Declared on RoutingClass instances via the
-   ``capabilities`` property
+2. **Instance capabilities**: Declared on RoutingClass instances via a
+   ``CapabilitiesSet`` subclass
 
 When traversing a router hierarchy, capabilities are **accumulated** from all
 RoutingClass instances along the path. This allows child services to inherit
@@ -19,11 +19,21 @@ capabilities from their parents while adding their own.
 Usage::
 
     from genro_routes import Router, RoutingClass, route
+    from genro_routes.plugins.env import CapabilitiesSet, capability
+
+    class MyCapabilities(CapabilitiesSet):
+        @capability
+        def redis(self) -> bool:
+            return True  # Check if redis is available
+
+        @capability
+        def pyjwt(self) -> bool:
+            return "pyjwt" in sys.modules
 
     class MyAPI(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("env")
-            self.capabilities = {"redis"}  # This instance provides redis
+            self.capabilities = MyCapabilities()
 
         @route("api", env_requires="pyjwt&redis")
         def create_jwt(self):
@@ -38,14 +48,25 @@ Usage::
     obj.api.node("create_jwt", env_capabilities="pyjwt")  # OK: pyjwt from request + redis from instance
     obj.api.node("create_jwt")  # not_available: only redis from instance, missing pyjwt
 
-    # Dynamic capabilities via property override
+    # Dynamic capabilities via CapabilitiesSet
+    class PaymentCapabilities(CapabilitiesSet):
+        def __init__(self, service):
+            self._service = service
+
+        @capability
+        def stripe(self) -> bool:
+            return self._service._stripe_configured
+
+        @capability
+        def paypal(self) -> bool:
+            return self._service._paypal_configured
+
     class PaymentService(RoutingClass):
-        @property
-        def capabilities(self) -> set[str]:
-            caps = set()
-            if self._stripe_configured:
-                caps.add("stripe")
-            return caps
+        def __init__(self):
+            self.api = Router(self, name="api").plug("env")
+            self._stripe_configured = True
+            self._paypal_configured = False
+            self.capabilities = PaymentCapabilities(self)
 
 Rule syntax (on entry env_requires):
     - ``|`` : OR (system must have at least one)
