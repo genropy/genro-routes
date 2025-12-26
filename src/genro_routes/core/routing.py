@@ -218,13 +218,20 @@ class RoutingClass:
         """Set the capabilities for this instance.
 
         Args:
-            value: Capabilities as set, list, comma-separated string, or None.
+            value: Capabilities as set, list, comma-separated string, None,
+                   or a CapabilitiesSet instance for dynamic evaluation.
 
         Raises:
             TypeError: If value is not a valid type.
         """
+        # Import here to avoid circular imports
+        from genro_routes.plugins.env import CapabilitiesSet
+
         if value is None:
             object.__setattr__(self, "_capabilities", set())
+        elif isinstance(value, CapabilitiesSet):
+            # Store directly for dynamic evaluation
+            object.__setattr__(self, "_capabilities", value)
         elif isinstance(value, set):
             object.__setattr__(self, "_capabilities", value)
         elif isinstance(value, (list, tuple)):
@@ -232,7 +239,7 @@ class RoutingClass:
         elif isinstance(value, str):
             object.__setattr__(self, "_capabilities", {v.strip() for v in value.split(",") if v.strip()})
         else:
-            raise TypeError(f"capabilities must be set, list, str, or None, got {type(value).__name__}")
+            raise TypeError(f"capabilities must be set, list, str, CapabilitiesSet, or None, got {type(value).__name__}")
 
 
 class _RoutingProxy:

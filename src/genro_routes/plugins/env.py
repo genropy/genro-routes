@@ -69,7 +69,7 @@ from genro_toolbox import tags_match
 from genro_routes.core.router import Router
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
 
-__all__ = ["EnvPlugin"]
+__all__ = ["EnvPlugin", "CapabilitiesSet", "capability"]
 
 
 class EnvPlugin(BasePlugin):
@@ -155,6 +155,89 @@ class EnvPlugin(BasePlugin):
             return ""
 
         return "not_available"
+
+
+# ---------------------------------------------------------------------------
+# CapabilitiesSet - Dynamic capability container
+# ---------------------------------------------------------------------------
+
+
+def capability(func):
+    """Mark a method as a capability checker.
+
+    The decorated method should return a bool indicating whether the capability
+    is currently active.
+
+    Usage::
+
+        class ServerCapabilities(CapabilitiesSet):
+            @capability
+            def jwt(self) -> bool:
+                return "jwt" in sys.modules
+
+            @capability
+            def redis(self) -> bool:
+                return self._redis_client is not None
+    """
+    func._is_capability = True
+    return func
+
+
+class CapabilitiesSet:
+    """Base class for dynamic capability sets.
+
+    Subclasses define capabilities as methods decorated with ``@capability``.
+    The class behaves like a set: supports ``in``, ``len``, and iteration.
+
+    Capabilities are evaluated dynamically on each access, allowing for
+    runtime conditions (e.g., time of day, module availability, configuration).
+
+    Usage::
+
+        from genro_routes.plugins.env import CapabilitiesSet, capability
+
+        class ServerCapabilities(CapabilitiesSet):
+            @capability
+            def jwt(self) -> bool:
+                return "pyjwt" in sys.modules
+
+            @capability
+            def send_mail(self) -> bool:
+                hour = datetime.now().hour
+                return 8 <= hour <= 20
+
+        caps = ServerCapabilities()
+        "jwt" in caps       # True if pyjwt is installed
+        list(caps)          # ["jwt", "send_mail"] (only active ones)
+        len(caps)           # number of active capabilities
+
+    Integration with RoutingClass::
+
+        class MyService(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("env")
+                self.capabilities = ServerCapabilities()
+    """
+
+    def __iter__(self):
+        """Yield names of currently active capabilities."""
+        for name in dir(self):
+            if name.startswith("_"):
+                continue
+            method = getattr(self, name)
+            if callable(method) and getattr(method, "_is_capability", False) and method():
+                yield name
+
+    def __contains__(self, item: str) -> bool:
+        """Check if a capability is currently active."""
+        method = getattr(self, item, None)
+        if method and getattr(method, "_is_capability", False):
+            return bool(method())
+        return False
+
+    def __len__(self) -> int:
+        """Return the number of currently active capabilities."""
+        return sum(1 for _ in self)
 
 
 Router.register_plugin(EnvPlugin)

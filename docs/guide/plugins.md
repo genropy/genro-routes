@@ -82,6 +82,33 @@ svc = CapabilityService()
 entries = svc.api.nodes().get("entries", {})  # "cached_action" visible
 ```
 
+For dynamic capabilities that change at runtime, use `CapabilitiesSet`:
+
+```python
+from genro_routes.plugins.env import CapabilitiesSet, capability
+
+class ServerCapabilities(CapabilitiesSet):
+    @capability
+    def redis(self) -> bool:
+        return "redis" in sys.modules
+
+    @capability
+    def maintenance_window(self) -> bool:
+        # Only active during first 5 minutes of each hour
+        return datetime.now().minute < 5
+
+class DynamicService(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("env")
+        self.capabilities = ServerCapabilities()
+
+    @route("api", env_requires="maintenance_window")
+    def maintenance_task(self):
+        return "maintenance"
+```
+
+Capabilities are evaluated dynamically on each `nodes()` call.
+
 **OpenAPIPlugin** (`openapi`):
 
 ```python

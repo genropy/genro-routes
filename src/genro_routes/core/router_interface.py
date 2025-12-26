@@ -10,17 +10,14 @@ classes without depending on BaseRouter implementation details.
 Required methods:
     - node(path) -> RouterNode with best-match resolution
     - nodes() -> introspection data dict
-    - values() -> iterator over entries and children
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from genro_routes.core.base_router import MethodEntry
     from genro_routes.core.router_node import RouterNode
 
 __all__ = ["RouterInterface"]
@@ -63,6 +60,8 @@ class RouterInterface(ABC):
         basepath: str | None = None,
         lazy: bool = False,
         mode: str | None = None,
+        pattern: str | None = None,
+        forbidden: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Return introspection data for this router.
@@ -72,18 +71,12 @@ class RouterInterface(ABC):
             lazy: If True, child data returned as callables.
             mode: Output format mode (e.g., "openapi"). If None, returns
                   standard introspection format.
+            pattern: Regex pattern to filter entry names.
+            forbidden: If True, include forbidden entries with reason.
             **kwargs: Implementation-specific filters.
 
         Returns:
             Dict with router info, entries, and child routers.
-        """
-        ...
-
-    @abstractmethod
-    def values(self) -> Iterator[MethodEntry | RouterInterface]:
-        """Return all nodes (entries + children).
-
-        Used by plugins for iteration over all contained items.
         """
         ...
 

@@ -103,7 +103,10 @@ class AuthPlugin(BasePlugin):
             "not_authorized": Tags provided but don't match rule.
         """
         if isinstance(entry, RouterInterface):
-            results = [self.allow_entry(n, **filters) for n in entry.values()]
+            # Iterate over entries and children using internal attributes
+            # These are implementation details of BaseRouter, not part of RouterInterface
+            all_nodes = list(entry._entries.values()) + list(entry._children.values())  # type: ignore[attr-defined]
+            results = [self.allow_entry(n, **filters) for n in all_nodes]
             if any(r == "" for r in results):
                 return ""
             return results[0] if results else ""

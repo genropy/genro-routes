@@ -479,5 +479,132 @@ class TestCapabilitiesSetter:
 
         svc = Service()
 
-        with pytest.raises(TypeError, match="must be set, list, str, or None"):
+        with pytest.raises(TypeError, match="must be set, list, str, CapabilitiesSet, or None"):
             svc.capabilities = 123
+
+
+class TestNodesForbiddenParameter:
+    """Test nodes(forbidden=True) includes blocked entries."""
+
+    def test_forbidden_false_excludes_blocked_entries(self):
+        """Default behavior: blocked entries are excluded."""
+
+        class Service(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("env")
+
+            @route("api")
+            def public(self):
+                return "public"
+
+            @route("api", env_requires="redis")
+            def needs_redis(self):
+                return "needs_redis"
+
+        svc = Service()
+        entries = svc.api.nodes().get("entries", {})
+        assert "public" in entries
+        assert "needs_redis" not in entries
+
+    def test_forbidden_true_includes_blocked_entries(self):
+        """With forbidden=True, blocked entries are included with reason."""
+
+        class Service(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("env")
+
+            @route("api")
+            def public(self):
+                return "public"
+
+            @route("api", env_requires="redis")
+            def needs_redis(self):
+                return "needs_redis"
+
+        svc = Service()
+        entries = svc.api.nodes(forbidden=True).get("entries", {})
+
+        # Public entry has no forbidden field
+        assert "public" in entries
+        assert "forbidden" not in entries["public"]
+
+        # Blocked entry has forbidden field with reason
+        assert "needs_redis" in entries
+        assert entries["needs_redis"]["forbidden"] == "not_available"
+
+    def test_forbidden_propagates_to_child_routers(self):
+        """forbidden=True propagates to child routers."""
+
+        class Child(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+            @route("api", env_requires="child_cap")
+            def child_action(self):
+                return "child_action"
+
+        class Parent(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("env")
+                self.child = Child()
+                self.api.attach_instance(self.child, name="child")
+
+        parent = Parent()
+
+        # Without forbidden, child router is filtered out (no accessible entries)
+        routers = parent.api.nodes().get("routers", {})
+        assert "child" not in routers
+
+        # With forbidden=True, child router is visible with blocked entry
+        result = parent.api.nodes(forbidden=True)
+        routers = result.get("routers", {})
+        assert "child" in routers
+
+        child_entries = routers["child"].get("entries", {})
+        assert "child_action" in child_entries
+        assert child_entries["child_action"]["forbidden"] == "not_available"
+
+    def test_forbidden_with_auth_plugin(self):
+        """forbidden=True works with auth plugin too."""
+
+        class Service(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("auth")
+
+            @route("api")
+            def public(self):
+                return "public"
+
+            @route("api", auth_rule="admin")
+            def admin_only(self):
+                return "admin_only"
+
+        svc = Service()
+
+        # Without auth_tags, admin_only is blocked (not_authenticated = no tags provided)
+        entries = svc.api.nodes(forbidden=True).get("entries", {})
+        assert "public" in entries
+        assert "forbidden" not in entries["public"]
+        assert "admin_only" in entries
+        assert entries["admin_only"]["forbidden"] == "not_authenticated"
+
+    def test_forbidden_entry_still_has_metadata(self):
+        """Forbidden entries still have all metadata."""
+
+        class Service(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api").plug("env")
+
+            @route("api", env_requires="redis")
+            def needs_redis(self):
+                """This action requires redis."""
+                return "needs_redis"
+
+        svc = Service()
+        entries = svc.api.nodes(forbidden=True).get("entries", {})
+
+        entry = entries["needs_redis"]
+        assert entry["forbidden"] == "not_available"
+        assert entry["name"] == "needs_redis"
+        assert entry["doc"] == "This action requires redis."
+        assert "callable" in entry  # Still has callable for introspection

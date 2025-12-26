@@ -655,6 +655,7 @@ class BaseRouter(RouterInterface):
         lazy: bool = False,
         mode: str | None = None,
         pattern: str | None = None,
+        forbidden: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Return a tree of routers/entries/metadata respecting filters.
@@ -676,6 +677,10 @@ class BaseRouter(RouterInterface):
             pattern: Optional regex pattern to filter entry names.
                      Only entries whose name matches the pattern are included.
                      Applied before plugin allow_entry() checks.
+            forbidden: If True, include entries that are not allowed (e.g.,
+                       due to authorization or capability requirements). These
+                       entries will have a ``forbidden`` field with the reason
+                       (e.g., "not_authorized", "not_available"). Default False.
             **kwargs: Filter arguments passed to plugins via allow_entry().
 
         Returns:
@@ -695,18 +700,23 @@ class BaseRouter(RouterInterface):
         if basepath:
             base_node = self.node(basepath)
             if base_node.is_router:
-                return base_node._router.nodes(lazy=lazy, mode=mode, pattern=pattern, **kwargs)  # type: ignore[union-attr]
+                return base_node._router.nodes(lazy=lazy, mode=mode, pattern=pattern, forbidden=forbidden, **kwargs)  # type: ignore[union-attr]
             return {}
         # Compile pattern once if provided
         pattern_re = re.compile(pattern) if pattern else None
         router_caps = self.current_capabilities
 
-        entries = {
-            entry.name: self._entry_node_info(entry)
-            for entry in self._entries.values()
-            if (pattern_re is None or pattern_re.search(entry.name))
-            and self._allow_entry(entry, env_router_capabilities=router_caps, **kwargs) == ""
-        }
+        entries: dict[str, Any] = {}
+        for entry in self._entries.values():
+            if pattern_re is not None and not pattern_re.search(entry.name):
+                continue
+            allow_result = self._allow_entry(entry, env_router_capabilities=router_caps, **kwargs)
+            if allow_result == "":
+                entries[entry.name] = self._entry_node_info(entry)
+            elif forbidden:
+                entry_info = self._entry_node_info(entry)
+                entry_info["forbidden"] = allow_result
+                entries[entry.name] = entry_info
 
         routers: dict[str, Any]
         if lazy:
@@ -714,11 +724,12 @@ class BaseRouter(RouterInterface):
             routers = dict(self._children)
         else:
             routers = {
-                child_name: child.nodes(pattern=pattern, **kwargs)
+                child_name: child.nodes(pattern=pattern, forbidden=forbidden, **kwargs)
                 for child_name, child in self._children.items()
             }
-            # Remove empty routers only in non-lazy mode
-            routers = {k: v for k, v in routers.items() if v}
+            # Remove empty routers only in non-lazy mode (unless forbidden=True)
+            if not forbidden:
+                routers = {k: v for k, v in routers.items() if v}
 
         # If nothing, return empty dict
         if not entries and not routers:
@@ -861,37 +872,6 @@ class BaseRouter(RouterInterface):
     # ------------------------------------------------------------------
     def iter_plugins(self) -> list[Any]:  # pragma: no cover - base router has no plugins
         return []
-
-    # ------------------------------------------------------------------
-    # Dict-like interface (entries + children as unified namespace)
-    # ------------------------------------------------------------------
-    def __iter__(self) -> Iterator[str]:
-        """Iterate over all node names (entries + children)."""
-        yield from self._entries.keys()
-        yield from self._children.keys()
-
-    def __len__(self) -> int:
-        """Return total count of nodes (entries + children)."""
-        return len(self._entries) + len(self._children)
-
-    def __contains__(self, name: object) -> bool:
-        """Check if name exists in entries or children."""
-        return name in self._entries or name in self._children
-
-    def keys(self) -> Iterator[str]:
-        """Return all node names (entries + children)."""
-        yield from self._entries.keys()
-        yield from self._children.keys()
-
-    def values(self) -> Iterator[MethodEntry | BaseRouter]:
-        """Return all nodes (entries + children)."""
-        yield from self._entries.values()
-        yield from self._children.values()
-
-    def items(self) -> Iterator[tuple[str, MethodEntry | BaseRouter]]:
-        """Return all (name, node) pairs (entries + children)."""
-        yield from self._entries.items()
-        yield from self._children.items()
 
     def _on_attached_to_parent(
         self, parent: BaseRouter

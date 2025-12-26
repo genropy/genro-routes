@@ -440,6 +440,7 @@ sub_expanded = lazy_info["routers"]["sub"]()  # Expand on demand
 - `basepath`: Start from a specific point in the hierarchy
 - `lazy`: Return callables for child routers instead of expanding recursively
 - `mode`: Output format mode (e.g., `"openapi"` for OpenAPI schema generation)
+- `forbidden`: Include blocked entries with their rejection reason (default `False`)
 
 **Output modes**:
 
@@ -451,12 +452,25 @@ sub_expanded = lazy_info["routers"]["sub"]()  # Expand on demand
 schema = insp.api.nodes(mode="openapi")
 ```
 
+**Including blocked entries**:
+
+Use `forbidden=True` to include entries that are blocked by plugins (e.g., due to missing capabilities or authorization). Blocked entries have a `forbidden` field with the rejection reason:
+
+```python
+# Include blocked entries for full tree introspection
+entries = router.nodes(forbidden=True).get("entries", {})
+# {"public": {"name": "public", ...},
+#  "admin_only": {"name": "admin_only", "forbidden": "not_authorized", ...},
+#  "needs_redis": {"name": "needs_redis", "forbidden": "not_available", ...}}
+```
+
 **Use `nodes()` to**:
 
 - Generate API documentation (with `mode="openapi"`)
 - Debug routing issues
 - Validate configuration
 - Build dynamic UIs that expand on demand (with `lazy=True`)
+- Show full tree with blocked entries greyed out (with `forbidden=True`)
 
 ## Custom Metadata with `meta_*`
 
