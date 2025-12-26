@@ -46,7 +46,7 @@ This separation enables:
 3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutingClass instances with path access (`parent.api.node("child/method")`).
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
 5. **Runtime configuration** - `routing.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
-6. **Built-in plugins** - `logging`, `pydantic`, `auth`, `env`, and `openapi` plugins are included; SmartAsync wrapping is opt-in.
+6. **Built-in plugins** - `logging`, `pydantic`, `auth`, `env`, and `openapi` plugins are included out of the box.
 7. **Full coverage** - The package ships with a comprehensive test suite and no hidden compatibility layers.
 
 ## Quick Example
@@ -129,9 +129,8 @@ pip install -e ".[all]"
 - **`RoutingClass`** - Mixin that tracks routers per instance and exposes the `routing` proxy
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
 - **`obj.routing`** - Proxy exposed by every RoutingClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
-- **`RouterNode`** - Callable wrapper returned by `node()`, supports `__bool__`, `is_authorized`, `partial_args` for best-match resolution.
-- **`NotFound` / `NotAuthorized`** - Exceptions for routing errors (entry not found vs. access denied by filters)
-- **`UNAUTHORIZED`** - Sentinel value for unauthorized entries (check with `node.is_authorized`)
+- **`RouterNode`** - Callable wrapper returned by `node()`, supports `__bool__`, `is_callable`, `error`, `partial_kwargs`, `extra_args` for best-match resolution.
+- **`NotFound` / `NotAuthorized` / `NotAvailable`** - Exceptions for routing errors (entry not found, auth denied, capabilities missing)
 
 ## Pattern Highlights
 
@@ -150,7 +149,7 @@ pip install -e ".[all]"
 
 ## Testing
 
-Genro Routes achieves 96% test coverage with 146 comprehensive tests:
+Genro Routes achieves 90% test coverage with 191 comprehensive tests:
 
 ```bash
 PYTHONPATH=src pytest --cov=src/genro_routes --cov-report=term-missing
@@ -164,14 +163,17 @@ All examples in documentation are verified by the test suite and linked with tes
 genro-routes/
 ├── src/genro_routes/
 │   ├── core/               # Core router implementation
-│   │   ├── router.py       # Router runtime implementation
+│   │   ├── base_router.py  # BaseRouter (plugin-free runtime)
+│   │   ├── router.py       # Router (with plugin support)
 │   │   ├── decorators.py   # @route decorator
 │   │   └── routing.py      # RoutingClass mixin
 │   └── plugins/            # Built-in plugins
 │       ├── logging.py      # LoggingPlugin
 │       ├── pydantic.py     # PydanticPlugin
-│       └── auth.py         # AuthPlugin
-├── tests/                  # Test suite (96% coverage)
+│       ├── auth.py         # AuthPlugin
+│       ├── env.py          # EnvPlugin
+│       └── openapi.py      # OpenAPIPlugin
+├── tests/                  # Test suite (90% coverage)
 └── docs/                   # Documentation (Sphinx)
 ```
 
@@ -179,7 +181,7 @@ genro-routes/
 
 Genro Routes is currently in **beta** (v0.10.0). The core API is stable with complete documentation.
 
-- **Test Coverage**: 96% (146 tests)
+- **Test Coverage**: 90% (191 tests)
 - **Python Support**: 3.10, 3.11, 3.12, 3.13
 - **License**: Apache 2.0
 

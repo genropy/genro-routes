@@ -131,16 +131,25 @@ except NotFound:
     print("Handler not found")
 ```
 
-## Sentinel Value
+## RouterNode Authorization State
 
-When using `node()` with filtering, unauthorized entries return `UNAUTHORIZED` sentinel:
+When using `node()` with filtering, unauthorized entries return a `RouterNode` that exists but is not callable:
 
 ```python
-from genro_routes import UNAUTHORIZED
+node = api.api.node("delete_user", auth_tags="guest")
 
-info = api.node("delete_user", auth_tags="guest")
-if info is UNAUTHORIZED:
-    print("Not authorized to view this entry")
+# Node exists (entry found)
+assert node  # truthy
+
+# But not callable due to authorization
+assert not node.is_callable
+assert node.error == "not_authorized"
+
+# Attempting to call raises NotAuthorized
+try:
+    node()
+except NotAuthorized:
+    print("Access denied")
 ```
 
 ## Access Control Plugins

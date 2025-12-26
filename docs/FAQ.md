@@ -216,11 +216,11 @@ parent.api.node("child/method")()  # Logs with level=debug
 
 <!-- test: test_plugins_new.py::test_logging_plugin_runs_per_instance -->
 
-**Answer**: Yes, 2 built-in plugins:
+**Answer**: Yes, 5 built-in plugins:
 
 **1. LoggingPlugin** - Automatic logging
 ```python
-router = Router(self, name="api").plug("logging", level="debug")
+router = Router(self, name="api").plug("logging")
 router.node("method")()  # Auto-logs the call
 ```
 
@@ -241,6 +241,39 @@ def create(self, req: CreateRequest):
 router.plug("pydantic")
 router.node("create")({"name": "test", "count": 5})  # OK
 router.node("create")({"name": "test"})  # ValidationError
+```
+
+**3. AuthPlugin** - Role-based access control
+```python
+@route("api", auth_rule="admin")
+def admin_action(self):
+    return "secret"
+
+router.plug("auth")
+router.node("admin_action", auth_tags="admin")()  # OK
+router.node("admin_action", auth_tags="guest")()  # NotAuthorized
+```
+
+**4. EnvPlugin** - Capability-based filtering
+
+```python
+@route("api", env_requires="redis")
+def cached_action(self):
+    return "cached"
+
+router.plug("env")
+# Entry only visible if instance has "redis" capability
+```
+
+**5. OpenAPIPlugin** - Schema metadata
+
+```python
+@route("api", openapi_method="post", openapi_tags="users")
+def create_user(self, name: str) -> dict:
+    return {"name": name}
+
+router.plug("openapi")
+# Provides metadata for OpenAPI schema generation
 ```
 
 ### How do I configure plugins at runtime?

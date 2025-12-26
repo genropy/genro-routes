@@ -162,7 +162,7 @@ assert node.is_entry
 - Callable: invoke directly with `node(*args, **kwargs)`
 - Boolean: `if node:` returns `True` if node exists
 - Metadata: access `node.name`, `node.type`, `node.metadata`, `node.doc`
-- Authorization: check `node.is_authorized` before calling
+- Authorization: check `node.is_callable` and `node.error` before calling
 
 ## Using Prefixes and Custom Names
 
