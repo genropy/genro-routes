@@ -125,20 +125,20 @@ def test_plug_rejects_duplicate_plugin():
 
 def test_add_entry_variants_and_wildcards():
     svc = ManualService()
-    svc.api._add_entry(["first", "second"])
+    svc.api.add_entry(["first", "second"])
     assert "first" in svc.api._entries
     assert "second" in svc.api._entries
 
-    svc.api._add_entry("first, second", replace=True)
+    svc.api.add_entry("first, second", replace=True)
     before = set(svc.api._entries.keys())
-    assert svc.api._add_entry("   ") is svc.api
+    assert svc.api.add_entry("   ") is svc.api
     assert set(svc.api._entries.keys()) == before
 
     with pytest.raises(TypeError):
-        svc.api._add_entry(123)
+        svc.api.add_entry(123)
 
     # Use replace=True since "auto" was already registered by lazy binding
-    svc.api._add_entry("*", metadata={"source": "wild"}, replace=True)
+    svc.api.add_entry("*", metadata={"source": "wild"}, replace=True)
     entry = svc.api._entries["auto"]
     assert entry.metadata["marker"] == "yes"
     assert entry.metadata["source"] == "wild"
@@ -147,7 +147,7 @@ def test_add_entry_variants_and_wildcards():
 def test_plugin_on_decore_runs_for_existing_entries():
     svc = ManualService()
     svc.api.plug("stamp_extra")
-    svc.api._add_entry(svc.first, name="alias_first")
+    svc.api.add_entry(svc.first, name="alias_first")
     assert svc.api._entries["alias_first"].metadata["stamped"] is True
 
 
@@ -203,7 +203,7 @@ def test_inherit_plugins_seed_from_empty_parent_bucket():
 
 def test_router_nodes_include_metadata_tree():
     parent = ManualService()
-    parent.api._add_entry(parent.first)
+    parent.api.add_entry(parent.first)
     info = parent.api.nodes()
     assert "entries" in info
 
@@ -1007,18 +1007,18 @@ def test_h_openapi_includes_description_and_owner_doc():
 
 
 def test_guess_http_method_no_params_with_return_is_get():
-    """Test _guess_http_method returns GET for no-param functions with return."""
-    from genro_routes.core.base_router import BaseRouter
+    """Test guess_http_method returns GET for no-param functions with return."""
+    from genro_routes.plugins.openapi import OpenAPITranslator
 
     def no_params() -> str:
         return "ok"
 
-    assert BaseRouter._guess_http_method(no_params) == "get"
+    assert OpenAPITranslator.guess_http_method(no_params) == "get"
 
 
 def test_guess_http_method_no_params_no_return_is_post():
-    """Test _guess_http_method returns POST for no-param functions without return."""
-    from genro_routes.core.base_router import BaseRouter
+    """Test guess_http_method returns POST for no-param functions without return."""
+    from genro_routes.plugins.openapi import OpenAPITranslator
 
     def no_params_no_return():
         pass
@@ -1026,13 +1026,13 @@ def test_guess_http_method_no_params_no_return_is_post():
     def no_params_none_return() -> None:
         pass
 
-    assert BaseRouter._guess_http_method(no_params_no_return) == "post"
-    assert BaseRouter._guess_http_method(no_params_none_return) == "post"
+    assert OpenAPITranslator.guess_http_method(no_params_no_return) == "post"
+    assert OpenAPITranslator.guess_http_method(no_params_none_return) == "post"
 
 
 def test_guess_http_method_with_params_is_post():
-    """Test _guess_http_method returns POST for functions with params."""
-    from genro_routes.core.base_router import BaseRouter
+    """Test guess_http_method returns POST for functions with params."""
+    from genro_routes.plugins.openapi import OpenAPITranslator
 
     def scalar_params(name: str, count: int) -> str:
         return "ok"
@@ -1041,13 +1041,13 @@ def test_guess_http_method_with_params_is_post():
         return items
 
     # Any params → POST
-    assert BaseRouter._guess_http_method(scalar_params) == "post"
-    assert BaseRouter._guess_http_method(complex_params) == "post"
+    assert OpenAPITranslator.guess_http_method(scalar_params) == "post"
+    assert OpenAPITranslator.guess_http_method(complex_params) == "post"
 
 
 def test_guess_http_method_broken_hints_is_post():
-    """Test _guess_http_method returns POST when hints can't be resolved."""
-    from genro_routes.core.base_router import BaseRouter
+    """Test guess_http_method returns POST when hints can't be resolved."""
+    from genro_routes.plugins.openapi import OpenAPITranslator
 
     def broken():
         return "ok"
@@ -1056,7 +1056,7 @@ def test_guess_http_method_broken_hints_is_post():
     broken.__annotations__ = {"arg": "NonExistentType"}
 
     # Should default to POST (safer)
-    assert BaseRouter._guess_http_method(broken) == "post"
+    assert OpenAPITranslator.guess_http_method(broken) == "post"
 
 
 def test_openapi_uses_guessed_http_method():

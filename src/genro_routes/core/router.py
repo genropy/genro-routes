@@ -363,7 +363,7 @@ class Router(BaseRouter):
                 entry.plugins.append(plugin.name)
             plugin.on_decore(self, entry.func, entry)
 
-    def _allow_entry(self, entry: MethodEntry, **allowing_args: Any) -> bool | str:
+    def _allow_entry(self, entry: MethodEntry, **allowing_args: Any) -> str:
         # Filter out None and False values
         allowing_args = {k: v for k, v in allowing_args.items() if v not in (None, False)}
         for plugin in self._plugins:
@@ -373,9 +373,9 @@ class Router(BaseRouter):
             )
             # Always consult plugin - it decides based on entry rules and user kwargs
             result = plugin.allow_entry(entry, **plugin_kwargs)
-            if result is not True:
+            if result:
                 return result
-        return True
+        return ""
 
     def _describe_entry_extra(  # type: ignore[override]
         self, entry: MethodEntry, base_description: dict[str, Any]

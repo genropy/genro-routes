@@ -90,7 +90,7 @@ class AuthPlugin(BasePlugin):
 
     def allow_entry(
         self, entry: MethodEntry | RouterInterface, **filters: Any
-    ) -> bool | str:
+    ) -> str:
         """Filter entries based on authorization rule.
 
         Args:
@@ -98,21 +98,21 @@ class AuthPlugin(BasePlugin):
             **filters: May contain ``tags`` with user's tags.
 
         Returns:
-            True: Access allowed (entry has no rule, or tags match).
+            "": Access allowed (entry has no rule, or tags match).
             "not_authenticated": Entry requires tags but none provided.
             "not_authorized": Tags provided but don't match rule.
         """
         if isinstance(entry, RouterInterface):
             results = [self.allow_entry(n, **filters) for n in entry.values()]
-            if any(r is True for r in results):
-                return True
-            return results[0] if results else True
+            if any(r == "" for r in results):
+                return ""
+            return results[0] if results else ""
 
         config = self.configuration(entry.name)
         entry_rule = config.get("rule", "")
 
         if not entry_rule:
-            return True
+            return ""
 
         user_tags = filters.get("tags")
 
@@ -122,7 +122,7 @@ class AuthPlugin(BasePlugin):
         tags_set = {v.strip() for v in user_tags.split(",") if v.strip()}
 
         if tags_match(entry_rule, tags_set):
-            return True
+            return ""
 
         return "not_authorized"
 

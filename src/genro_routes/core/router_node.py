@@ -240,7 +240,7 @@ class RouterNode:
         if not self._entry or not self._router:
             return self
         result = self._router._allow_entry(self._entry, **kwargs)  # type: ignore[union-attr, attr-defined]
-        if result is not True:
+        if result:
             self.error = result
         return self
 

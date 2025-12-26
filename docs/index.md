@@ -75,6 +75,7 @@ assert second.api.node("describe")() == "service:beta"
 
 installation
 quickstart
+guide/examples
 FAQ
 ```
 

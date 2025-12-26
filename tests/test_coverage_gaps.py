@@ -625,3 +625,186 @@ def test_child_ignores_parent_config_no_cascade():
     # Only child should be notified (grandchild NOT because child ignores)
     assert len(notifications) == 1
     assert notifications[0]["router"] == "child_api"
+
+
+# --- exceptions.py: test with router_name ---
+
+
+def test_not_found_with_router_name():
+    """Test NotFound exception with router_name parameter."""
+    from genro_routes.exceptions import NotFound
+
+    exc = NotFound("my_path", router_name="my_router")
+    assert exc.selector == "my_path"
+    assert exc.router_name == "my_router"
+    assert "my_router" in str(exc)
+    assert "my_path" in str(exc)
+
+
+def test_not_authorized_with_router_name():
+    """Test NotAuthorized exception with router_name parameter."""
+    from genro_routes.exceptions import NotAuthorized
+
+    exc = NotAuthorized("my_path", router_name="my_router")
+    assert exc.selector == "my_path"
+    assert exc.router_name == "my_router"
+    assert "my_router" in str(exc)
+    assert "my_path" in str(exc)
+
+
+def test_not_authenticated_with_router_name():
+    """Test NotAuthenticated exception with router_name parameter."""
+    from genro_routes.exceptions import NotAuthenticated
+
+    exc = NotAuthenticated("my_path", router_name="my_router")
+    assert exc.selector == "my_path"
+    assert exc.router_name == "my_router"
+    assert "my_router" in str(exc)
+    assert "my_path" in str(exc)
+
+
+def test_not_available_with_router_name():
+    """Test NotAvailable exception with router_name parameter."""
+    from genro_routes.exceptions import NotAvailable
+
+    exc = NotAvailable("my_path", router_name="my_router")
+    assert exc.selector == "my_path"
+    assert exc.router_name == "my_router"
+    assert "my_router" in str(exc)
+    assert "my_path" in str(exc)
+
+
+# --- auth.py: allow_entry with RouterInterface ---
+
+
+def test_auth_allow_entry_with_router_interface():
+    """Test auth plugin allow_entry when passed a RouterInterface (child router)."""
+
+    class ChildSvc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="child_api")
+
+        @route("api", auth_rule="admin")
+        def admin_only(self):
+            return "admin"
+
+        @route("api")
+        def public(self):
+            return "public"
+
+    class ParentSvc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="parent_api").plug("auth")
+            self.child = ChildSvc()
+
+        @route("api")
+        def parent_handler(self):
+            return "parent"
+
+    parent = ParentSvc()
+    parent.api.attach_instance(parent.child, name="child")
+
+    # Get child router via parent
+    child_router = parent.api._children["child"]
+
+    # Test allow_entry with RouterInterface
+    auth_plugin = parent.api._plugins_by_name["auth"]
+
+    # Without tags - should return "" because public handler exists
+    result = auth_plugin.allow_entry(child_router)
+    assert result == ""  # At least one entry is allowed (public)
+
+    # With admin tags - should return ""
+    result = auth_plugin.allow_entry(child_router, tags="admin")
+    assert result == ""
+
+
+def test_auth_allow_entry_router_empty():
+    """Test auth allow_entry with empty router returns empty string."""
+
+    class ChildSvc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="child_api")
+            # No routes defined
+
+    class ParentSvc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="parent_api").plug("auth")
+            self.child = ChildSvc()
+
+        @route("api")
+        def parent_handler(self):
+            return "parent"
+
+    parent = ParentSvc()
+    parent.api.attach_instance(parent.child, name="child")
+
+    child_router = parent.api._children["child"]
+    auth_plugin = parent.api._plugins_by_name["auth"]
+
+    # Empty router returns "" (no entries to check)
+    result = auth_plugin.allow_entry(child_router)
+    assert result == ""
+
+
+# --- openapi.py: edge cases ---
+
+
+def test_openapi_translator_schema_to_parameters_empty():
+    """Test schema_to_parameters with empty schema."""
+    from genro_routes.plugins.openapi import OpenAPITranslator
+
+    result = OpenAPITranslator.schema_to_parameters({})
+    assert result == []
+
+    result = OpenAPITranslator.schema_to_parameters({"properties": {}})
+    assert result == []
+
+
+def test_openapi_translator_entry_without_callable():
+    """Test entry_info_to_openapi when callable is None."""
+    from genro_routes.plugins.openapi import OpenAPITranslator
+
+    entry_info = {
+        "callable": None,
+        "doc": "Some documentation",
+    }
+    result = OpenAPITranslator.entry_info_to_openapi("test_entry", entry_info)
+
+    # Should default to POST when no callable
+    assert "post" in result
+    assert result["post"]["operationId"] == "test_entry"
+
+
+def test_openapi_translator_create_model_no_fields():
+    """Test create_pydantic_model_for_func returns None when no fields."""
+    from genro_routes.plugins.openapi import OpenAPITranslator
+
+    def no_params() -> str:
+        return "ok"
+
+    # No params except return → no model
+    result = OpenAPITranslator.create_pydantic_model_for_func(no_params)
+    assert result is None
+
+
+def test_openapi_h_openapi_child_included():
+    """Test h_openapi includes child routers with metadata."""
+    from genro_routes.plugins.openapi import OpenAPITranslator
+
+    nodes_data = {
+        "entries": {},
+        "routers": {
+            "child": {
+                "entries": {},
+                "routers": {},
+                "description": "A child router",
+            }
+        },
+    }
+    result = OpenAPITranslator.translate_h_openapi(nodes_data, lazy=False)
+
+    # Child is included (has description metadata)
+    assert "routers" in result
+    assert "child" in result["routers"]
+    assert result["routers"]["child"]["description"] == "A child router"

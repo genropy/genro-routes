@@ -141,8 +141,8 @@ class ToggleService(RoutingClass):
 class DynamicRouterService(RoutingClass):
     def __init__(self):
         self.dynamic = Router(self, name="dynamic")
-        self.dynamic._add_entry(self.dynamic_alpha)
-        self.dynamic._add_entry("dynamic_beta")
+        self.dynamic.add_entry(self.dynamic_alpha)
+        self.dynamic.add_entry("dynamic_beta")
 
     def dynamic_alpha(self):
         return "alpha"
@@ -174,7 +174,7 @@ def test_dynamic_router_add_entry_runtime():
     assert svc.dynamic.node("dynamic_alpha")() == "alpha"
     assert svc.dynamic.node("dynamic_beta")() == "beta"
     # Adding via string
-    svc.dynamic._add_entry("dynamic_alpha", name="alpha_alias")
+    svc.dynamic.add_entry("dynamic_alpha", name="alpha_alias")
     assert svc.dynamic.node("alpha_alias")() == "alpha"
 
 

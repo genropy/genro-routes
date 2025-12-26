@@ -296,7 +296,7 @@ class BasePlugin:
         """
         return call_next
 
-    def allow_entry(self, entry: Any, **filters: Any) -> bool | str:  # pragma: no cover - optional hook
+    def allow_entry(self, entry: Any, **filters: Any) -> str:  # pragma: no cover - optional hook
         """Override to control entry visibility during introspection.
 
         Called by ``router.nodes()`` and ``router.node()`` to decide if an entry
@@ -307,12 +307,12 @@ class BasePlugin:
             **filters: All filter criteria passed to ``nodes()`` or ``node()``.
 
         Returns:
-            True: Include/allow the entry.
+            "": Entry is allowed.
             "not_authenticated": Entry requires auth but no credentials (401).
             "not_authorized": Credentials provided but insufficient (403).
-            False: Exclude from results (for backward compatibility).
+            "not_available": Capability not available (501).
         """
-        return True
+        return ""
 
     def entry_metadata(
         self, router: Any, entry: MethodEntry

@@ -85,7 +85,7 @@ from __future__ import annotations
 import inspect
 import re
 from collections.abc import Callable, Iterator
-from typing import Any, get_type_hints
+from typing import Any
 
 from genro_toolbox.typeutils import safe_is_instance
 
@@ -218,7 +218,7 @@ class BaseRouter(RouterInterface):
         if callable(hook):
             hook(self)
 
-    def _add_entry(
+    def add_entry(
         self,
         target: Any,
         *,
@@ -228,6 +228,11 @@ class BaseRouter(RouterInterface):
         **options: Any,
     ) -> BaseRouter:
         """Register handler(s) on this router.
+
+        Note:
+            For most use cases, prefer the ``@route`` decorator.
+            Use ``add_entry`` directly only for dynamic registration
+            (e.g., introspection-based mapping of external libraries).
 
         Args:
             target: Callable, attribute name(s), comma-separated string, or wildcard marker.
@@ -265,7 +270,7 @@ class BaseRouter(RouterInterface):
 
         if isinstance(target, (list, tuple, set)):
             for entry in target:
-                self._add_entry(
+                self.add_entry(
                     entry,
                     name=entry_name,
                     metadata=dict(metadata or {}),
@@ -292,7 +297,7 @@ class BaseRouter(RouterInterface):
                 for chunk in target.split(","):
                     chunk = chunk.strip()
                     if chunk:
-                        self._add_entry(
+                        self.add_entry(
                             chunk,
                             name=entry_name,
                             metadata=dict(metadata or {}),
@@ -449,7 +454,7 @@ class BaseRouter(RouterInterface):
             return  # Already bound, no-op
         self._bound = True  # Set BEFORE work to avoid recursion via properties
         if not self._is_branch:
-            self._add_entry("*")
+            self.add_entry("*")
 
     def _require_bound(self, operation: str) -> None:
         """Ensure the router is bound, auto-binding if needed.
@@ -700,7 +705,7 @@ class BaseRouter(RouterInterface):
             entry.name: self._entry_node_info(entry)
             for entry in self._entries.values()
             if (pattern_re is None or pattern_re.search(entry.name))
-            and self._allow_entry(entry, env_router_capabilities=router_caps, **kwargs) is True
+            and self._allow_entry(entry, env_router_capabilities=router_caps, **kwargs) == ""
         }
 
         routers: dict[str, Any]
@@ -734,7 +739,9 @@ class BaseRouter(RouterInterface):
 
         # Translate to requested format if mode specified
         if mode:
-            translator = getattr(self, f"_translate_{mode}", None)
+            from genro_routes.plugins.openapi import OpenAPITranslator
+
+            translator = getattr(OpenAPITranslator, f"translate_{mode}", None)
             if translator is None:
                 raise ValueError(f"Unknown mode: {mode}")
             translated: dict[str, Any] = translator(result, lazy=lazy)
@@ -813,310 +820,14 @@ class BaseRouter(RouterInterface):
 
         # Add openapi info if requested
         if mode == "openapi" and candidate.valid_entry:
+            from genro_routes.plugins.openapi import OpenAPITranslator
+
             entry_info = candidate._router._entry_node_info(candidate._entry)  # type: ignore[union-attr]
-            candidate._data["openapi"] = candidate._router._entry_info_to_openapi(  # type: ignore[union-attr]
+            candidate._data["openapi"] = OpenAPITranslator.entry_info_to_openapi(
                 candidate._entry.name, entry_info  # type: ignore[union-attr]
             )
 
         return candidate
-
-    def _translate_openapi(
-        self,
-        nodes_data: dict[str, Any],
-        lazy: bool = False,
-        path_prefix: str = "",
-    ) -> dict[str, Any]:
-        """Translate nodes() output to flat OpenAPI format.
-
-        Args:
-            nodes_data: Output from nodes() in standard format.
-            lazy: If True, child routers are returned as router references.
-            path_prefix: Prefix for generated paths (used internally for recursion).
-
-        Returns:
-            Dict with "paths" containing OpenAPI path items (flat structure),
-            and "routers" for children in lazy mode.
-        """
-        paths: dict[str, Any] = {}
-
-        # Convert entries to OpenAPI paths
-        entries = nodes_data.get("entries", {})
-        for entry_name, entry_info in entries.items():
-            path = f"{path_prefix}/{entry_name}" if path_prefix else f"/{entry_name}"
-            paths[path] = self._entry_info_to_openapi(entry_name, entry_info)
-
-        # Handle child routers
-        routers_data = nodes_data.get("routers", {})
-        routers: dict[str, Any]
-        if lazy:
-            # In lazy mode, just pass through router references
-            routers = dict(routers_data)
-        else:
-            # In eager mode, recursively translate and merge paths
-            for child_name, child_data in routers_data.items():
-                child_prefix = f"{path_prefix}/{child_name}" if path_prefix else f"/{child_name}"
-                child_openapi = self._translate_openapi(
-                    child_data, lazy=False, path_prefix=child_prefix
-                )
-                paths.update(child_openapi.get("paths", {}))
-            routers = {}
-
-        result: dict[str, Any] = {"paths": paths}
-        if routers:
-            result["routers"] = routers
-        return result
-
-    def _translate_h_openapi(
-        self,
-        nodes_data: dict[str, Any],
-        lazy: bool = False,
-    ) -> dict[str, Any]:
-        """Translate nodes() output to hierarchical OpenAPI format.
-
-        Unlike _translate_openapi which flattens all paths, this preserves
-        the router hierarchy while converting entries to OpenAPI format.
-
-        Args:
-            nodes_data: Output from nodes() in standard format.
-            lazy: If True, child routers are returned as router references.
-
-        Returns:
-            Dict with "paths" containing local OpenAPI path items,
-            and "routers" containing nested h_openapi structures for children.
-        """
-        paths: dict[str, Any] = {}
-
-        # Convert local entries to OpenAPI paths (without prefix)
-        entries = nodes_data.get("entries", {})
-        for entry_name, entry_info in entries.items():
-            path = f"/{entry_name}"
-            paths[path] = self._entry_info_to_openapi(entry_name, entry_info)
-
-        # Handle child routers
-        routers_data = nodes_data.get("routers", {})
-        routers: dict[str, Any]
-        if lazy:
-            # In lazy mode, just pass through router references
-            routers = dict(routers_data)
-        else:
-            # In eager mode, recursively translate each child (maintaining hierarchy)
-            routers = {}
-            for child_name, child_data in routers_data.items():
-                child_h_openapi = self._translate_h_openapi(child_data, lazy=False)
-                if child_h_openapi:
-                    routers[child_name] = child_h_openapi
-
-        result: dict[str, Any] = {
-            "description": nodes_data.get("description"),
-            "owner_doc": nodes_data.get("owner_doc"),
-        }
-        if paths:
-            result["paths"] = paths
-        if routers:
-            result["routers"] = routers
-        return result
-
-    def _entry_info_to_openapi(self, name: str, entry_info: dict[str, Any]) -> dict[str, Any]:
-        """Convert entry info dict to OpenAPI path item format.
-
-        HTTP method determination priority:
-        1. Explicit override via openapi plugin config (openapi_method in metadata)
-        2. Guessed from function signature (_guess_http_method)
-        """
-        func = entry_info.get("callable")
-        doc = entry_info.get("doc", "")
-        summary = doc.split("\n")[0] if doc else name
-        metadata = entry_info.get("metadata", {})
-
-        # Determine HTTP method: check for explicit override first
-        openapi_config = metadata.get("plugin_config", {}).get("openapi", {})
-        explicit_method = openapi_config.get("method")
-        if explicit_method:
-            http_method = explicit_method.lower()
-        elif func:
-            http_method = self._guess_http_method(func)
-        else:
-            http_method = "post"
-
-        operation: dict[str, Any] = {
-            "operationId": name,
-            "summary": summary,
-        }
-        if doc:
-            operation["description"] = doc
-
-        # Add tags if specified in openapi config
-        tags = openapi_config.get("tags")
-        if tags:
-            operation["tags"] = tags if isinstance(tags, list) else [tags]
-
-        # Extract parameters from pydantic metadata if available, otherwise create model on-the-fly
-        pydantic_meta = metadata.get("pydantic", {})
-        model = pydantic_meta.get("model")
-
-        if not model and func:
-            # Create pydantic model on-the-fly (pydantic is a required dependency)
-            model = self._create_pydantic_model_for_func(func)
-
-        if model and hasattr(model, "model_json_schema"):
-            schema = model.model_json_schema()
-            # GET uses query parameters, POST/PUT/PATCH use requestBody
-            if http_method == "get":
-                # Convert schema properties to OpenAPI parameters
-                parameters = self._schema_to_parameters(schema)
-                if parameters:
-                    operation["parameters"] = parameters
-            else:
-                operation["requestBody"] = {
-                    "required": True,
-                    "content": {"application/json": {"schema": schema}},
-                }
-
-        # Add return type if available
-        if func:
-            try:
-                hints = get_type_hints(func)
-                return_hint = hints.get("return")
-                if return_hint:
-                    operation["responses"] = {
-                        "200": {
-                            "description": "Successful response",
-                            "content": {
-                                "application/json": {
-                                    "schema": self._python_type_to_openapi_schema(return_hint)
-                                }
-                            },
-                        }
-                    }
-            except Exception:
-                pass
-
-        if "responses" not in operation:
-            operation["responses"] = {"200": {"description": "Successful response"}}
-
-        return {http_method: operation}
-
-    @staticmethod
-    def _create_pydantic_model_for_func(func: Callable) -> Any | None:
-        """Create a pydantic model from function type hints.
-
-        This is used when the pydantic plugin is not active but we still
-        want to extract parameter schema for OpenAPI.
-
-        Args:
-            func: The callable to analyze.
-
-        Returns:
-            A pydantic model class, or None if no type hints available.
-        """
-        from pydantic import create_model
-
-        try:
-            hints = get_type_hints(func, include_extras=True)
-        except Exception:
-            return None
-
-        hints.pop("return", None)
-        if not hints:
-            return None
-
-        sig = inspect.signature(func)
-        fields: dict[str, Any] = {}
-        for param_name, hint in hints.items():
-            param = sig.parameters.get(param_name)
-            if param is None:
-                continue
-            if param.default is inspect.Parameter.empty:
-                fields[param_name] = (hint, ...)
-            else:
-                fields[param_name] = (hint, param.default)
-
-        if not fields:
-            return None
-
-        try:
-            return create_model(f"{func.__name__}_Model", **fields)
-        except Exception:
-            # Pydantic can't handle some types (e.g., arbitrary classes without config)
-            return None
-
-    @staticmethod
-    def _schema_to_parameters(schema: dict[str, Any]) -> list[dict[str, Any]]:
-        """Convert pydantic JSON schema to OpenAPI query parameters.
-
-        Args:
-            schema: Pydantic model JSON schema.
-
-        Returns:
-            List of OpenAPI parameter objects for query string.
-        """
-        properties = schema.get("properties", {})
-        required_fields = set(schema.get("required", []))
-        parameters: list[dict[str, Any]] = []
-
-        for prop_name, prop_schema in properties.items():
-            param: dict[str, Any] = {
-                "name": prop_name,
-                "in": "query",
-                "required": prop_name in required_fields,
-                "schema": prop_schema,
-            }
-            parameters.append(param)
-
-        return parameters
-
-    @staticmethod
-    def _python_type_to_openapi_schema(python_type: Any) -> dict[str, Any]:
-        """Convert Python type to OpenAPI schema dict using pydantic.
-
-        Uses pydantic's TypeAdapter to generate JSON schema for any type.
-        """
-        from pydantic import TypeAdapter
-
-        try:
-            adapter = TypeAdapter(python_type)
-            return adapter.json_schema()
-        except Exception:
-            # Fallback for types pydantic can't handle
-            return {"type": "object"}
-
-    @staticmethod
-    def _guess_http_method(func: Callable) -> str:
-        """Guess HTTP method from function signature.
-
-        Rules:
-        - Default = POST (safer, no caching, no URL exposure)
-        - GET only if: no parameters AND returns something (not None)
-
-        Examples:
-            def health() -> dict:      # GET - no params, returns data
-            def list() -> list:        # GET - no params, returns data
-            def add(id: int):          # POST - has params
-            def reset():               # POST - no params, no return (side effect)
-
-        Args:
-            func: The callable to analyze.
-
-        Returns:
-            "get" or "post" based on signature analysis.
-        """
-        try:
-            hints = get_type_hints(func)
-        except Exception:
-            return "post"
-
-        return_hint = hints.pop("return", None)
-
-        # Has parameters → POST
-        if hints:
-            return "post"
-
-        # No parameters, no return → POST (side effect)
-        if return_hint is None or return_hint is type(None):
-            return "post"
-
-        # No parameters, has return → GET (read operation)
-        return "get"
 
     def _entry_node_info(self, entry: MethodEntry) -> dict[str, Any]:
         """Build info dict for a single entry."""

@@ -109,7 +109,7 @@ class EnvPlugin(BasePlugin):
             )
         pass  # Storage handled by wrapper
 
-    def allow_entry(self, entry: MethodEntry, **filters: Any) -> bool | str:
+    def allow_entry(self, entry: MethodEntry, **filters: Any) -> str:
         """Filter entries based on capability requirements.
 
         Capabilities are accumulated from:
@@ -124,7 +124,7 @@ class EnvPlugin(BasePlugin):
                       ``capabilities`` (from request).
 
         Returns:
-            True: Access allowed (entry has no rule, or capabilities match).
+            "": Access allowed (entry has no rule, or capabilities match).
             "not_available": Entry requires capabilities but none available,
                            or capabilities don't match rule.
         """
@@ -132,7 +132,7 @@ class EnvPlugin(BasePlugin):
         entry_rule = config.get("requires", "")
 
         if not entry_rule:
-            return True
+            return ""
 
         # Use pre-computed router capabilities or compute them
         router_caps = filters.get("router_capabilities")
@@ -152,7 +152,7 @@ class EnvPlugin(BasePlugin):
             return "not_available"
 
         if tags_match(entry_rule, all_caps):
-            return True
+            return ""
 
         return "not_available"
 

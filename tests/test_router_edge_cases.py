@@ -409,7 +409,7 @@ def test_branch_router_blocks_entries():
 
     svc = Service()
     with pytest.raises(ValueError):
-        svc.branch._add_entry("missing")
+        svc.branch.add_entry("missing")
 
 
 def test_parent_router_creates_hierarchy():

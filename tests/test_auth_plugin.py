@@ -31,8 +31,8 @@ class TestAuthPluginIntegration:
     def test_user_with_matching_tag_can_access(self):
         """User with 'admin' tag can access entry requiring 'admin'."""
         router = _make_router().plug("auth")
-        router._add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
-        router._add_entry(lambda: "public", name="public_action", auth_rule="public")
+        router.add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
+        router.add_entry(lambda: "public", name="public_action", auth_rule="public")
 
         # User has 'admin' tag - can access admin_action
         entries = router.nodes(auth_tags="admin").get("entries", {})
@@ -42,9 +42,9 @@ class TestAuthPluginIntegration:
     def test_user_with_multiple_tags_can_access_matching_entries(self):
         """User with multiple tags can access entries matching any of their tags."""
         router = _make_router().plug("auth")
-        router._add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
-        router._add_entry(lambda: "public", name="public_action", auth_rule="public")
-        router._add_entry(lambda: "internal", name="internal_action", auth_rule="internal")
+        router.add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
+        router.add_entry(lambda: "public", name="public_action", auth_rule="public")
+        router.add_entry(lambda: "internal", name="internal_action", auth_rule="internal")
 
         # User has 'admin,public' tags - can access entries requiring admin OR public
         entries = router.nodes(auth_tags="admin,public").get("entries", {})
@@ -56,9 +56,9 @@ class TestAuthPluginIntegration:
         """Entry with OR rule (admin|internal) accepts user with any matching tag."""
         router = _make_router().plug("auth")
         # Entry accepts admin OR internal users
-        router._add_entry(lambda: "flexible", name="flexible_action", auth_rule="admin|internal")
+        router.add_entry(lambda: "flexible", name="flexible_action", auth_rule="admin|internal")
         # Entry accepts only admin users
-        router._add_entry(lambda: "strict", name="strict_admin", auth_rule="admin")
+        router.add_entry(lambda: "strict", name="strict_admin", auth_rule="admin")
 
         # User has only 'internal' tag
         entries = router.nodes(auth_tags="internal").get("entries", {})
@@ -69,9 +69,9 @@ class TestAuthPluginIntegration:
         """Entry with AND rule (admin&internal) requires user to have all tags."""
         router = _make_router().plug("auth")
         # Entry requires BOTH admin AND internal
-        router._add_entry(lambda: "strict", name="strict_action", auth_rule="admin&internal")
+        router.add_entry(lambda: "strict", name="strict_action", auth_rule="admin&internal")
         # Entry requires only admin
-        router._add_entry(lambda: "admin", name="admin_only", auth_rule="admin")
+        router.add_entry(lambda: "admin", name="admin_only", auth_rule="admin")
 
         # User has both tags
         entries = router.nodes(auth_tags="admin,internal").get("entries", {})
@@ -87,9 +87,9 @@ class TestAuthPluginIntegration:
         """Entry with NOT rule (!dimissionario) excludes users with that tag."""
         router = _make_router().plug("auth")
         # Entry excludes dimissionario users
-        router._add_entry(lambda: "active", name="active_only", auth_rule="!dimissionario")
+        router.add_entry(lambda: "active", name="active_only", auth_rule="!dimissionario")
         # Entry for everyone (no rule)
-        router._add_entry(lambda: "all", name="for_all")
+        router.add_entry(lambda: "all", name="for_all")
 
         # User has 'dimissionario' tag
         entries = router.nodes(auth_tags="dimissionario").get("entries", {})
@@ -104,9 +104,9 @@ class TestAuthPluginIntegration:
     def test_nodes_without_auth_tags_filters_protected_entries(self):
         """nodes() without auth_tags filters out entries with rules (401 = not visible)."""
         router = _make_router().plug("auth")
-        router._add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
-        router._add_entry(lambda: "public", name="public_action", auth_rule="public")
-        router._add_entry(lambda: "open", name="open_action")  # No rule
+        router.add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
+        router.add_entry(lambda: "public", name="public_action", auth_rule="public")
+        router.add_entry(lambda: "open", name="open_action")  # No rule
 
         # No tags = only entries without rules are visible
         entries = router.nodes().get("entries", {})
@@ -117,8 +117,8 @@ class TestAuthPluginIntegration:
     def test_entry_without_rule_always_accessible(self):
         """Entry without auth_tags is always accessible to any user."""
         router = _make_router().plug("auth")
-        router._add_entry(lambda: "tagged", name="tagged_action", auth_rule="admin")
-        router._add_entry(lambda: "untagged", name="untagged_action")  # no rule
+        router.add_entry(lambda: "tagged", name="tagged_action", auth_rule="admin")
+        router.add_entry(lambda: "untagged", name="untagged_action")  # no rule
 
         # User with 'public' tag can't access admin-only, but can access untagged
         entries = router.nodes(auth_tags="public").get("entries", {})
@@ -129,7 +129,7 @@ class TestAuthPluginIntegration:
         """Test complex rules with AND, OR, NOT combinations."""
         router = _make_router().plug("auth")
         # Complex rule: (admin OR manager) AND NOT guest
-        router._add_entry(lambda: "a", name="complex_action", auth_rule="(admin|manager)&!guest")
+        router.add_entry(lambda: "a", name="complex_action", auth_rule="(admin|manager)&!guest")
 
         # Admin without guest - OK
         entries = router.nodes(auth_tags="admin").get("entries", {})
@@ -168,7 +168,7 @@ class TestAuthPluginIntegration:
                 return "child_public"
 
         parent = Parent()
-        parent.api._add_entry(lambda: "parent_admin", name="parent_admin", auth_rule="admin")
+        parent.api.add_entry(lambda: "parent_admin", name="parent_admin", auth_rule="admin")
 
         child = Child()
         # Attach child - plugin is inherited from parent
@@ -201,7 +201,7 @@ class TestAuthPluginIntegration:
                 return "public"
 
         parent = Parent()
-        parent.api._add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
+        parent.api.add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
 
         child = Child()
         parent.api.attach_instance(child, name="child")
@@ -218,8 +218,8 @@ class TestDictLikeInterface:
     def test_iter_keys_values_items(self):
         """Test __iter__, keys(), values(), items()."""
         router = _make_router()
-        router._add_entry(lambda: "a", name="entry_a")
-        router._add_entry(lambda: "b", name="entry_b")
+        router.add_entry(lambda: "a", name="entry_a")
+        router.add_entry(lambda: "b", name="entry_b")
 
         # __iter__
         names = list(router)
@@ -244,7 +244,7 @@ class TestDictLikeInterface:
     def test_len_and_contains(self):
         """Test __len__ and __contains__."""
         router = _make_router()
-        router._add_entry(lambda: "a", name="entry_a")
+        router.add_entry(lambda: "a", name="entry_a")
 
         assert len(router) == 1
         assert "entry_a" in router
@@ -263,7 +263,7 @@ class TestDictLikeInterface:
                 self.api = Router(self, name="api")
 
         parent = Parent()
-        parent.api._add_entry(lambda: "p", name="parent_entry")
+        parent.api.add_entry(lambda: "p", name="parent_entry")
 
         child = Child()
         parent.api.attach_instance(child, name="child")

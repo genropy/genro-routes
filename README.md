@@ -108,6 +108,18 @@ info = app.api.nodes()
 print(info["routers"].keys())  # dict_keys(['users'])
 ```
 
+## Learn by Example
+
+We provide a comprehensive gallery of examples in the [examples/](https://github.com/genropy/genro-routes/tree/main/examples) directory:
+
+- **[Standard Faker](https://github.com/genropy/genro-routes/blob/main/examples/faker_standard.py)** - Explicit routing and Pydantic validation.
+- **[Magic Faker](https://github.com/genropy/genro-routes/blob/main/examples/faker_magic.py)** - Dynamic mapping of library methods at runtime.
+- **[Syntax Highlighting](https://github.com/genropy/genro-routes/blob/main/examples/pygments_highlighting.py)** - Creating a service wrapper around the Pygments library.
+- **[Auth & Roles](https://github.com/genropy/genro-routes/blob/main/examples/auth_roles.py)** - Implementing role-based access control.
+- **[Service Composition](https://github.com/genropy/genro-routes/blob/main/examples/service_composition.py)** - Building complex apps from independent modules.
+
+Read our guide on **[Why wrap a library with Genro-Routes?](https://github.com/genropy/genro-routes/blob/main/examples/WHY_GENRO_ROUTES.md)** for more specialized insights.
+
 ## Installation
 
 ```bash
