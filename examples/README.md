@@ -26,7 +26,20 @@ Shows how to use the `AuthPlugin` to protect endpoints with role-based access co
 Demonstrates building large apps by composing multiple independent modules into a single hierarchy.
 
 ### 7. Self-Documentation (`self_documentation.py`)
-A meta-example where **genro-routes documents itself**. It uses magic mapping to expose its own internal `Router` API, demonstrating how the library can be used as a management and introspection layer for any complex Python system.
+A meta-example where **genro-routes documents itself**.
+
+### 8. MCP Bridge (`mcp_bridge/`)
+A conceptual implementation of a **Model Context Protocol (MCP)** bridge.
+
+### 9. Repository Explorer (`repo_explorer.py`)
+Exposes a repository as a service with `list_dir`, `read_file`, and `get_info` methods. Demonstrates the correct pattern: methods with path parameters instead of one-router-per-file.
+
+> **Evolution ideas**: content caching, full-text search, file watch for changes.
+
+### 10. Deep Repo Explorer (`deep_repo_explorer.py`)
+Maps Python files as routers, introspecting classes and functions at runtime. Combined with MCP Bridge, allows an LLM to discover API structure without filesystem access.
+
+> **Evolution ideas**: signature indexing, pattern-based search, semantic search via embeddings.
 
 ## Running the Examples
 

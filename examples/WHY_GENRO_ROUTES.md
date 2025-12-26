@@ -30,6 +30,13 @@ The "Magic Mapping" technique (dynamic registration) transforms `genro-routes` i
 *   **Live Exploration**: It enables the creation of interactive playgrounds (like Swagger UI) for any library without writing a single line of manual documentation code.
 *   **Bridge to Non-Python Devs**: It allows developers who don't know Python to explore and understand the capabilities of a Python library through a standard API interface.
 
+## 7. LLM Context and MCP Integration (The AI Bridge)
+This is perhaps the most futuristic use case: using `genro-routes` as a bridge for **Model Context Protocol (MCP)**.
+*   **Structured Context**: LLMs need structured context to understand what they can "do" with a library. `genro-routes` provides this structure through `nodes()`.
+*   **Tool Definition**: An MCP server could use `genro-routes` to automatically generate tool definitions for an LLM. Every route becomes a tool.
+*   **Safe Execution**: The built-in Pydantic validation ensures that the LLM sends correctly typed arguments, preventing common "hallucination" errors in function calling.
+*   **Discovery**: An LLM can "explore" a large library by navigating the router hierarchy, discovering only the tools relevant to the current task.
+
 ---
 
 **Summary**: Use a pure library when writing a local script. Use **Genro-Routes + Library** when you want to offer that functionality as a **reliable, secure, and documented infrastructure asset** to your entire team.
