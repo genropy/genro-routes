@@ -1,6 +1,6 @@
 # Hierarchical Routers
 
-Build complex routing structures with nested routers, dotted path navigation, and automatic plugin inheritance.
+Build complex routing structures with nested routers, path-based navigation, and automatic plugin inheritance.
 
 ## Overview
 
@@ -415,11 +415,11 @@ result = app.service.api.node("process")()
 - Plugin order: parent plugins -> child plugins
 - Configuration inherits but can be overridden
 
-## Dotted Path Navigation
+## Path Navigation
 
 <!-- test: test_router_edge_cases.py::test_routed_proxy_get_router_handles_dotted_path -->
 
-Navigate hierarchy with dotted paths via `routing.get_router()`:
+Navigate hierarchy with path separator `/` via `routing.get_router()`:
 
 ```python
 class Child(RoutingClass):
@@ -494,8 +494,6 @@ sub_expanded = lazy["routers"]["sub"]()  # Expand on demand
 ```python
 # Generate OpenAPI schema for the hierarchy
 schema = insp.api.nodes(mode="openapi")
-# Or use the shortcut
-schema = insp.api.openapi()
 ```
 
 **Introspection provides**:
@@ -511,7 +509,7 @@ schema = insp.api.openapi()
 
 <!-- test: test_router_basic.py::TestDefaultEntryWithPartial -->
 
-When using `partial=True`, routers can handle paths that don't fully resolve by delegating to a `default_entry` handler:
+Routers can handle paths that don't fully resolve by delegating to a `default_entry` handler (best-match resolution):
 
 ```python
 class FileService(RoutingClass):
@@ -534,8 +532,7 @@ app = Application()
 # Path "files/docs/readme.md" - "files" is a child router,
 # "docs/readme.md" doesn't exist, so best-match resolution uses default_entry
 node = app.api.node("files/docs/readme.md")
-# node.callable is: functools.partial(files.index, "docs", "readme.md")
-# node.partial_args is: ["docs", "readme.md"]
+# node.extra_args is: ["docs", "readme.md"]
 assert node() == "File: docs/readme.md"
 ```
 
@@ -571,11 +568,11 @@ assert node.name == "api"  # router name
 assert node.path == ""
 
 # If default_entry exists, it's callable
-assert node.callable is not None
+assert node.is_callable
 assert node() == "home"
 ```
 
-If no `default_entry` exists, `node.callable` is `None` and calling raises `NotFound`.
+If no `default_entry` exists, `node.is_callable` is `False` and calling raises `NotFound`.
 
 **Custom `default_entry`**:
 

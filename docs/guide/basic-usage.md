@@ -339,10 +339,9 @@ class FileServer(RoutingClass):
 server = FileServer()
 
 # node() uses best-match resolution - when path can't be fully resolved,
-# unconsumed segments become arguments via functools.partial
+# unconsumed segments become arguments
 node = server.api.node("docs/api/reference")
-# node.callable is: functools.partial(server.serve, "docs", "api", "reference")
-# node.partial_args is: ["docs", "api", "reference"]
+# node.extra_args is: ["docs", "api", "reference"]
 assert node() == "Serving: docs/api/reference"
 ```
 
@@ -350,8 +349,8 @@ assert node() == "Serving: docs/api/reference"
 
 - `default_entry` specifies which handler to use for unresolved paths (default: `"index"`)
 - Best-match resolution walks the path as far as possible
-- Unconsumed path segments are passed as positional arguments via `functools.partial`
-- Access unconsumed segments via `node.partial_args`
+- Unconsumed path segments are available via `node.extra_args` (positional) or `node.partial_kwargs` (named)
+- Access unconsumed segments via `node.extra_args`
 - If `default_entry` handler doesn't exist, returns empty `RouterNode`
 
 **Use cases**:
@@ -364,7 +363,7 @@ assert node() == "Serving: docs/api/reference"
 
 <!-- test: test_router_basic.py::test_dotted_path_and_nodes_with_attached_child -->
 
-Create nested router structures with dotted path access:
+Create nested router structures with path-based access:
 
 ```python
 class SubService(RoutingClass):
@@ -450,8 +449,6 @@ sub_expanded = lazy_info["routers"]["sub"]()  # Expand on demand
 ```python
 # Generate OpenAPI schema
 schema = insp.api.nodes(mode="openapi")
-# Or use the shortcut method
-schema = insp.api.openapi()
 ```
 
 **Use `nodes()` to**:

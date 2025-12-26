@@ -291,7 +291,7 @@ def wrap_handler(self, router, entry, call_next):
     return wrapper
 ```
 
-### allow_entry(router, entry, **filters)
+### allow_entry(entry, **filters)
 
 Control handler visibility during introspection (`nodes()`).
 
@@ -303,7 +303,6 @@ The plugin receives all filter arguments passed to `nodes(**filters)` and is res
 
 **Parameters**:
 
-- `router` - The Router instance
 - `entry` - MethodEntry being checked
 - `**filters` - All filter criteria passed to `nodes()`. The plugin decides which filters to handle and how to interpret them.
 
@@ -312,7 +311,7 @@ The plugin receives all filter arguments passed to `nodes(**filters)` and is res
 **Example**:
 
 ```python
-def allow_entry(self, router, entry, visibility=None, **filters):
+def allow_entry(self, entry, visibility=None, **filters):
     # Plugin interprets 'visibility' filter against entry metadata
     if visibility:
         entry_visibility = entry.metadata.get("visibility", "public")

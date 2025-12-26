@@ -34,13 +34,12 @@ The routing logic lives in your application objects - the transport adapter (lik
 ## Key Features
 
 - **Instance-scoped routers** - Every object gets an isolated router with its own plugin stack
-- **Hierarchical organization** - Build router trees with `attach_instance()` and dotted path traversal
+- **Hierarchical organization** - Build router trees with `attach_instance()` and `/` path traversal
 - **Composable plugins** - Hook into decoration and handler execution with `BasePlugin`
 - **Plugin inheritance** - Plugins propagate automatically from parent to child routers
 - **Flexible registration** - Use `@route` decorator with prefixes, metadata, and explicit names
 - **Runtime configuration** - Configure plugins with `routing.configure()` using target syntax
-- **SmartAsync support** - Optional integration with async execution
-- **100% test coverage** - Comprehensive test suite
+- **90% test coverage** - Comprehensive test suite with 191 tests
 
 ## Quick Example
 

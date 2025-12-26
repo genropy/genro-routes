@@ -20,7 +20,7 @@ graph TD
 
 - Hierarchies are only via `attach_instance`/`detach_instance` (instance-to-instance).
 - Branch routers (`branch=True`) exist but do not auto-discover handlers.
-- `default_entry` (default: `"index"`) specifies which handler to use for catch-all routing with `partial=True`.
+- `default_entry` (default: `"index"`) specifies which handler to use for catch-all routing (best-match resolution).
 - Introspection: `nodes()` is the sole API; it returns router/instance, handlers (with metadata, doc, signature, plugins, params), children, and `plugin_info`.
 
 ## Plugin store

@@ -123,7 +123,7 @@ assert root.api.node("products/detail")(5) == "products:detail:5"
 
 [From test](https://github.com/genropy/genro-routes/blob/main/tests/test_router_basic.py#L159-L167)
 
-Extend behavior with plugins. Built-in plugins (`logging`, `pydantic`) are pre-registered.
+Extend behavior with plugins. Built-in plugins (`logging`, `pydantic`, `auth`, `env`, `openapi`) are pre-registered.
 
 ```python
 class PluginService(RoutingClass):

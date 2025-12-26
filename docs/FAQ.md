@@ -322,7 +322,7 @@ class AuditPlugin(BasePlugin):
         return wrapper
 
 # Register and use
-Router.register_plugin("audit", AuditPlugin)
+Router.register_plugin(AuditPlugin)
 router = Router(self, name="api").plug("audit")
 ```
 
@@ -404,12 +404,12 @@ node.name     # router name
 node.path     # ""
 
 # If default_entry exists
-node.callable  # the handler
-node()         # calls default_entry
+node.is_callable  # True
+node()            # calls default_entry
 
 # If no default_entry
-node.callable  # None
-node()         # raises NotFound
+node.is_callable  # False
+node()            # raises NotFound
 ```
 
 ### How do I introspect the structure?
@@ -438,12 +438,10 @@ nodes = router.nodes()
 # }
 
 # With filters (using AuthPlugin)
-admin_only = router.nodes(tags="admin")
+admin_only = router.nodes(auth_tags="admin")
 
 # Generate OpenAPI schema
 schema = router.nodes(mode="openapi")
-# Or use the shortcut
-schema = router.openapi()
 ```
 
 **`nodes()` parameters**:
