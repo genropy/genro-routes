@@ -191,9 +191,9 @@ genro-routes/
 
 ## Project Status
 
-Genro Routes is currently in **beta** (v0.10.0). The core API is stable with complete documentation.
+Genro Routes is currently in **beta** (v0.11.0). The core API is stable with complete documentation.
 
-- **Test Coverage**: 90% (191 tests)
+- **Test Coverage**: 92% (201 tests)
 - **Python Support**: 3.10, 3.11, 3.12, 3.13
 - **License**: Apache 2.0
 

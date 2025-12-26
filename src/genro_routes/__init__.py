@@ -28,7 +28,7 @@ Example::
 
 from importlib import import_module
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 from .core import Router, RouterInterface, RoutingClass, RoutingContext, route
 from .core.router_node import RouterNode

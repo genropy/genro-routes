@@ -23,6 +23,13 @@ The utility of `genro-routes` emerges when you look at the **system architecture
 ## 5. Technical Decoupling (The Contract)
 If you decide to switch the underlying implementation (e.g., swapping `Pygments` for a faster Rust-based highlighter), you only change the internal code of your handler. For everyone else in the organization, the endpoint `api/highlighter/html` remains identical. **You have created a stable contract, not just a function call.**
 
+## 6. Automated Documentation at Scale (The "Magic" Pattern)
+The "Magic Mapping" technique (dynamic registration) transforms `genro-routes` into a powerful **Documentation Engine**:
+*   **Discovery**: It turns an opaque Python object into a transparent, navigable tree.
+*   **Standardization**: Every method, docstring, and signature is harvested and translated into standardized formats like **OpenAPI**.
+*   **Live Exploration**: It enables the creation of interactive playgrounds (like Swagger UI) for any library without writing a single line of manual documentation code.
+*   **Bridge to Non-Python Devs**: It allows developers who don't know Python to explore and understand the capabilities of a Python library through a standard API interface.
+
 ---
 
 **Summary**: Use a pure library when writing a local script. Use **Genro-Routes + Library** when you want to offer that functionality as a **reliable, secure, and documented infrastructure asset** to your entire team.

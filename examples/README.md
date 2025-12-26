@@ -25,6 +25,9 @@ Shows how to use the `AuthPlugin` to protect endpoints with role-based access co
 ### 6. Service Composition (`service_composition.py`)
 Demonstrates building large apps by composing multiple independent modules into a single hierarchy.
 
+### 7. Self-Documentation (`self_documentation.py`)
+A meta-example where **genro-routes documents itself**. It uses magic mapping to expose its own internal `Router` API, demonstrating how the library can be used as a management and introspection layer for any complex Python system.
+
 ## Running the Examples
 
 Ensure you have `faker` installed:

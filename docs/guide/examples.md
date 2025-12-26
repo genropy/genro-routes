@@ -36,6 +36,10 @@ A deep dive into the `AuthPlugin`. Shows how to protect specific nodes with role
 One of the most powerful features of the library. Shows how to build a large application by mounting independent `RoutingClass` modules (like "Billing" and "Inventory") into a single, unified hierarchical tree.
 - **Source**: [examples/service_composition.py](https://github.com/genropy/genro-routes/blob/main/examples/service_composition.py)
 
+### 7. Self-Documentation (Meta-Example)
+The ultimate demonstration of dynamic mapping: **genro-routes documenting itself**. Exposes the internal `Router` API as a service, showing how to use the library as a transparent management layer for existing codebases.
+- **Source**: [examples/self_documentation.py](https://github.com/genropy/genro-routes/blob/main/examples/self_documentation.py)
+
 ---
 
 ## Running the Examples
