@@ -19,8 +19,8 @@ Example::
             return {"id": user_id, "name": name}
 
     svc = MyService()
-    svc.api.call("get_user", user_id=123)  # OK
-    svc.api.call("get_user", user_id="not_an_int")  # ValidationError
+    svc.api.node("get_user")(user_id=123)  # OK
+    svc.api.node("get_user")(user_id="not_an_int")  # ValidationError
 
 Configuration::
 

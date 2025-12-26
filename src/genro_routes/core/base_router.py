@@ -18,7 +18,7 @@ Constructor signature::
   Included in ``nodes()`` output for documentation/introspection.
 - ``default_entry``: the fallback entry name (default: "index") used when a path
   cannot be fully resolved. The router returns this entry with unconsumed path
-  segments available in ``partial_args``.
+  segments available in ``partial_kwargs`` or ``extra_args``.
 - ``parent_router``: optional parent router. When provided, this router is
   automatically attached as a child using ``name`` as the alias. Requires
   ``name`` to be set; raises ``ValueError`` on name collision.
@@ -48,8 +48,8 @@ Lookup and execution
 - ``node(path, **kwargs)`` resolves ``path`` using best-match resolution.
   Returns a ``RouterNode`` wrapper that is callable. The RouterNode contains
   metadata about the resolved entry and any unconsumed path segments in
-  ``partial_args``. If the path cannot be resolved, an empty RouterNode is
-  returned (evaluates to False).
+  ``partial_kwargs`` or ``extra_args``. If the path cannot be resolved, an
+  empty RouterNode is returned (evaluates to False).
 
 Children (instance hierarchies)
 -------------------------------
@@ -561,6 +561,14 @@ class BaseRouter(RouterInterface):
         if getattr(routing_child, "_routing_parent", None) is self.instance:
             object.__setattr__(routing_child, "_routing_parent", None)
 
+        # Clean up plugin children references to avoid memory leaks
+        plugin_children = getattr(self, "_plugin_children", None)
+        if plugin_children is not None:
+            for plugin_name, children_list in list(plugin_children.items()):
+                plugin_children[plugin_name] = [
+                    r for r in children_list if r.instance is not routing_child
+                ]
+
         # No hard error if nothing was removed; detach is best-effort.
         return routing_child  # type: ignore[no-any-return]
 
@@ -784,19 +792,18 @@ class BaseRouter(RouterInterface):
                 - ``type``: "entry"
                 - ``name``: Entry name
                 - ``path``: Full path to this entry
-                - ``callable``: The handler
                 - ``doc``: Entry docstring
                 - ``metadata``: Entry metadata
                 - ``partial_kwargs``: Dict mapping parameter names to path values
                 - ``extra_args``: List of extra path segments (for *args handlers)
-                - ``varargs_required``: True if extra_args present but *args not accepted
 
             The RouterNode is callable::
 
                 node = router.node("my_handler")
                 result = node()  # Invoke the handler
 
-            Calling a RouterNode with ``varargs_required=True`` raises the 'not_found' exception.
+            If extra path segments exist but the handler doesn't accept *args,
+            the node evaluates to False (no valid entry).
             Calling a RouterNode that is not authorized raises the 'not_authorized' exception.
         """
         # Find candidate node (pure path resolution)

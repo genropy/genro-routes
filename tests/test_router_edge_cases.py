@@ -557,6 +557,9 @@ def test_builtin_plugins_registered():
     available = Router.available_plugins()
     assert "logging" in available
     assert "pydantic" in available
+    assert "auth" in available
+    assert "env" in available
+    assert "openapi" in available
 
 
 def test_register_plugin_validates():

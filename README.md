@@ -46,7 +46,7 @@ This separation enables:
 3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutingClass instances with path access (`parent.api.node("child/method")`).
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
 5. **Runtime configuration** - `routing.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
-6. **Built-in plugins** - `logging`, `pydantic`, and `auth` plugins are included; SmartAsync wrapping is opt-in.
+6. **Built-in plugins** - `logging`, `pydantic`, `auth`, `env`, and `openapi` plugins are included; SmartAsync wrapping is opt-in.
 7. **Full coverage** - The package ships with a comprehensive test suite and no hidden compatibility layers.
 
 ## Quick Example

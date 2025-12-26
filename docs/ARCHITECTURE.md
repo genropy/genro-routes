@@ -32,11 +32,9 @@ classDiagram
   class Router {
     _plugin_info: dict
     plug(name, **config)
-    get_config(plugin, method?)
   }
   class PluginInfo {
     config: dict
-    handlers: dict<method, dict>
     locals: dict
   }
   Router --> "1" PluginInfo : plugin code key
@@ -139,22 +137,25 @@ def on_parent_config_changed(
 - If equal (child was following parent) → update to `new_config`
 - If different (child made own choices) → ignore the change
 
-### Rule-Based Plugins (No Inheritance)
-
-`AuthPlugin` and `EnvPlugin` do **not** inherit configuration from parent routers.
-Each router and entry defines its own rule independently.
-
-This is intentional: rules are boolean expressions that would require complex
-merging logic (AND vs OR) and the semantics are not always clear. Instead,
-each entry explicitly declares its own access requirements.
-
 ### Plugin API
+
 - `BasePlugin` requires `plugin_code` and `plugin_description` class attributes.
 - `configure(**config)` method defines accepted parameters (validated by Pydantic).
-- `get_config`, `set_config`, `set_method_config` read/write the router store.
-- `configuration` property returns a proxy for fluent access.
-- Per-handler config via `plugin.configuration["handler"].key = value`.
+  - Use `_target` parameter to target specific entries: `configure(_target="handler_name", ...)`
+  - Use `_target="_all_"` (default) for router-level config
+- `configuration(method_name=None)` method returns merged config (base + per-handler override).
 - Plugins should read config at call time (no baked-in closures) so live updates apply without rebuild.
+
+### Plugin Inheritance Behavior
+
+By default, `BasePlugin.on_attached_to_parent()` copies parent's `_all_` config to child
+if the child only has default config (`{"enabled": True}`). This means:
+
+- **LoggingPlugin, PydanticPlugin, OpenAPIPlugin**: Inherit config from parent by default
+- **AuthPlugin, EnvPlugin**: Also inherit by default (they don't override `on_attached_to_parent`)
+
+Note: Rule-based plugins like AuthPlugin and EnvPlugin inherit the plugin instance,
+but each entry defines its own rule via decorators (`auth_rule`, `env_requires`).
 
 ## Introspection data (`nodes`)
 

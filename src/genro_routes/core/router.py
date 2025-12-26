@@ -230,17 +230,33 @@ class Router(BaseRouter):
         entry.setdefault("locals", {})["enabled"] = bool(enabled)
 
     def is_plugin_enabled(self, method_name: str, plugin_name: str) -> bool:
-        """Check if a plugin is enabled for a specific handler."""
+        """Check if a plugin is enabled for a specific handler.
+
+        Resolution order (first found wins):
+        1. entry locals (runtime override via set_plugin_enabled)
+        2. entry config (static via configure(_target=method_name, enabled=...))
+        3. global locals (runtime override via set_plugin_enabled for _all_)
+        4. global config (static via configure(enabled=...))
+        5. default: True
+        """
         bucket = self._get_plugin_bucket(plugin_name, create=False)
         if bucket is None:
             raise AttributeError(
                 f"No plugin named '{plugin_name}' attached to router '{self.name}'"
             )
-        entry_locals = bucket.get(method_name, {}).get("locals", {})
-        if "enabled" in entry_locals:
-            return bool(entry_locals["enabled"])
-        base_locals = bucket.get("_all_", {}).get("locals", {})
-        return bool(base_locals.get("enabled", True))
+        # Check entry-level first
+        entry_data = bucket.get(method_name, {})
+        if "enabled" in entry_data.get("locals", {}):
+            return bool(entry_data["locals"]["enabled"])
+        if "enabled" in entry_data.get("config", {}):
+            return bool(entry_data["config"]["enabled"])
+        # Then check global (_all_)
+        base_data = bucket.get("_all_", {})
+        if "enabled" in base_data.get("locals", {}):
+            return bool(base_data["locals"]["enabled"])
+        if "enabled" in base_data.get("config", {}):
+            return bool(base_data["config"]["enabled"])
+        return True
 
     def set_runtime_data(self, method_name: str, plugin_name: str, key: str, value: Any) -> None:
         """Set runtime data for a plugin/handler combination."""

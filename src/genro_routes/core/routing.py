@@ -16,7 +16,7 @@ _RoutingProxy
 Bound to the owning ``RoutingClass`` instance.
 
 Router lookup:
-    - ``get_router(name, path=None)`` splits combined specs (``foo.bar``) into
+    - ``get_router(name, path=None)`` splits combined specs (``foo/bar``) into
       base router + child path. Raises ``AttributeError`` if no router is found.
 
 Configuration entrypoint:

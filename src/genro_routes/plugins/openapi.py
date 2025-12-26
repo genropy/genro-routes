@@ -21,7 +21,7 @@ Example::
         def __init__(self):
             self.api = Router(self, name="api").plug("openapi")
 
-        # Method will be guessed as GET (scalar params only)
+        # Method will be guessed as POST (has parameters)
         @route("api")
         def get_item(self, item_id: int) -> dict:
             return {"id": item_id}

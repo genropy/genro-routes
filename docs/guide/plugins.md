@@ -15,7 +15,7 @@ Plugins in Genro Routes:
 
 ## Built-in Plugins
 
-Genro Routes includes two production-ready plugins:
+Genro Routes includes five production-ready plugins:
 
 **LoggingPlugin** (`logging`):
 
@@ -48,6 +48,53 @@ class ValidatedService(RoutingClass):
 svc = ValidatedService()
 svc.api.node("concat")("hello", 3)  # Valid
 # svc.api.node("concat")(123, "oops")  # ValidationError
+```
+
+**AuthPlugin** (`auth`):
+
+```python
+class SecureService(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("auth")
+
+    @route("api", auth_rule="admin")
+    def admin_only(self):
+        return "secret"
+
+svc = SecureService()
+node = svc.api.node("admin_only", auth_tags="admin")  # Authorized
+node = svc.api.node("admin_only", auth_tags="guest")  # Not authorized
+```
+
+**EnvPlugin** (`env`):
+
+```python
+class CapabilityService(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("env")
+        self.capabilities = {"redis"}  # Instance capabilities
+
+    @route("api", env_requires="redis")
+    def cached_action(self):
+        return "cached"
+
+svc = CapabilityService()
+entries = svc.api.nodes().get("entries", {})  # "cached_action" visible
+```
+
+**OpenAPIPlugin** (`openapi`):
+
+```python
+class APIService(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("openapi")
+
+    @route("api", openapi_method="post", openapi_tags="users")
+    def create_user(self, name: str) -> dict:
+        return {"name": name}
+
+svc = APIService()
+# Plugin provides OpenAPI metadata for documentation generation
 ```
 
 See [Quick Start - Plugins](../quickstart.md#adding-plugins) for more examples.
@@ -260,7 +307,7 @@ The plugin receives all filter arguments passed to `nodes(**filters)` and is res
 - `entry` - MethodEntry being checked
 - `**filters` - All filter criteria passed to `nodes()`. The plugin decides which filters to handle and how to interpret them.
 
-**Returns**: `True` to include, `False` to exclude, `None` to defer to other plugins
+**Returns**: `True` to allow, `False` or error string to deny (e.g., `"not_authorized"`, `"not_available"`)
 
 **Example**:
 
@@ -269,8 +316,9 @@ def allow_entry(self, router, entry, visibility=None, **filters):
     # Plugin interprets 'visibility' filter against entry metadata
     if visibility:
         entry_visibility = entry.metadata.get("visibility", "public")
-        return entry_visibility == visibility
-    return None  # no filter applied, defer to other plugins
+        if entry_visibility != visibility:
+            return "not_visible"  # deny with reason
+    return True  # no objection
 ```
 
 ### entry_metadata(router, entry)

@@ -29,7 +29,7 @@ Objects
         - ``configuration(method_name=None)``: Read merged configuration
         - ``on_decore(router, func, entry)``: Called when handler is registered
         - ``wrap_handler(router, entry, call_next)``: Build middleware chain
-        - ``allow_entry(router, entry, **filters)``: Control handler visibility
+        - ``allow_entry(entry, **filters)``: Control handler visibility
         - ``entry_metadata(router, entry)``: Provide plugin-specific metadata
 
 Example::

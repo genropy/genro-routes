@@ -22,20 +22,6 @@ from genro_routes import RoutingClass, Router
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
 
 
-class _FilterPlugin(BasePlugin):
-    plugin_code = "filtertest"
-    plugin_description = "Filter test plugin"
-
-    def __init__(self, router, **config):
-        super().__init__(router, **config)
-        self.calls: list[dict] = []
-
-    def allow_node(self, node, **filters):
-        self.calls.append(filters)
-        # Hide when custom filter is present, otherwise keep entry visible.
-        return not filters.get("hide", False)
-
-
 class _BadMetadataPlugin(BasePlugin):
     plugin_code = "badmetadata"
     plugin_description = "Bad metadata test plugin"

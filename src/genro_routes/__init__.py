@@ -10,7 +10,8 @@ Public exports:
     - ``route``: Decorator for marking methods as route handlers
 
 Plugin registration happens lazily via ``import_module`` to avoid cycles.
-Built-in plugins (logging, pydantic) are auto-registered on first import.
+Built-in plugins (logging, pydantic, auth, env, openapi) are auto-registered
+on first import.
 
 Example::
 

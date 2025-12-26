@@ -105,7 +105,9 @@ def test_logging_plugin_respects_runtime_config_toggle():
     # Disable "before" and keep "after" via flags.
     svc.api.logging.configure(flags="before:off,after:on")
     svc.api.node("ping")()
-    assert records and records == ["ping end (0.00 ms)"]
+    # Check format: "ping end (X.XX ms)" - timing varies so we check pattern
+    assert len(records) == 1
+    assert records[0].startswith("ping end (") and records[0].endswith(" ms)")
 
 
 def test_logging_plugin_print_sink_overrides_logger(capsys):
@@ -133,3 +135,108 @@ def test_logging_plugin_print_sink_overrides_logger(capsys):
     captured = capsys.readouterr()
     assert records == []
     assert "hello start" in captured.out and "hello end" in captured.out
+
+
+def test_configure_enabled_false_disables_plugin():
+    """Test that configure(enabled=False) actually disables the plugin (issue #8)."""
+    records = []
+
+    class DummyLogger:
+        def has_handlers(self):
+            return True
+
+        def info(self, message):
+            records.append(message)
+
+    class Service(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+            self.api.logging._logger = DummyLogger()  # type: ignore[attr-defined]
+
+        @route("api")
+        def hello(self):
+            return "hi"
+
+    svc = Service()
+
+    # First call - logging should fire
+    svc.api.node("hello")()
+    assert len(records) == 2  # start + end
+
+    # Disable via configure
+    svc.api.logging.configure(enabled=False)
+
+    # Second call - logging should be disabled
+    records.clear()
+    svc.api.node("hello")()
+    assert records == []  # No logging because plugin is disabled
+
+
+def test_configure_enabled_per_handler():
+    """Test that configure(_target=handler, enabled=False) disables only that handler."""
+    records = []
+
+    class DummyLogger:
+        def has_handlers(self):
+            return True
+
+        def info(self, message):
+            records.append(message)
+
+    class Service(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+            self.api.logging._logger = DummyLogger()  # type: ignore[attr-defined]
+
+        @route("api")
+        def hello(self):
+            return "hi"
+
+        @route("api")
+        def world(self):
+            return "world"
+
+    svc = Service()
+
+    # Disable only 'hello' via configure
+    svc.api.logging.configure(_target="hello", enabled=False)
+
+    # Call hello - should NOT log
+    svc.api.node("hello")()
+    assert records == []
+
+    # Call world - SHOULD log
+    svc.api.node("world")()
+    assert len(records) == 2  # start + end
+
+
+def test_set_plugin_enabled_overrides_configure():
+    """Test that set_plugin_enabled (locals) overrides configure (config)."""
+    records = []
+
+    class DummyLogger:
+        def has_handlers(self):
+            return True
+
+        def info(self, message):
+            records.append(message)
+
+    class Service(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+            self.api.logging._logger = DummyLogger()  # type: ignore[attr-defined]
+
+        @route("api")
+        def hello(self):
+            return "hi"
+
+    svc = Service()
+
+    # Disable via configure (config)
+    svc.api.logging.configure(enabled=False)
+
+    # But re-enable via set_plugin_enabled (locals) - should take precedence
+    svc.api.set_plugin_enabled("hello", "logging", True)
+
+    svc.api.node("hello")()
+    assert len(records) == 2  # Logging fires because locals override config

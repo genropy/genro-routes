@@ -236,17 +236,18 @@ assert missing == {}  # Empty RouterNode equals empty dict
 
 **Note**: `node()` can also return a child router if the path points to one (see [Hierarchies](hierarchies.md)).
 
-## Exceptions: NotFound and NotAuthorized
+## Exceptions: NotFound, NotAuthorized, NotAvailable
 
 <!-- test: test_auth_plugin.py::TestNodeWithFilters -->
 
-Genro Routes provides two exceptions for handling routing errors:
+Genro Routes provides exceptions for handling routing errors:
 
 ```python
-from genro_routes import NotFound, NotAuthorized, UNAUTHORIZED
+from genro_routes import NotFound, NotAuthorized, NotAvailable
 
 # NotFound - raised when calling node() on non-existent entry
-# NotAuthorized - raised when entry exists but access is denied by filters
+# NotAuthorized - raised when entry exists but auth tags don't match
+# NotAvailable - raised when entry exists but capabilities are missing
 ```
 
 **Using `node()` with filters**:
@@ -268,15 +269,16 @@ class SecureAPI(RoutingClass):
 
 api = SecureAPI()
 
-# Entry exists and tag matches - node is authorized
+# Entry exists and tag matches - node is callable
 node = api.api.node("admin_action", auth_tags="admin")
-assert node.is_authorized
+assert node.is_callable
 assert node() == "admin only"
 
-# Entry exists but tag doesn't match - node exists but is not authorized
+# Entry exists but tag doesn't match - node exists but is not callable
 node = api.api.node("admin_action", auth_tags="public")
 assert node  # Node exists
-assert not node.is_authorized  # But not authorized
+assert not node.is_callable  # But not callable
+assert node.error == "not_authorized"  # Error reason
 # Calling raises NotAuthorized
 try:
     node()
@@ -298,23 +300,23 @@ except NotFound as e:
 - `selector`: The path that was requested
 - `router_name`: The router where the error occurred
 
-**RouterNode authorization**:
+**RouterNode properties**:
 
-- `node.is_authorized`: Returns `True` if callable is not `UNAUTHORIZED`
-- Calling an unauthorized node raises `NotAuthorized`
-- Calling a non-existent node raises `NotFound`
+- `node.is_callable`: Returns `True` if node can be called without error
+- `node.error`: Error code string (e.g., `"not_authorized"`, `"not_available"`) or `None`
+- Calling a node with error raises the appropriate exception
 
-**Best-match resolution with partial_args**:
+**Best-match resolution with extra_args**:
 
-The `node()` method uses best-match resolution - it walks the path as far as possible and returns unconsumed segments in `partial_args`:
+The `node()` method uses best-match resolution - it walks the path as far as possible and returns unconsumed segments in `extra_args` and `partial_kwargs`:
 
 ```python
 node = router.node("unknown/path")
 # Returns RouterNode with:
 #     type: "entry"
 #     name: "index"  # default_entry handler
-#     callable: functools.partial(handler, "unknown", "path")
-#     partial_args: ["unknown", "path"]
+#     extra_args: ["unknown", "path"]  # positional args
+#     partial_kwargs: {}  # keyword args from path segments
 result = node()  # calls handler("unknown", "path")
 ```
 

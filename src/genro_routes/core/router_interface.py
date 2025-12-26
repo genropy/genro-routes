@@ -53,7 +53,7 @@ class RouterInterface(ABC):
             - Empty RouterNode if path cannot be resolved
 
             The RouterNode is callable for entries. Unconsumed path segments
-            are available in partial_args.
+            are available in ``partial_kwargs`` (named) or ``extra_args`` (positional).
         """
         ...
 
