@@ -51,7 +51,24 @@ from .context import RoutingContext
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from .router import Router
 
-__all__ = ["RoutingClass", "is_routing_class"]
+__all__ = ["RoutingClass", "ResultWrapper", "is_routing_class", "is_result_wrapper"]
+
+
+class ResultWrapper:
+    """Wrapper for handler results with additional metadata.
+
+    Allows handlers to return results with metadata (e.g., mime_type)
+    that the dispatcher can use when building the response.
+
+    Usage in handlers:
+        return self.result_wrapper(content, mime_type="text/html")
+    """
+
+    __slots__ = ("value", "metadata")
+
+    def __init__(self, value: Any, metadata: dict[str, Any]) -> None:
+        self.value = value
+        self.metadata = metadata
 
 _PROXY_ATTR_NAME = "__routing_proxy__"
 
@@ -241,6 +258,27 @@ class RoutingClass:
             raise TypeError(f"capabilities must be a CapabilitiesSet instance, got {type(value).__name__}")
         object.__setattr__(self, "_capabilities", value)
 
+    def result_wrapper(self, value: Any, **metadata: Any) -> ResultWrapper:
+        """Wrap a handler result with metadata.
+
+        Use this when a handler needs to return additional metadata
+        (e.g., mime_type) along with the result value.
+
+        Args:
+            value: The actual result to return.
+            **metadata: Key-value pairs of metadata (e.g., mime_type="text/html").
+
+        Returns:
+            A ResultWrapper instance containing value and metadata.
+
+        Example:
+            @route("root")
+            def _resource(self, name: str):
+                content, mime_type = self.load_resource(name)
+                return self.result_wrapper(content, mime_type=mime_type)
+        """
+        return ResultWrapper(value, metadata)
+
 
 class _RoutingProxy:
     """Proxy for accessing and configuring routers on a RoutingClass instance."""
@@ -401,3 +439,8 @@ class _RoutingProxy:
 def is_routing_class(obj: Any) -> bool:
     """Return True when ``obj`` is a RoutingClass instance."""
     return safe_is_instance(obj, "genro_routes.core.routing.RoutingClass")  # type: ignore[no-any-return]
+
+
+def is_result_wrapper(obj: Any) -> bool:
+    """Return True when ``obj`` is a ResultWrapper instance."""
+    return isinstance(obj, ResultWrapper)

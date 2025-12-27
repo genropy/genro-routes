@@ -30,7 +30,7 @@ from importlib import import_module
 
 __version__ = "0.11.1"
 
-from .core import Router, RouterInterface, RoutingClass, RoutingContext, route
+from .core import Router, RouterInterface, RoutingClass, RoutingContext, is_result_wrapper, route
 from .core.router_node import RouterNode
 from .exceptions import (
     NotAuthenticated,
@@ -50,6 +50,7 @@ __all__ = [
     "RouterNode",
     "RoutingClass",
     "RoutingContext",
+    "is_result_wrapper",
     "route",
     "NotFound",
     "NotAuthorized",
