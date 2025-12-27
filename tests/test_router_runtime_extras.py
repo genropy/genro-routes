@@ -161,6 +161,36 @@ def test_iter_marked_methods_deduplicate_same_function():
     assert len(info.get("entries", {})) == 1
 
 
+def test_mro_override_derived_wins():
+    """Test that derived class method overrides base class method (issue #11).
+
+    When a subclass overrides a method decorated with @route, the Router should
+    respect Python's MRO and use the overridden method instead of raising
+    ValueError: Handler name collision.
+    """
+
+    class Base(RoutingClass):
+        def __init__(self):
+            self.main = Router(self, name="main")
+
+        @route()
+        def index(self):
+            return "BASE"
+
+    class Derived(Base):
+        @route()
+        def index(self):
+            return "DERIVED"
+
+    # Should not raise ValueError: Handler name collision
+    d = Derived()
+    # Derived.index should be used, not Base.index
+    assert d.main.node("index")() == "DERIVED"
+    # Verify only one entry registered
+    info = d.main.nodes()
+    assert len(info.get("entries", {})) == 1
+
+
 def test_router_node_and_nodes_structure():
     """Test node() and nodes() work correctly."""
     svc = ManualService()

@@ -405,16 +405,24 @@ class BaseRouter(RouterInterface):
             default = self.instance.default_router
             if default is not None:
                 default_router_name = default.name
-        seen: set[int] = set()
-        for base in reversed(cls.__mro__):
+        # Track seen method names to respect MRO (derived class wins)
+        # Track seen function ids to avoid duplicate registration of aliases (alias = original)
+        seen_names: set[str] = set()
+        seen_funcs: set[int] = set()
+        for base in cls.__mro__:
             base_dict = vars(base)
-            for _attr_name, value in base_dict.items():
+            for attr_name, value in base_dict.items():
                 if not inspect.isfunction(value):
                     continue
-                func_id = id(value)
-                if func_id in seen:
+                # Skip if method name already seen (MRO: derived wins)
+                if attr_name in seen_names:
                     continue
-                seen.add(func_id)
+                seen_names.add(attr_name)
+                # Skip if same function already yielded (alias deduplication)
+                func_id = id(value)
+                if func_id in seen_funcs:
+                    continue
+                seen_funcs.add(func_id)
                 markers = getattr(value, "_route_decorator_kw", None)
                 if not markers:
                     continue
