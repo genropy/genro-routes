@@ -261,13 +261,12 @@ class RouterNode:
             Exception mapped to 'validation_error': If pydantic validation fails.
         """
         path = self.path or ""
-        router_name = self._router.name if self._router else None
 
         # Check for error or missing entry
         error_code = self.error or ("not_found" if self._entry is None else None)
         if error_code:
             exc_class = self._exceptions.get(error_code, NotFound)
-            raise exc_class(path, router_name)
+            raise exc_class(path)
 
         filtered_kwargs = {k: v for k, v in kwargs.items() if k not in self.partial_kwargs}
         merged_kwargs = {**self.partial_kwargs, **filtered_kwargs}
@@ -279,7 +278,7 @@ class RouterNode:
             if ValidationError is not None and isinstance(e, ValidationError):
                 custom_exc = self._exceptions.get("validation_error")
                 if custom_exc is not None and custom_exc is not ValidationError:
-                    raise custom_exc(path, router_name) from e
+                    raise custom_exc(path) from e
             raise
 
     def to_dict(self) -> dict[str, Any]:

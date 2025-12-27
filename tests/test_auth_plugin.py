@@ -260,14 +260,12 @@ class TestAuth401vs403:
         from genro_routes import RoutingClass, route
 
         class Custom401(Exception):
-            def __init__(self, path, router_name):
+            def __init__(self, path):
                 self.path = path
-                self.router_name = router_name
 
         class Custom403(Exception):
-            def __init__(self, path, router_name):
+            def __init__(self, path):
                 self.path = path
-                self.router_name = router_name
 
         class Svc(RoutingClass):
             def __init__(self):
