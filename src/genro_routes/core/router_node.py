@@ -143,10 +143,10 @@ class RouterNode:
 
     @property
     def metadata(self) -> dict[str, Any]:
-        """Return entry metadata."""
+        """Return entry metadata (only meta_* kwargs from @route decorator)."""
         if self._entry is None:
             return {}
-        return self._entry.metadata  # type: ignore[return-value, no-any-return]
+        return dict(self._entry.metadata.get("meta", {}))
 
     @property
     def is_entry(self) -> bool:
