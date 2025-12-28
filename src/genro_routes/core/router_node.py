@@ -234,17 +234,5 @@ class RouterNode:
             "partial": self._partial,
         }
 
-    def __eq__(self, other: object) -> bool:
-        """Compare RouterNode with another object."""
-        if isinstance(other, dict):
-            if not self and other == {}:
-                return True
-            return self.to_dict() == other
-        if isinstance(other, RouterNode):
-            return self.to_dict() == other.to_dict()
-        return NotImplemented
-
     def __repr__(self) -> str:
-        if not self:
-            return "RouterNode(empty)"
         return f"RouterNode(path={self.path!r})"

@@ -17,8 +17,8 @@ Constructor signature::
 - ``description``: optional human-readable description of this router's purpose.
   Included in ``nodes()`` output for documentation/introspection.
 - ``default_entry``: the fallback entry name (default: "index") used when a path
-  cannot be fully resolved. The router returns this entry with unconsumed path
-  segments available in ``partial_kwargs`` or ``extra_args``.
+  cannot be fully resolved. The router returns this entry with any unconsumed
+  path segments passed as positional arguments when invoked.
 - ``parent_router``: optional parent router. When provided, this router is
   automatically attached as a child using ``name`` as the alias. Requires
   ``name`` to be set; raises ``ValueError`` on name collision.
@@ -47,9 +47,8 @@ Lookup and execution
 --------------------
 - ``node(path, **kwargs)`` resolves ``path`` using best-match resolution.
   Returns a ``RouterNode`` wrapper that is callable. The RouterNode contains
-  metadata about the resolved entry and any unconsumed path segments in
-  ``partial_kwargs`` or ``extra_args``. If the path cannot be resolved, an
-  empty RouterNode is returned (evaluates to False).
+  metadata about the resolved entry. Unconsumed path segments are passed as
+  positional arguments when the node is invoked.
 
 Children (instance hierarchies)
 -------------------------------
@@ -602,7 +601,8 @@ class BaseRouter(RouterInterface):
             path: Path to resolve (e.g., "entry" or "child/entry/arg1/arg2").
 
         Returns:
-            RouterNode with entry reference, or empty RouterNode if not found.
+            RouterNode with entry reference. If path not found, node.error
+            will be set to "not_found" when permission checks are applied.
         """
         if not path.strip("/"):
             return RouterNode(self, path="")
@@ -767,7 +767,8 @@ class BaseRouter(RouterInterface):
         This method always performs best-match resolution: it walks the path
         as far as possible, tracking the last valid callable node (entry or
         router with default_entry). If the exact path is not found, it falls
-        back to that last valid node with unconsumed path segments in ``partial_kwargs``.
+        back to that last valid node and passes unconsumed path segments as
+        positional arguments when the node is invoked.
 
         The returned RouterNode is callable - invoking it executes the handler.
 

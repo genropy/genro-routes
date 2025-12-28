@@ -44,13 +44,11 @@ class RouterInterface(ABC):
             **kwargs: Implementation-specific options (e.g., filter kwargs).
 
         Returns:
-            RouterNode containing:
-            - Entry info if path resolves to a handler
-            - Router info if path resolves to a child router
-            - Empty RouterNode if path cannot be resolved
+            RouterNode containing entry info if path resolves to a handler,
+            or router info if path resolves to a child router.
 
             The RouterNode is callable for entries. Unconsumed path segments
-            are available in ``partial_kwargs`` (named) or ``extra_args`` (positional).
+            are passed as positional arguments when the node is invoked.
         """
         ...
 

@@ -167,7 +167,7 @@ Genro Routes ships with a comprehensive test suite:
 PYTHONPATH=src pytest --cov=src/genro_routes --cov-report=term-missing
 ```
 
-All examples in documentation are verified by the test suite and linked with test anchors.
+All examples in documentation are verified by the test suite.
 
 ## Repository Structure
 
