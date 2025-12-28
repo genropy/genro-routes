@@ -791,25 +791,19 @@ class BaseRouter(RouterInterface):
             **kwargs: Plugin-prefixed filter kwargs (e.g., auth_tags="x").
 
         Returns:
-            A RouterNode containing node info:
+            A RouterNode with these public properties:
 
-            For an entry:
-                - ``type``: "entry"
-                - ``name``: Entry name
-                - ``path``: Full path to this entry
+                - ``path``: Full path to this node
+                - ``error``: Error code (None if ok, else "not_found", "not_authorized", etc.)
                 - ``doc``: Entry docstring
-                - ``metadata``: Entry metadata
-                - ``partial_kwargs``: Dict mapping parameter names to path values
-                - ``extra_args``: List of extra path segments (for *args handlers)
+                - ``metadata``: Entry metadata dict
 
             The RouterNode is callable::
 
                 node = router.node("my_handler")
                 result = node()  # Invoke the handler
 
-            If extra path segments exist but the handler doesn't accept *args,
-            the node evaluates to False (no valid entry).
-            Calling a RouterNode that is not authorized raises the 'not_authorized' exception.
+            If error is set, calling the node raises the mapped exception.
         """
         # Find candidate node (pure path resolution)
         candidate = self._find_candidate_node(path)
