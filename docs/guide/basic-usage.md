@@ -229,7 +229,7 @@ if missing.error:
 - `node.error` contains error code string (e.g., `"not_found"`) if resolution failed
 - Calling a node with error raises the appropriate exception
 
-**Note**: `node()` can also return a child router if the path points to one (see [Hierarchies](hierarchies.md)).
+**Note**: `node()` always returns a `RouterNode`. If the path points to a child router without specifying an entry, best-match resolution will use the child's `default_entry` (see [Hierarchies](hierarchies.md)).
 
 ## Exceptions: NotFound, NotAuthenticated, NotAuthorized, NotAvailable
 
