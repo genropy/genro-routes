@@ -39,7 +39,7 @@ The routing logic lives in your application objects - the transport adapter (lik
 - **Plugin inheritance** - Plugins propagate automatically from parent to child routers
 - **Flexible registration** - Use `@route` decorator with prefixes, metadata, and explicit names
 - **Runtime configuration** - Configure plugins with `routing.configure()` using target syntax
-- **90% test coverage** - Comprehensive test suite with 191 tests
+- **Comprehensive test suite** - 134 tests covering all features
 
 ## Quick Example
 
@@ -122,9 +122,9 @@ pip install -e ".[all]"
 
 ## Project Status
 
-Genro Routes is currently in **beta** (v0.9.0). The core API is stable with complete documentation.
+Genro Routes is currently in **beta** (v0.12.0). The core API is stable with complete documentation.
 
-- **Test Coverage**: 100%
+- **Test Coverage**: 134 tests
 - **Python Support**: 3.10, 3.11, 3.12, 3.13
 - **License**: Apache 2.0
 

@@ -24,8 +24,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 project = "Genro Routes"
 copyright = "2025, Softwell S.r.l."
 author = "Genropy Team"
-release = "0.9.0"
-version = "0.9"
+release = "0.12.0"
+version = "0.12"
 
 # General configuration
 extensions = [

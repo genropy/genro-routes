@@ -161,7 +161,7 @@ pip install -e ".[all]"
 
 ## Testing
 
-Genro Routes achieves 90% test coverage with 191 comprehensive tests:
+Genro Routes ships with a comprehensive test suite:
 
 ```bash
 PYTHONPATH=src pytest --cov=src/genro_routes --cov-report=term-missing
@@ -185,15 +185,15 @@ genro-routes/
 │       ├── auth.py         # AuthPlugin
 │       ├── env.py          # EnvPlugin
 │       └── openapi.py      # OpenAPIPlugin
-├── tests/                  # Test suite (90% coverage)
+├── tests/                  # Comprehensive test suite
 └── docs/                   # Documentation (Sphinx)
 ```
 
 ## Project Status
 
-Genro Routes is currently in **beta** (v0.11.1). The core API is stable with complete documentation.
+Genro Routes is currently in **beta** (v0.12.0). The core API is stable with complete documentation.
 
-- **Test Coverage**: 92% (201 tests)
+- **Test Coverage**: 134 tests
 - **Python Support**: 3.10, 3.11, 3.12, 3.13
 - **License**: Apache 2.0
 
