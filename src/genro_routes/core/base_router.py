@@ -635,11 +635,7 @@ class BaseRouter(RouterInterface):
                 node_type = "entry"
                 break
 
-        result = RouterNode({
-            "type": node_type,
-            "name": router.name,
-            "partial": parts,
-        }, router)
+        result = RouterNode(router, node_type=node_type, name=router.name, partial=parts)
 
         if node_type == "entry":
             entry_name = head
@@ -786,7 +782,6 @@ class BaseRouter(RouterInterface):
     def node(
         self,
         path: str,
-        mode: str | None = None,
         errors: dict[str, type[Exception]] | None = None,
         **kwargs: Any,
     ) -> RouterNode:
@@ -804,11 +799,6 @@ class BaseRouter(RouterInterface):
 
         Args:
             path: Path to the node (e.g., "entry_name" or "child/grandchild/entry").
-            mode: Output format mode. Supported modes:
-
-                  - None: Standard introspection format.
-                  - "openapi": OpenAPI format for entries.
-
             errors: Optional dict mapping error codes to custom exception classes.
                     Available codes (see ``RouterNode.ERROR_CODES``):
 
@@ -851,15 +841,6 @@ class BaseRouter(RouterInterface):
         candidate = self._find_candidate_node(path)
         candidate.set_custom_exceptions(errors)
         candidate.check_valid(**kwargs)
-
-        # Add openapi info if requested
-        if mode == "openapi" and candidate.valid_entry:
-            from genro_routes.plugins.openapi import OpenAPITranslator
-
-            entry_info = candidate._router._entry_node_info(candidate._entry)  # type: ignore[union-attr]
-            candidate._data["openapi"] = OpenAPITranslator.entry_info_to_openapi(
-                candidate._entry.name, entry_info  # type: ignore[union-attr]
-            )
 
         return candidate
 

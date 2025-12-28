@@ -78,7 +78,6 @@ class RouterNode:
         DEFAULT_EXCEPTIONS["validation_error"] = ValidationError
 
     __slots__ = (
-        "_data",
         "_router",
         "_entry",
         "_exceptions",
@@ -93,29 +92,37 @@ class RouterNode:
 
     def __init__(
         self,
-        data: dict[str, Any],
         router: RouterInterface | None = None,
         errors: dict[str, type[Exception]] | None = None,
+        *,
+        node_type: str | None = None,
+        name: str | None = None,
+        path: str | None = None,
+        partial: list[str] | None = None,
+        entry: Any = None,
     ) -> None:
-        """Initialize RouterNode from a dict.
+        """Initialize RouterNode.
 
         Args:
-            data: Dict containing node information from _find_candidate_node().
             router: Optional reference to the router (for context).
             errors: Optional dict mapping error codes to custom exception classes.
                     Available codes: 'not_found', 'not_authorized', 'not_authenticated',
                     'validation_error'. Custom exceptions override the defaults.
+            node_type: Node type ("entry", "router", or "root").
+            name: Node name.
+            path: Full path to this node.
+            partial: Path segments not yet resolved.
+            entry: Entry object (if this is an entry node).
 
         Example::
 
-            node = RouterNode(data, router, errors={
+            node = RouterNode(router, errors={
                 'not_found': HTTPNotFound,
                 'not_authorized': HTTPForbidden,
-            })
+            }, node_type='entry', name='index')
         """
-        self._data = data
         self._router = router
-        self._entry = data.get("entry")
+        self._entry = entry
 
         self._exceptions: dict[str, type[Exception]] = dict(self.DEFAULT_EXCEPTIONS)
         if errors:
@@ -123,10 +130,10 @@ class RouterNode:
 
         self.error: str | None = None
 
-        self.type: str | None = data.get("type")
-        self.name: str | None = data.get("name")
-        self.path: str | None = data.get("path")
-        self.partial: list[str] = data.get("partial", [])
+        self.type: str | None = node_type
+        self.name: str | None = name
+        self.path: str | None = path
+        self.partial: list[str] = partial if partial is not None else []
         self.partial_kwargs: dict[str, str] = {}
         self.extra_args: list[str] = []
 
@@ -282,17 +289,22 @@ class RouterNode:
             raise
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the original dict data."""
-        return dict(self._data)
+        """Return node data as dict."""
+        return {
+            "type": self.type,
+            "name": self.name,
+            "path": self.path,
+            "partial": self.partial,
+        }
 
     def __eq__(self, other: object) -> bool:
         """Compare RouterNode with another object."""
         if isinstance(other, dict):
             if not self and other == {}:
                 return True
-            return self._data == other
+            return self.to_dict() == other
         if isinstance(other, RouterNode):
-            return self._data == other._data
+            return self.to_dict() == other.to_dict()
         return NotImplemented
 
     def __repr__(self) -> str:
