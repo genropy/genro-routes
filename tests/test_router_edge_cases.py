@@ -264,8 +264,8 @@ def test_attach_instance_multiple_routers_requires_mapping():
     # Auto-mapping when parent has a single router attaches both routers
     parent.api.attach_instance(parent.child)
     # Verify both children are accessible via node()
-    assert parent.api.node("api").type == "router"
-    assert parent.api.node("admin").type == "router"
+    assert not parent.api.node("api").is_entry
+    assert not parent.api.node("admin").is_entry
 
 
 def test_attach_instance_single_child_requires_alias_when_parent_multi():
@@ -284,7 +284,7 @@ def test_attach_instance_single_child_requires_alias_when_parent_multi():
         parent.api.attach_instance(parent.child)
     parent.api.attach_instance(parent.child, name="child_alias")
     # Verify child is accessible via node()
-    assert parent.api.node("child_alias").type == "router"
+    assert not parent.api.node("child_alias").is_entry
 
 
 def test_attach_instance_name_collision():
@@ -376,7 +376,7 @@ def test_attach_instance_rejects_other_parent_when_already_bound():
     # Bind to first parent
     first.api.attach_instance(first.child, name="child")
     # Verify child is attached via node()
-    assert first.api.node("child").type == "router"
+    assert not first.api.node("child").is_entry
 
     # Attempt to bind same child to another parent should fail
     with pytest.raises(ValueError):

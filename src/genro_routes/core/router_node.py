@@ -80,10 +80,9 @@ class RouterNode:
     __slots__ = (
         "_router",
         "_entry",
+        "_entry_name",
         "_exceptions",
         "error",
-        "type",
-        "name",
         "path",
         "partial",
         "partial_kwargs",
@@ -95,11 +94,9 @@ class RouterNode:
         router: RouterInterface | None = None,
         errors: dict[str, type[Exception]] | None = None,
         *,
-        node_type: str | None = None,
-        name: str | None = None,
+        entry_name: str | None = None,
         path: str | None = None,
         partial: list[str] | None = None,
-        entry: Any = None,
     ) -> None:
         """Initialize RouterNode.
 
@@ -108,21 +105,20 @@ class RouterNode:
             errors: Optional dict mapping error codes to custom exception classes.
                     Available codes: 'not_found', 'not_authorized', 'not_authenticated',
                     'validation_error'. Custom exceptions override the defaults.
-            node_type: Node type ("entry", "router", or "root").
-            name: Node name.
+            entry_name: Name of the entry to resolve (if this is an entry node).
             path: Full path to this node.
             partial: Path segments not yet resolved.
-            entry: Entry object (if this is an entry node).
 
         Example::
 
             node = RouterNode(router, errors={
                 'not_found': HTTPNotFound,
                 'not_authorized': HTTPForbidden,
-            }, node_type='entry', name='index')
+            }, entry_name='index')
         """
         self._router = router
-        self._entry = entry
+        self._entry_name: str | None = entry_name
+        self._entry = None
 
         self._exceptions: dict[str, type[Exception]] = dict(self.DEFAULT_EXCEPTIONS)
         if errors:
@@ -130,16 +126,14 @@ class RouterNode:
 
         self.error: str | None = None
 
-        self.type: str | None = node_type
-        self.name: str | None = name
         self.path: str | None = path
         self.partial: list[str] = partial if partial is not None else []
         self.partial_kwargs: dict[str, str] = {}
         self.extra_args: list[str] = []
 
     def __bool__(self) -> bool:
-        """Return True if this node exists (has a type)."""
-        return self.type is not None
+        """Return True if this node exists (has a router)."""
+        return self._router is not None
 
     @property
     def doc(self) -> str:
@@ -158,17 +152,7 @@ class RouterNode:
     @property
     def is_entry(self) -> bool:
         """Return True if this is an entry node."""
-        return self.type == "entry"
-
-    @property
-    def is_router(self) -> bool:
-        """Return True if this is a router node."""
-        return self.type == "router"
-
-    @property
-    def is_root(self) -> bool:
-        """Return True if this is a root node (empty path resolution)."""
-        return self.type == "root"
+        return self._entry_name is not None
 
     @property
     def is_callable(self) -> bool:
@@ -186,8 +170,7 @@ class RouterNode:
         if not entry or not self._assign_partial(entry):
             return
         self._entry = entry
-        self.type = "entry"
-        self.name = entry.name
+        self._entry_name = entry_name
 
     def _assign_partial(self, entry: Any) -> bool:
         """Assign partial path values to kwargs and extra_args.
@@ -280,7 +263,7 @@ class RouterNode:
         all_args = (*self.extra_args, *args)
 
         try:
-            return self._entry.handler(*all_args, **merged_kwargs)  # type: ignore[union-attr]
+            return self._entry.handler(*all_args, **merged_kwargs)  # type: ignore[attr-defined, union-attr]
         except Exception as e:
             if ValidationError is not None and isinstance(e, ValidationError):
                 custom_exc = self._exceptions.get("validation_error")
@@ -291,8 +274,7 @@ class RouterNode:
     def to_dict(self) -> dict[str, Any]:
         """Return node data as dict."""
         return {
-            "type": self.type,
-            "name": self.name,
+            "is_entry": self.is_entry,
             "path": self.path,
             "partial": self.partial,
         }
@@ -310,4 +292,4 @@ class RouterNode:
     def __repr__(self) -> str:
         if not self:
             return "RouterNode(empty)"
-        return f"RouterNode(type={self.type!r}, name={self.name!r}, path={self.path!r})"
+        return f"RouterNode(is_entry={self.is_entry!r}, path={self.path!r})"

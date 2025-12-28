@@ -1238,8 +1238,7 @@ def test_node_returns_entry_info():
     node = svc.api.node("get_item")
 
     assert node  # RouterNode is truthy
-    assert node.type == "entry"
-    assert node.name == "get_item"
+    assert node.is_entry
     assert node.path == "get_item"
     assert node.doc == "Get an item by ID."
     assert node.metadata is not None

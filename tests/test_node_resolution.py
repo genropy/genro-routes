@@ -60,23 +60,20 @@ class TestDirectEntry:
     def test_action_no_partial(self, root):
         """node('action') resolves to root.action entry."""
         node = root.api.node("action")
-        assert node.type == "entry"
-        assert node.name == "action"
+        assert node.is_entry
         assert node.partial == []
         assert node.partial_kwargs == {}
 
     def test_action_with_partial(self, root):
         """node('action/1/2') resolves to root.action with partial args."""
         node = root.api.node("action/1/2")
-        assert node.type == "entry"
-        assert node.name == "action"
+        assert node.is_entry
         assert node.partial_kwargs == {"x": "1", "y": "2"}
 
     def test_index_direct(self, root):
         """node('index') resolves to root.index entry."""
         node = root.api.node("index")
-        assert node.type == "entry"
-        assert node.name == "index"
+        assert node.is_entry
 
 
 class TestDefaultEntry:
@@ -92,8 +89,7 @@ class TestDefaultEntry:
     def test_default_entry_with_matching_partial(self, root):
         """Admin's default_entry accepts optional param."""
         node = root.api.node("admin/zuz")
-        assert node.type == "entry"
-        assert node.name == "index"
+        assert node.is_entry
         assert node.partial_kwargs == {"item_id": "zuz"}
 
 
@@ -103,19 +99,17 @@ class TestChildRouterNavigation:
     def test_child_router_direct(self, root):
         """node('admin') resolves to child router."""
         node = root.api.node("admin")
-        assert node.type == "router"
-        assert node.name == "api"  # AdminService's router name
+        assert not node.is_entry
 
     def test_child_entry(self, root):
         """node('admin/users') resolves to admin.users entry."""
         node = root.api.node("admin/users")
-        assert node.type == "entry"
-        assert node.name == "users"
+        assert node.is_entry
 
     def test_deep_child_router(self, root):
         """node('admin/deep') resolves to deep child router."""
         node = root.api.node("admin/deep")
-        assert node.type == "router"
+        assert not node.is_entry
 
 
 class TestDeepPartialResolution:
@@ -124,16 +118,14 @@ class TestDeepPartialResolution:
     def test_deep_with_varargs(self, root):
         """node('admin/deep/foo/bar') resolves with *args partial."""
         node = root.api.node("admin/deep/foo/bar")
-        assert node.type == "entry"
-        assert node.name == "index"
+        assert node.is_entry
         # 'foo' and 'bar' should be in extra_args since index uses *args
         assert node.extra_args == ["foo", "bar"]
 
     def test_deep_single_arg(self, root):
         """node('admin/deep/single') resolves with one arg."""
         node = root.api.node("admin/deep/single")
-        assert node.type == "entry"
-        assert node.name == "index"
+        assert node.is_entry
         assert node.extra_args == ["single"]
 
 

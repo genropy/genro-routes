@@ -2,6 +2,23 @@
 
 **Parent Document**: This project follows all policies from the central [meta-genro-modules CLAUDE.md](https://github.com/softwellsrl/meta-genro-modules/blob/main/CLAUDE.md)
 
+## MODO MANUALE
+
+Quando l'utente dice `:modomanuale` o `modo manuale`:
+
+**REGOLA ASSOLUTA**: Fai **SOLO ED ESATTAMENTE** quello che viene chiesto.
+
+- **NON** lanciare i test se non richiesto
+- **NON** aggiungere nulla di extra
+- **NON** "completare" o "migliorare" nulla
+- **NON** anticipare passi successivi
+- Lo scopo **NON** è far passare i test
+- Lo scopo è **mantenere l'allineamento** per lavorare in modo sinergico
+
+Se fai diverso, si perde tempo a riallinearsi.
+
+---
+
 ## REGOLA FONDAMENTALE: LE DECISIONI LE PRENDE L'UTENTE
 
 **ESTREMAMENTE IMPORTANTE: MAI prendere decisioni autonome su cosa aggiungere o rimuovere dal codice.**

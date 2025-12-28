@@ -623,21 +623,21 @@ class BaseRouter(RouterInterface):
         parts = path.strip("/").split("/")
         router = self
         pathlist: list[str] = []
-        node_type = "entry"
+        is_entry = True
 
         while parts:
             head = parts.pop(0)
             if head in router._children:
                 pathlist.append(head)
                 router = router._children[head]
-                node_type = "root" if router is self else "router"
+                is_entry = False
             else:
-                node_type = "entry"
+                is_entry = True
                 break
 
-        result = RouterNode(router, node_type=node_type, name=router.name, partial=parts)
+        result = RouterNode(router, partial=parts)
 
-        if node_type == "entry":
+        if is_entry:
             entry_name = head
             if entry_name in router._entries:
                 pathlist.append(entry_name)
