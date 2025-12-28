@@ -197,8 +197,6 @@ assert sub.routes.node("detail")(10) == "users:detail:10"
 
 ## Checking Node Errors
 
-<!-- test: test_router_runtime_extras.py::test_node_returns_child_router -->
-
 Use `node.error` to check if a path resolved correctly:
 
 ```python
@@ -232,8 +230,6 @@ if missing.error:
 **Note**: `node()` always returns a `RouterNode`. If the path points to a child router without specifying an entry, best-match resolution will use the child's `default_entry` (see [Hierarchies](hierarchies.md)).
 
 ## Exceptions: NotFound, NotAuthenticated, NotAuthorized, NotAvailable
-
-<!-- test: test_auth_plugin.py::TestNodeWithFilters -->
 
 Genro Routes provides exceptions for handling routing errors:
 
@@ -308,8 +304,6 @@ result = node()  # calls handler("unknown", "path")
 ```
 
 ## Catch-All Routing with `default_entry`
-
-<!-- test: test_router_basic.py::TestDefaultEntryWithPartial -->
 
 Routers have a `default_entry` parameter (default: `"index"`) that enables catch-all routing patterns via best-match resolution:
 

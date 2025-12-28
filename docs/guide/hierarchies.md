@@ -123,8 +123,6 @@ assert parent.api.node("admin/manage")() == "manage"
 
 ## Multiple Routers: Explicit Mapping
 
-<!-- test: test_router_edge_cases.py::test_attach_instance_allows_partial_mapping_and_skips_unmapped -->
-
 Use explicit mapping to control which routers attach and with what aliases:
 
 ```python
@@ -172,8 +170,6 @@ assert "child_alias" in parent.api._children
 **Reason**: Prevents ambiguity about which router the child belongs to.
 
 ## Branch Routers
-
-<!-- test: test_router_edge_cases.py::test_branch_router_blocks_auto_discover_and_entries -->
 
 Create pure organizational nodes with branch routers:
 
@@ -506,8 +502,6 @@ schema = insp.api.nodes(mode="openapi")
 - OpenAPI schema generation with `mode="openapi"`
 
 ## Catch-All Routes with `default_entry`
-
-<!-- test: test_router_basic.py::TestDefaultEntryWithPartial -->
 
 Routers can handle paths that don't fully resolve by delegating to a `default_entry` handler (best-match resolution):
 
