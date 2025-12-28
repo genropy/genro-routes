@@ -159,11 +159,6 @@ class RouterNode:
         """Return True if this node can be called without error."""
         return self.error is None and self._entry is not None
 
-    @property
-    def valid_entry(self) -> bool:
-        """Return True if this node has a valid entry."""
-        return self._entry is not None
-
     def set_entry(self, entry_name: str) -> None:
         """Set entry by name if it exists and accepts partial args."""
         entry = self._router._entries.get(entry_name)  # type: ignore[union-attr]
@@ -216,22 +211,6 @@ class RouterNode:
         """
         if errors:
             self._exceptions.update(errors)
-        return self
-
-    def check_valid(self, **kwargs: Any) -> RouterNode:
-        """Check validity via router's _allow_entry and set error if not allowed.
-
-        Args:
-            **kwargs: Plugin-prefixed filter kwargs (e.g., auth_tags="admin").
-
-        Returns:
-            self (for chaining). Sets self.error if validation fails.
-        """
-        if not self._entry or not self._router:
-            return self
-        result = self._router._allow_entry(self._entry, **kwargs)  # type: ignore[union-attr, attr-defined]
-        if result:
-            self.error = result
         return self
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:

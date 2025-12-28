@@ -729,7 +729,7 @@ class BaseRouter(RouterInterface):
         for entry in self._entries.values():
             if pattern_re is not None and not pattern_re.search(entry.name):
                 continue
-            allow_result = self._allow_entry(entry, env_router_capabilities=router_caps, **kwargs)
+            allow_result = self._entry_invalid_reason(entry, env_router_capabilities=router_caps, **kwargs)
             if allow_result == "":
                 entries[entry.name] = self._entry_node_info(entry)
             elif forbidden:
@@ -840,7 +840,10 @@ class BaseRouter(RouterInterface):
         # Find candidate node (pure path resolution)
         candidate = self._find_candidate_node(path)
         candidate.set_custom_exceptions(errors)
-        candidate.check_valid(**kwargs)
+
+        # Check validity via _entry_invalid_reason
+        if candidate._entry:
+            candidate.error = candidate._router._entry_invalid_reason(candidate._entry, **kwargs) or None
 
         return candidate
 
@@ -895,7 +898,7 @@ class BaseRouter(RouterInterface):
         """Hook used by subclasses to inject extra description data."""
         return {}
 
-    def _allow_entry(self, entry: MethodEntry, **filters: Any) -> bool | str:
+    def _entry_invalid_reason(self, entry: MethodEntry, **filters: Any) -> str:
         """Hook used by subclasses to decide if an entry is exposed.
 
         Args:
@@ -903,8 +906,8 @@ class BaseRouter(RouterInterface):
             **filters: Filter kwargs.
 
         Returns:
-            True: Entry is allowed.
+            "": Entry is allowed.
             "not_authenticated": Entry requires auth but no credentials provided (401).
             "not_authorized": Credentials provided but insufficient (403).
         """
-        return True
+        return ""
