@@ -283,7 +283,7 @@ class TestAuth401vs403:
         })
         with pytest.raises(Custom401) as exc_info:
             node()
-        assert exc_info.value.path == "admin_action"
+        assert exc_info.value.path == "api:admin_action"
 
         # Test 403 with custom exception
         node = svc.api.node("admin_action", auth_tags="public", errors={
@@ -291,7 +291,7 @@ class TestAuth401vs403:
         })
         with pytest.raises(Custom403) as exc_info:
             node()
-        assert exc_info.value.path == "admin_action"
+        assert exc_info.value.path == "api:admin_action"
 
 
 class TestAuthRuleValidation:

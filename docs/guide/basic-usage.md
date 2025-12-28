@@ -231,17 +231,18 @@ if missing.error:
 
 **Note**: `node()` can also return a child router if the path points to one (see [Hierarchies](hierarchies.md)).
 
-## Exceptions: NotFound, NotAuthorized, NotAvailable
+## Exceptions: NotFound, NotAuthenticated, NotAuthorized, NotAvailable
 
 <!-- test: test_auth_plugin.py::TestNodeWithFilters -->
 
 Genro Routes provides exceptions for handling routing errors:
 
 ```python
-from genro_routes import NotFound, NotAuthorized, NotAvailable
+from genro_routes import NotFound, NotAuthenticated, NotAuthorized, NotAvailable
 
 # NotFound - raised when calling node() on non-existent entry
-# NotAuthorized - raised when entry exists but auth tags don't match
+# NotAuthenticated - raised when entry requires auth but none provided (401)
+# NotAuthorized - raised when auth provided but doesn't match (403)
 # NotAvailable - raised when entry exists but capabilities are missing
 ```
 
@@ -275,7 +276,7 @@ assert node.error == "not_authorized"  # Error reason
 try:
     node()
 except NotAuthorized as e:
-    print(f"Access denied: {e.selector}")  # "admin_action"
+    print(f"Access denied: {e.selector}")  # "api:admin_action"
 
 # Entry doesn't exist - node has error
 node = api.api.node("nonexistent")
@@ -283,13 +284,12 @@ node = api.api.node("nonexistent")
 try:
     node()
 except NotFound as e:
-    print(f"Not found: {e.selector}")  # "nonexistent"
+    print(f"Not found: {e.selector}")  # "api:nonexistent"
 ```
 
 **Exception attributes**:
 
-- `selector`: The path that was requested
-- `router_name`: The router where the error occurred
+- `selector`: The full selector in format `"router_name:path"` (e.g., `"api:admin_action"`)
 
 **RouterNode properties**:
 

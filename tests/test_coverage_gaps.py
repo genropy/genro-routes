@@ -627,51 +627,43 @@ def test_child_ignores_parent_config_no_cascade():
     assert notifications[0]["router"] == "child_api"
 
 
-# --- exceptions.py: test with router_name ---
+# --- exceptions.py: test selector format ---
 
 
-def test_not_found_with_router_name():
-    """Test NotFound exception with router_name parameter."""
+def test_not_found_selector():
+    """Test NotFound exception with selector."""
     from genro_routes.exceptions import NotFound
 
-    exc = NotFound("my_path", router_name="my_router")
-    assert exc.selector == "my_path"
-    assert exc.router_name == "my_router"
-    assert "my_router" in str(exc)
-    assert "my_path" in str(exc)
+    exc = NotFound("my_router:my_path")
+    assert exc.selector == "my_router:my_path"
+    assert "my_router:my_path" in str(exc)
 
 
-def test_not_authorized_with_router_name():
-    """Test NotAuthorized exception with router_name parameter."""
+def test_not_authorized_selector():
+    """Test NotAuthorized exception with selector."""
     from genro_routes.exceptions import NotAuthorized
 
-    exc = NotAuthorized("my_path", router_name="my_router")
-    assert exc.selector == "my_path"
-    assert exc.router_name == "my_router"
-    assert "my_router" in str(exc)
-    assert "my_path" in str(exc)
+    exc = NotAuthorized("my_router:my_path")
+    assert exc.selector == "my_router:my_path"
+    assert "my_router:my_path" in str(exc)
 
 
-def test_not_authenticated_with_router_name():
-    """Test NotAuthenticated exception with router_name parameter."""
+def test_not_authenticated_selector():
+    """Test NotAuthenticated exception with selector."""
     from genro_routes.exceptions import NotAuthenticated
 
-    exc = NotAuthenticated("my_path", router_name="my_router")
-    assert exc.selector == "my_path"
-    assert exc.router_name == "my_router"
-    assert "my_router" in str(exc)
-    assert "my_path" in str(exc)
+    exc = NotAuthenticated("my_router:my_path")
+    assert exc.selector == "my_router:my_path"
+    assert "my_router:my_path" in str(exc)
 
 
-def test_not_available_with_router_name():
-    """Test NotAvailable exception with router_name parameter."""
+def test_not_available_selector():
+    """Test NotAvailable exception with selector."""
     from genro_routes.exceptions import NotAvailable
 
-    exc = NotAvailable("my_path", router_name="my_router")
-    assert exc.selector == "my_path"
-    assert exc.router_name == "my_router"
-    assert "my_router" in str(exc)
-    assert "my_path" in str(exc)
+    exc = NotAvailable("my_router:my_path")
+    assert exc.selector == "my_router:my_path"
+    assert "my_router:my_path" in str(exc)
 
 
 # --- auth.py: deny_reason with RouterInterface ---

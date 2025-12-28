@@ -210,7 +210,8 @@ class RouterNode:
         error_code = self.error or ("not_found" if self._entry is None else None)
         if error_code:
             exc_class = self._exceptions.get(error_code, NotFound)
-            raise exc_class(path)
+            selector = f"{self._router.name}:{path}" if path else self._router.name
+            raise exc_class(selector)
 
         filtered_kwargs = {k: v for k, v in kwargs.items() if k not in self._partial_kwargs}
         merged_kwargs = {**self._partial_kwargs, **filtered_kwargs}
@@ -222,7 +223,8 @@ class RouterNode:
             if ValidationError is not None and isinstance(e, ValidationError):
                 custom_exc = self._exceptions.get("validation_error")
                 if custom_exc is not None and custom_exc is not ValidationError:
-                    raise custom_exc(path) from e
+                    selector = f"{self._router.name}:{path}" if path else self._router.name
+                    raise custom_exc(selector) from e
             raise
 
     def to_dict(self) -> dict[str, Any]:

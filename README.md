@@ -142,7 +142,7 @@ pip install -e ".[all]"
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
 - **`obj.routing`** - Proxy exposed by every RoutingClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
 - **`RouterNode`** - Callable wrapper returned by `node()`, with `path`, `error`, `doc`, `metadata` properties.
-- **`NotFound` / `NotAuthorized` / `NotAvailable`** - Exceptions for routing errors (entry not found, auth denied, capabilities missing)
+- **`NotFound` / `NotAuthenticated` / `NotAuthorized` / `NotAvailable`** - Exceptions for routing errors (not found, auth required, auth denied, capabilities missing)
 
 ## Pattern Highlights
 

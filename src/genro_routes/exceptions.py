@@ -20,18 +20,12 @@ class NotFound(Exception):
     that doesn't exist in the router hierarchy.
 
     Attributes:
-        selector: The path that was not found.
-        router_name: The router where the lookup failed.
+        selector: The selector in format "router_name:path" or just "router_name".
     """
 
-    def __init__(self, selector: str, router_name: str | None = None) -> None:
+    def __init__(self, selector: str) -> None:
         self.selector = selector
-        self.router_name = router_name
-        if router_name:
-            message = f"Entry '{selector}' not found in router '{router_name}'"
-        else:
-            message = f"Entry '{selector}' not found"
-        super().__init__(message)
+        super().__init__(f"Entry '{selector}' not found")
 
 
 class NotAuthorized(Exception):
@@ -41,18 +35,12 @@ class NotAuthorized(Exception):
     tags were provided, but they do not match the entry's requirements.
 
     Attributes:
-        selector: The path that was denied.
-        router_name: The router where access was denied.
+        selector: The selector in format "router_name:path" or just "router_name".
     """
 
-    def __init__(self, selector: str, router_name: str | None = None) -> None:
+    def __init__(self, selector: str) -> None:
         self.selector = selector
-        self.router_name = router_name
-        if router_name:
-            message = f"Access to '{selector}' denied in router '{router_name}'"
-        else:
-            message = f"Access to '{selector}' denied"
-        super().__init__(message)
+        super().__init__(f"Access to '{selector}' denied")
 
 
 class NotAuthenticated(Exception):
@@ -62,18 +50,12 @@ class NotAuthenticated(Exception):
     authentication tags, but none were provided in the request.
 
     Attributes:
-        selector: The path that requires authentication.
-        router_name: The router where authentication is required.
+        selector: The selector in format "router_name:path" or just "router_name".
     """
 
-    def __init__(self, selector: str, router_name: str | None = None) -> None:
+    def __init__(self, selector: str) -> None:
         self.selector = selector
-        self.router_name = router_name
-        if router_name:
-            message = f"Authentication required for '{selector}' in router '{router_name}'"
-        else:
-            message = f"Authentication required for '{selector}'"
-        super().__init__(message)
+        super().__init__(f"Authentication required for '{selector}'")
 
 
 class NotAvailable(Exception):
@@ -83,15 +65,9 @@ class NotAvailable(Exception):
     capabilities that are not present in the system.
 
     Attributes:
-        selector: The path that requires capabilities.
-        router_name: The router where capabilities are required.
+        selector: The selector in format "router_name:path" or just "router_name".
     """
 
-    def __init__(self, selector: str, router_name: str | None = None) -> None:
+    def __init__(self, selector: str) -> None:
         self.selector = selector
-        self.router_name = router_name
-        if router_name:
-            message = f"Capability not available for '{selector}' in router '{router_name}'"
-        else:
-            message = f"Capability not available for '{selector}'"
-        super().__init__(message)
+        super().__init__(f"Capability not available for '{selector}'")
