@@ -20,12 +20,20 @@ from pathlib import Path
 # Add source directory to path for autodoc
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+# Read version from pyproject.toml (single source of truth)
+try:
+    import tomllib
+    with open(Path(__file__).parent.parent / "pyproject.toml", "rb") as f:
+        _pyproject = tomllib.load(f)
+    release = _pyproject["project"]["version"]
+except Exception:
+    release = "0.0.0"
+version = ".".join(release.split(".")[:2])
+
 # Project information
 project = "Genro Routes"
 copyright = "2025, Softwell S.r.l."
 author = "Genropy Team"
-release = "0.12.0"
-version = "0.12"
 
 # General configuration
 extensions = [

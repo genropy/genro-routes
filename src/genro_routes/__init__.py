@@ -27,8 +27,9 @@ Example::
 """
 
 from importlib import import_module
+from importlib.metadata import version as get_version
 
-__version__ = "0.12.0"
+__version__ = get_version("genro-routes")
 
 from .core import Router, RouterInterface, RoutingClass, RoutingContext, is_result_wrapper, route
 from .core.router_node import RouterNode
