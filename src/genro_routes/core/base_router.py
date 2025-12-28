@@ -657,6 +657,21 @@ class BaseRouter(RouterInterface):
     # ------------------------------------------------------------------
     # Introspection helpers
     # ------------------------------------------------------------------
+    def router_at_path(self, path: str) -> BaseRouter | None:
+        """Find the router at the given path.
+
+        Args:
+            path: Path to navigate (e.g., "child/grandchild").
+
+        Returns:
+            The router at the path, or None if not found.
+        """
+        parts = [p for p in path.strip("/").split("/") if p]
+        router: BaseRouter | None = self
+        while parts and router:
+            router = router._children.get(parts.pop(0))
+        return router
+
     def nodes(
         self,
         basepath: str | None = None,
@@ -706,9 +721,9 @@ class BaseRouter(RouterInterface):
             When mode is specified, output is translated to that format.
         """
         if basepath:
-            base_node = self.node(basepath)
-            if base_node.is_router:
-                return base_node._router.nodes(lazy=lazy, mode=mode, pattern=pattern, forbidden=forbidden, **kwargs)  # type: ignore[union-attr]
+            router = self.router_at_path(basepath)
+            if router:
+                return router.nodes(lazy=lazy, mode=mode, pattern=pattern, forbidden=forbidden, **kwargs)
             return {}
         # Compile pattern once if provided
         pattern_re = re.compile(pattern) if pattern else None
