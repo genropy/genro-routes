@@ -363,7 +363,9 @@ class Router(BaseRouter):
                 entry.plugins.append(plugin.name)
             plugin.on_decore(self, entry.func, entry)
 
-    def _entry_invalid_reason(self, entry: MethodEntry, **allowing_args: Any) -> str:
+    def _entry_invalid_reason(self, entry: MethodEntry | None, **allowing_args: Any) -> str:
+        if entry is None:
+            return "not_found"
         # Filter out None and False values
         allowing_args = {k: v for k, v in allowing_args.items() if v not in (None, False)}
         for plugin in self._plugins:

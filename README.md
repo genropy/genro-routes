@@ -141,7 +141,7 @@ pip install -e ".[all]"
 - **`RoutingClass`** - Mixin that tracks routers per instance and exposes the `routing` proxy
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
 - **`obj.routing`** - Proxy exposed by every RoutingClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
-- **`RouterNode`** - Callable wrapper returned by `node()`, supports `__bool__`, `is_callable`, `error`, `partial_kwargs`, `extra_args` for best-match resolution.
+- **`RouterNode`** - Callable wrapper returned by `node()`, supports `__bool__`, `error`, `partial_kwargs`, `extra_args` for best-match resolution.
 - **`NotFound` / `NotAuthorized` / `NotAvailable`** - Exceptions for routing errors (entry not found, auth denied, capabilities missing)
 
 ## Pattern Highlights

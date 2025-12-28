@@ -620,35 +620,25 @@ class BaseRouter(RouterInterface):
         Returns:
             RouterNode with entry reference, or empty RouterNode if not found.
         """
+        if not path.strip("/"):
+            return RouterNode(self, path="")
+
         parts = path.strip("/").split("/")
-        router = self
+        router: BaseRouter | None = self
         pathlist: list[str] = []
-        is_entry = True
 
-        while parts:
+        while parts and router:
+            last_router = router
             head = parts.pop(0)
-            if head in router._children:
-                pathlist.append(head)
-                router = router._children[head]
-                is_entry = False
-            else:
-                is_entry = True
-                break
+            pathlist.append(head)
+            if head in router._entries:
+                return RouterNode(router, entry_name=head, partial=parts, path="/".join(pathlist))
+            router = router._children.get(head)
 
-        result = RouterNode(router, partial=parts)
+        if router:
+            return RouterNode(router, path="/".join(pathlist))
 
-        if is_entry:
-            entry_name = head
-            if entry_name in router._entries:
-                pathlist.append(entry_name)
-            else:
-                entry_name = router.default_entry
-                result.partial.insert(0, head)
-            result.set_entry(entry_name)
-
-        result.path = "/".join(pathlist)
-
-        return result
+        return RouterNode(last_router, partial=[head] + parts, path="/".join(pathlist[:-1]))
 
     # ------------------------------------------------------------------
     # Introspection helpers
@@ -841,9 +831,8 @@ class BaseRouter(RouterInterface):
         candidate = self._find_candidate_node(path)
         candidate.set_custom_exceptions(errors)
 
-        # Check validity via _entry_invalid_reason
-        if candidate._entry:
-            candidate.error = candidate._router._entry_invalid_reason(candidate._entry, **kwargs) or None
+        # Set error via _entry_invalid_reason (handles both missing entry and plugin checks)
+        candidate.error = candidate._router._entry_invalid_reason(candidate._entry, **kwargs) or None
 
         return candidate
 
@@ -898,16 +887,19 @@ class BaseRouter(RouterInterface):
         """Hook used by subclasses to inject extra description data."""
         return {}
 
-    def _entry_invalid_reason(self, entry: MethodEntry, **filters: Any) -> str:
+    def _entry_invalid_reason(self, entry: MethodEntry | None, **filters: Any) -> str:
         """Hook used by subclasses to decide if an entry is exposed.
 
         Args:
-            entry: The entry to check.
+            entry: The entry to check (None if not found).
             **filters: Filter kwargs.
 
         Returns:
             "": Entry is allowed.
+            "not_found": Entry is None (path not resolved).
             "not_authenticated": Entry requires auth but no credentials provided (401).
             "not_authorized": Credentials provided but insufficient (403).
         """
+        if entry is None:
+            return "not_found"
         return ""

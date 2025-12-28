@@ -14,6 +14,7 @@ Quando l'utente dice `:modomanuale` o `modo manuale`:
 - **NON** anticipare passi successivi
 - Lo scopo **NON** è far passare i test
 - Lo scopo è **mantenere l'allineamento** per lavorare in modo sinergico
+- **Se un test fallisce**: dire SOLO quale test fallisce e perché, poi STOP. Nessuna proposta di soluzione, nessuna analisi aggiuntiva.
 
 Se fai diverso, si perde tempo a riallinearsi.
 

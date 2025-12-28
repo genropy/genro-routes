@@ -6,9 +6,8 @@ to invoke handlers directly and access node metadata.
 Example::
 
     node = router.node("my_handler")
-    if node:
-        result = node()  # Invoke the handler
-        print(node.name, node.metadata)
+    result = node()  # Invoke the handler
+    print(node.name, node.metadata)
 """
 
 from __future__ import annotations
@@ -29,7 +28,7 @@ except ImportError:  # pragma: no cover
     ValidationError = None  # type: ignore[misc, assignment]
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .router_interface import RouterInterface
+    from .base_router import BaseRouter
 
 __all__ = ["RouterNode"]
 
@@ -37,23 +36,17 @@ __all__ = ["RouterNode"]
 class RouterNode:
     """Wrapper for router node information with callable interface.
 
-    RouterNode wraps the dict returned by _find_candidate_node() and provides:
+    RouterNode wraps the result of _find_candidate_node() and provides:
     - Direct attribute access to node properties
     - __call__ for invoking entry handlers
-    - __bool__ for checking if node exists
     - Proper exception handling for unauthorized/not found cases
     - Customizable exception mapping via errors parameter
 
     Attributes:
-        type: Node type ("entry", "router", or "root")
-        name: Node name
         path: Full path to this node
         error: Error code (None if ok, else "not_found", "not_authenticated", etc.)
         doc: Entry docstring
         metadata: Entry metadata dict
-        partial: Raw partial path segments from resolution
-        partial_kwargs: Dict mapping parameter names to values from path
-        extra_args: List of path segments beyond named parameters (for *args handlers)
 
     Class Attributes:
         ERROR_CODES: Set of error codes that can be mapped to custom exceptions.
@@ -84,14 +77,14 @@ class RouterNode:
         "_exceptions",
         "error",
         "path",
-        "partial",
-        "partial_kwargs",
-        "extra_args",
+        "_partial",
+        "_partial_kwargs",
+        "_extra_args",
     )
 
     def __init__(
         self,
-        router: RouterInterface | None = None,
+        router: BaseRouter,
         errors: dict[str, type[Exception]] | None = None,
         *,
         entry_name: str | None = None,
@@ -101,7 +94,7 @@ class RouterNode:
         """Initialize RouterNode.
 
         Args:
-            router: Optional reference to the router (for context).
+            router: Reference to the router.
             errors: Optional dict mapping error codes to custom exception classes.
                     Available codes: 'not_found', 'not_authorized', 'not_authenticated',
                     'validation_error'. Custom exceptions override the defaults.
@@ -127,13 +120,13 @@ class RouterNode:
         self.error: str | None = None
 
         self.path: str | None = path
-        self.partial: list[str] = partial if partial is not None else []
-        self.partial_kwargs: dict[str, str] = {}
-        self.extra_args: list[str] = []
+        self._partial: list[str] = partial if partial is not None else []
+        self._partial_kwargs: dict[str, str] = {}
+        self._extra_args: list[str] = []
 
-    def __bool__(self) -> bool:
-        """Return True if this node exists (has a router)."""
-        return self._router is not None
+        entry = router._entries.get(entry_name or router.default_entry)
+        if entry and self._assign_partial(entry):
+            self._entry = entry
 
     @property
     def doc(self) -> str:
@@ -149,31 +142,13 @@ class RouterNode:
             return {}
         return dict(self._entry.metadata.get("meta", {}))
 
-    @property
-    def is_entry(self) -> bool:
-        """Return True if this is an entry node."""
-        return self._entry_name is not None
-
-    @property
-    def is_callable(self) -> bool:
-        """Return True if this node can be called without error."""
-        return self.error is None and self._entry is not None
-
-    def set_entry(self, entry_name: str) -> None:
-        """Set entry by name if it exists and accepts partial args."""
-        entry = self._router._entries.get(entry_name)  # type: ignore[union-attr]
-        if not entry or not self._assign_partial(entry):
-            return
-        self._entry = entry
-        self._entry_name = entry_name
-
     def _assign_partial(self, entry: Any) -> bool:
         """Assign partial path values to kwargs and extra_args.
 
         Returns:
             True if entry can accept the partial args, False otherwise.
         """
-        if not self.partial:
+        if not self._partial:
             return True
 
         sig = inspect.signature(entry.func)
@@ -189,14 +164,14 @@ class RouterNode:
             for p in sig.parameters.values()
         )
 
-        for i, value in enumerate(self.partial):
+        for i, value in enumerate(self._partial):
             if i < len(param_names):
-                self.partial_kwargs[param_names[i]] = value
+                self._partial_kwargs[param_names[i]] = value
             else:
-                self.extra_args.append(value)
+                self._extra_args.append(value)
 
         # If extra args but no *args in signature, not valid
-        return not (self.extra_args and not has_var_positional)
+        return not (self._extra_args and not has_var_positional)
 
     def set_custom_exceptions(
         self, errors: dict[str, type[Exception]] | None
@@ -237,9 +212,9 @@ class RouterNode:
             exc_class = self._exceptions.get(error_code, NotFound)
             raise exc_class(path)
 
-        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in self.partial_kwargs}
-        merged_kwargs = {**self.partial_kwargs, **filtered_kwargs}
-        all_args = (*self.extra_args, *args)
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in self._partial_kwargs}
+        merged_kwargs = {**self._partial_kwargs, **filtered_kwargs}
+        all_args = (*self._extra_args, *args)
 
         try:
             return self._entry.handler(*all_args, **merged_kwargs)  # type: ignore[attr-defined, union-attr]
@@ -253,9 +228,8 @@ class RouterNode:
     def to_dict(self) -> dict[str, Any]:
         """Return node data as dict."""
         return {
-            "is_entry": self.is_entry,
             "path": self.path,
-            "partial": self.partial,
+            "partial": self._partial,
         }
 
     def __eq__(self, other: object) -> bool:
@@ -271,4 +245,4 @@ class RouterNode:
     def __repr__(self) -> str:
         if not self:
             return "RouterNode(empty)"
-        return f"RouterNode(is_entry={self.is_entry!r}, path={self.path!r})"
+        return f"RouterNode(path={self.path!r})"

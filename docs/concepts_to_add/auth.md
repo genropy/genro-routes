@@ -138,11 +138,7 @@ When using `node()` with filtering, unauthorized entries return a `RouterNode` t
 ```python
 node = api.api.node("delete_user", auth_tags="guest")
 
-# Node exists (entry found)
-assert node  # truthy
-
-# But not callable due to authorization
-assert not node.is_callable
+# Node has error due to authorization
 assert node.error == "not_authorized"
 
 # Attempting to call raises NotAuthorized

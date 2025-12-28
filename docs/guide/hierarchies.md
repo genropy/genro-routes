@@ -53,10 +53,10 @@ parent.api.attach_instance(parent.child, name="sales")
 # Access through hierarchy
 assert parent.api.node("sales/list")() == "child:list"
 
-# node() can also return info about the child router
+# node() can also resolve to a child router
 child_node = parent.api.node("sales")
-assert child_node.is_router
-assert child_node.name == "api"
+assert child_node.error is None
+assert child_node.path == "sales"
 
 # Parent tracking is automatic
 assert parent.child._routing_parent is parent
@@ -75,9 +75,9 @@ assert parent.child._routing_parent is None
 
 **`node()` return values**:
 
-- Returns a **callable RouterNode** if the path points to a handler
-- Returns a **RouterNode with `is_router=True`** if the path points to a child router
-- Returns an **empty RouterNode** (falsy) if nothing is found
+- Returns a **callable RouterNode** if the path resolves to a handler
+- If the path points to a child router, uses that router's `default_entry`
+- Check `node.error` to see if resolution succeeded
 
 ## Multiple Routers: Auto-Mapping
 
@@ -532,7 +532,7 @@ app = Application()
 # Path "files/docs/readme.md" - "files" is a child router,
 # "docs/readme.md" doesn't exist, so best-match resolution uses default_entry
 node = app.api.node("files/docs/readme.md")
-# node.extra_args is: ["docs", "readme.md"]
+# Unconsumed segments passed as args: ["docs", "readme.md"]
 assert node() == "File: docs/readme.md"
 ```
 
@@ -540,11 +540,11 @@ assert node() == "File: docs/readme.md"
 
 | Path | Scenario | Result |
 |------|----------|--------|
-| `/` or `""` | Empty path | RouterNode with `is_root=True` |
+| `/` or `""` | Empty path | Uses this router's `default_entry` |
 | `child/handler` | Handler exists | Returns RouterNode with handler |
-| `child/unknown/path` | Child exists, path unresolved | RouterNode with `partial(child.default_entry, "unknown", "path")` |
-| `child` (router) | Single segment, is router | RouterNode with `is_router=True` |
-| `unknown/path` | Nothing found | Uses this router's `default_entry` |
+| `child/unknown/path` | Child exists, path unresolved | Uses child's `default_entry` with args |
+| `child` (router only) | Single segment, is router | Uses child's `default_entry` |
+| `unknown/path` | Nothing found | Uses this router's `default_entry` with args |
 
 **Root node** (empty path):
 
@@ -563,16 +563,14 @@ svc = Service()
 node = svc.api.node("/")
 
 # Root node properties
-assert node.is_root  # type="root"
-assert node.name == "api"  # router name
 assert node.path == ""
+assert node.error is None  # default_entry exists
 
 # If default_entry exists, it's callable
-assert node.is_callable
 assert node() == "home"
 ```
 
-If no `default_entry` exists, `node.is_callable` is `False` and calling raises `NotFound`.
+If no `default_entry` exists, calling raises `NotFound`.
 
 **Custom `default_entry`**:
 
@@ -597,7 +595,7 @@ class EmptyService(RoutingClass):
 
 svc = EmptyService()
 node = svc.api.node("unknown/path")
-assert not node  # Empty RouterNode - path couldn't be resolved
+# node.error will indicate the path couldn't be resolved
 ```
 
 ## Real-World Examples

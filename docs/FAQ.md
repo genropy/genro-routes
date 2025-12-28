@@ -332,20 +332,19 @@ router = Router(self, name="api").plug("audit")
 
 **Question**: What happens if I call a non-existent handler?
 
-**Answer**: Use the boolean value of `RouterNode` to check existence:
+**Answer**: Check `node.error` to see if the node resolved correctly:
 
 ```python
-# node() returns a RouterNode - check if it exists
+# node() returns a RouterNode - check error status
 node = router.node("missing")
-if not node:
-    print("Handler not found")
+if node.error:
+    print(f"Handler error: {node.error}")
 
-# RouterNode is callable if it exists
+# RouterNode is always callable - errors raise on invocation
 node = router.node("my_handler")
-if node:
-    result = node()  # Invoke the handler
+result = node()  # Invoke the handler (raises if error)
 
-# Calling a non-existent node raises NotFound
+# Calling a node with error raises the appropriate exception
 from genro_routes import NotFound
 try:
     router.node("missing")()
@@ -359,7 +358,7 @@ except NotFound:
 
 **Answer**: Three main exceptions:
 
-- `NotFound`: Path not found, no default_entry, or varargs_required
+- `NotFound`: Path not found, no default_entry, or partial args don't match signature
 - `NotAuthorized`: Auth tags provided but don't match (403)
 - `NotAuthenticated`: Auth required but not provided (401)
 
@@ -393,22 +392,19 @@ node = router.node("handler", errors={
 
 **Question**: What do I get when calling `node("/")`?
 
-**Answer**: A **root node** with `type="root"`:
+**Answer**: A **root node** pointing to the router's default entry:
 
 ```python
 node = router.node("/")  # or node("")
 
-# Always present
-node.is_root  # True
-node.name     # router name
+# Check node state
 node.path     # ""
+node.error    # None if default_entry exists
 
 # If default_entry exists
-node.is_callable  # True
 node()            # calls default_entry
 
 # If no default_entry
-node.is_callable  # False
 node()            # raises NotFound
 ```
 

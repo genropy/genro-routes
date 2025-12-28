@@ -152,17 +152,15 @@ node = calc.ops.node("add")
 assert node(2, 3) == 5
 
 # RouterNode also provides metadata access
-assert node.name == "add"
-assert node.type == "entry"
-assert node.is_entry
+assert node.path == "add"
+assert node.error is None
 ```
 
 **RouterNode features**:
 
 - Callable: invoke directly with `node(*args, **kwargs)`
-- Boolean: `if node:` returns `True` if node exists
-- Metadata: access `node.name`, `node.type`, `node.metadata`, `node.doc`
-- Authorization: check `node.is_callable` and `node.error` before calling
+- Metadata: access `node.path`, `node.metadata`, `node.doc`
+- Error handling: check `node.error` before calling
 
 ## Using Prefixes and Custom Names
 
@@ -199,11 +197,11 @@ assert sub.routes.node("detail")(10) == "users:detail:10"
 - Explicit names provide cleaner external APIs
 - Router resolves both automatically
 
-## Checking Node Existence
+## Checking Node Errors
 
 <!-- test: test_router_runtime_extras.py::test_node_returns_child_router -->
 
-Use the boolean value of `RouterNode` to check if a path exists:
+Use `node.error` to check if a path resolved correctly:
 
 ```python
 class Fallback(RoutingClass):
@@ -216,23 +214,22 @@ class Fallback(RoutingClass):
 
 fb = Fallback()
 
-# Existing handler - node is truthy
+# Existing handler - no error
 node = fb.api.node("known_action")
-if node:
+if not node.error:
     assert node() == "success"
 
-# Non-existing - node is falsy (empty RouterNode)
+# Non-existing - node has error
 missing = fb.api.node("missing")
-if not missing:
-    print("Handler not found")
-assert missing == {}  # Empty RouterNode equals empty dict
+if missing.error:
+    print(f"Handler error: {missing.error}")
 ```
 
-**RouterNode boolean behavior**:
+**RouterNode error handling**:
 
-- Truthy if node exists (has a `type`)
-- Falsy if path doesn't resolve to anything
-- Empty `RouterNode` compares equal to `{}`
+- `node.error` is `None` if path resolved correctly
+- `node.error` contains error code string (e.g., `"not_found"`) if resolution failed
+- Calling a node with error raises the appropriate exception
 
 **Note**: `node()` can also return a child router if the path points to one (see [Hierarchies](hierarchies.md)).
 
@@ -271,13 +268,10 @@ api = SecureAPI()
 
 # Entry exists and tag matches - node is callable
 node = api.api.node("admin_action", auth_tags="admin")
-assert node.is_callable
 assert node() == "admin only"
 
-# Entry exists but tag doesn't match - node exists but is not callable
+# Entry exists but tag doesn't match - node has error
 node = api.api.node("admin_action", auth_tags="public")
-assert node  # Node exists
-assert not node.is_callable  # But not callable
 assert node.error == "not_authorized"  # Error reason
 # Calling raises NotAuthorized
 try:
@@ -285,9 +279,8 @@ try:
 except NotAuthorized as e:
     print(f"Access denied: {e.selector}")  # "admin_action"
 
-# Entry doesn't exist - empty node
+# Entry doesn't exist - node has error
 node = api.api.node("nonexistent")
-assert not node  # Falsy - doesn't exist
 # Calling raises NotFound
 try:
     node()
@@ -302,21 +295,17 @@ except NotFound as e:
 
 **RouterNode properties**:
 
-- `node.is_callable`: Returns `True` if node can be called without error
 - `node.error`: Error code string (e.g., `"not_authorized"`, `"not_available"`) or `None`
 - Calling a node with error raises the appropriate exception
 
-**Best-match resolution with extra_args**:
+**Best-match resolution**:
 
-The `node()` method uses best-match resolution - it walks the path as far as possible and returns unconsumed segments in `extra_args` and `partial_kwargs`:
+The `node()` method uses best-match resolution - it walks the path as far as possible and passes unconsumed segments as arguments to the handler:
 
 ```python
 node = router.node("unknown/path")
-# Returns RouterNode with:
-#     type: "entry"
-#     name: "index"  # default_entry handler
-#     extra_args: ["unknown", "path"]  # positional args
-#     partial_kwargs: {}  # keyword args from path segments
+# If default_entry="index" accepts *args, unconsumed segments
+# are passed as positional arguments when calling the handler
 result = node()  # calls handler("unknown", "path")
 ```
 
@@ -339,9 +328,8 @@ class FileServer(RoutingClass):
 server = FileServer()
 
 # node() uses best-match resolution - when path can't be fully resolved,
-# unconsumed segments become arguments
+# unconsumed segments become arguments to the handler
 node = server.api.node("docs/api/reference")
-# node.extra_args is: ["docs", "api", "reference"]
 assert node() == "Serving: docs/api/reference"
 ```
 
@@ -349,9 +337,8 @@ assert node() == "Serving: docs/api/reference"
 
 - `default_entry` specifies which handler to use for unresolved paths (default: `"index"`)
 - Best-match resolution walks the path as far as possible
-- Unconsumed path segments are available via `node.extra_args` (positional) or `node.partial_kwargs` (named)
-- Access unconsumed segments via `node.extra_args`
-- If `default_entry` handler doesn't exist, returns empty `RouterNode`
+- Unconsumed path segments are passed as arguments when calling `node()`
+- If `default_entry` handler doesn't exist, `node.error` is set
 
 **Use cases**:
 
@@ -492,12 +479,12 @@ class MetadataAPI(RoutingClass):
 
 api = MetadataAPI()
 
-# Access metadata via node()
+# Access metadata via node() - returns meta dict directly
 node = api.api.node("get_data")
-assert node.metadata["meta"]["mimetype"] == "application/json"
-assert node.metadata["meta"]["deprecated"] is True
+assert node.metadata["mimetype"] == "application/json"
+assert node.metadata["deprecated"] is True
 
-# Or via nodes() for all entries
+# Or via nodes() for all entries - uses full path
 all_info = api.api.nodes()
 entry_meta = all_info["entries"]["get_data_v2"]["metadata"]["meta"]
 assert entry_meta["version"] == "2.0"
@@ -506,9 +493,10 @@ assert entry_meta["auth_required"] is True
 
 **Key behaviors**:
 
-- `meta_*` kwargs are grouped under `metadata["meta"]` in the entry
+- `meta_*` kwargs are stored under `metadata["meta"]` in the entry
+- `node.metadata` property returns the meta dict directly (convenience)
+- `nodes()` returns the full structure with `["metadata"]["meta"]` path
 - The `meta_` prefix is stripped from the key name
-- Works with both `@route()` decorator and `_add_entry()` method
 - Separate from plugin configuration (which uses `<plugin>_<key>` format)
 
 **Use cases**:

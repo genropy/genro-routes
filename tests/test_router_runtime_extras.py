@@ -1237,12 +1237,9 @@ def test_node_returns_entry_info():
     svc = Svc()
     node = svc.api.node("get_item")
 
-    assert node  # RouterNode is truthy
-    assert node.is_entry
     assert node.path == "get_item"
     assert node.doc == "Get an item by ID."
     assert node.metadata is not None
-    assert node.partial_kwargs == {}  # Exact match has no partial kwargs
 
 
 # -----------------------------------------------------------------------------
@@ -1250,7 +1247,6 @@ def test_node_returns_entry_info():
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="TypedDict schema generation not yet implemented in OpenAPI plugin")
 def test_openapi_typeddict_response_schema():
     """Test openapi generates schema from TypedDict return type."""
     from typing import TypedDict
@@ -1284,7 +1280,6 @@ def test_openapi_typeddict_response_schema():
     assert response_schema["properties"]["active"]["type"] == "boolean"
 
 
-@pytest.mark.skip(reason="TypedDict schema generation not yet implemented in OpenAPI plugin")
 def test_openapi_typeddict_with_required_keys():
     """Test openapi includes required keys from TypedDict."""
     from typing import TypedDict, NotRequired

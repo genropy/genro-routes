@@ -329,8 +329,7 @@ class TestEnvPluginHierarchyAccumulation:
         # Parent has redis, child has pyjwt
         # Combined: {redis, pyjwt} - entry is accessible
         node = parent.api.node("child/jwt_cached")
-        assert node
-        assert node.is_callable
+        assert node.error is None
 
     def test_deep_hierarchy_accumulation(self):
         """Capabilities accumulate through multiple levels."""
@@ -363,8 +362,7 @@ class TestEnvPluginHierarchyAccumulation:
         # Entry needs level1&level2&level3
         # Accumulated from hierarchy: {level1, level2, level3}
         node = root.api.node("level2/level3/deep_action")
-        assert node
-        assert node.is_callable
+        assert node.error is None
 
     def test_request_capabilities_add_to_hierarchy(self):
         """Request capabilities combine with hierarchy capabilities."""
@@ -389,12 +387,11 @@ class TestEnvPluginHierarchyAccumulation:
 
         # Without request_cap - not accessible
         node = root.api.node("child/action")
-        assert not node.is_callable
+        assert node.error == "not_available"
 
         # With request_cap - accessible
         node = root.api.node("child/action", env_capabilities="request_cap")
-        assert node
-        assert node.is_callable
+        assert node.error is None
 
 
 class TestEnvPluginNodeBehavior:
@@ -414,7 +411,6 @@ class TestEnvPluginNodeBehavior:
         svc = Service()
         node = svc.api.node("protected")
         assert node.error == "not_available"
-        assert not node.is_callable
 
     def test_node_call_raises_not_available(self):
         """Calling node without required capability raises NotAvailable."""
