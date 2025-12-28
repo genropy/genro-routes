@@ -115,10 +115,6 @@ class RoutingClass:
             self.__genro_routes_router_registry__ = registry
         return registry
 
-    @_routers.setter
-    def _routers(self, value: dict) -> None:
-        self.__genro_routes_router_registry__ = value
-
     def _auto_detach_child(self, current: Any) -> None:
         import contextlib
 

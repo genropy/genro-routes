@@ -174,10 +174,6 @@ class BaseRouter(RouterInterface):
             self._bind()
         return self.__entries_raw
 
-    @_entries.setter
-    def _entries(self, value: dict[str, MethodEntry]) -> None:
-        self.__entries_raw = value
-
     @property
     def current_capabilities(self) -> set[str]:
         """Collect capabilities from instance and parent chain.
@@ -194,10 +190,7 @@ class BaseRouter(RouterInterface):
         while instance is not None:
             instance_caps = getattr(instance, "capabilities", None)
             if instance_caps:
-                if isinstance(instance_caps, str):
-                    accumulated.update(v.strip() for v in instance_caps.split(",") if v.strip())
-                else:
-                    accumulated.update(instance_caps)
+                accumulated.update(instance_caps)
             instance = getattr(instance, "_routing_parent", None)
 
         return accumulated

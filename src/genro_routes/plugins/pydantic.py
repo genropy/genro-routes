@@ -164,8 +164,6 @@ class PydanticPlugin(BasePlugin):
     def entry_metadata(self, router: Any, entry: MethodEntry) -> dict[str, Any]:
         """Return pydantic metadata for introspection."""
         meta = entry.metadata.get("pydantic", {})
-        if not meta:
-            return {}
         return {
             "model": meta.get("model"),
             "hints": meta.get("hints"),

@@ -194,7 +194,7 @@ class RouterNode:
         Args:
             *args: Positional arguments passed to the handler.
             **kwargs: Keyword arguments passed to the handler. Note: kwargs that
-                conflict with partial_kwargs (from path) are ignored - path wins.
+                conflict with arguments extracted from the path are ignored - path wins.
 
         Returns:
             The result of calling the handler.
@@ -226,13 +226,6 @@ class RouterNode:
                     selector = f"{self._router.name}:{path}" if path else self._router.name
                     raise custom_exc(selector) from e
             raise
-
-    def to_dict(self) -> dict[str, Any]:
-        """Return node data as dict."""
-        return {
-            "path": self.path,
-            "partial": self._partial,
-        }
 
     def __repr__(self) -> str:
         return f"RouterNode(path={self.path!r})"

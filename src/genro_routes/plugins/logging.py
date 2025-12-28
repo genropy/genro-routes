@@ -94,8 +94,6 @@ class LoggingPlugin(BasePlugin):
 
         def logged(*args, **kwargs):
             cfg = self._effective_config(entry.name)
-            if not route.is_plugin_enabled(entry.name, self.name):
-                return call_next(*args, **kwargs)
             if cfg["before"]:
                 self._emit(f"{entry.name} start", cfg=cfg)
             t0 = time.perf_counter()
@@ -111,9 +109,6 @@ class LoggingPlugin(BasePlugin):
         """Get effective configuration for a handler, merging defaults."""
         defaults = {"before": True, "after": True, "log": True, "print": False}
         cfg = defaults | self.configuration(entry_name)
-        flags = cfg.pop("flags", None)
-        if isinstance(flags, str):
-            cfg.update(self._parse_flags(flags))
 
         def to_bool(key: str) -> bool:
             val = cfg.get(key)

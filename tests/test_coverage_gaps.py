@@ -871,9 +871,43 @@ def test_nodes_with_pattern_filter():
     assert "create_user" not in entries
 
 
-def test_entry_invalid_reason_with_none():
-    """Test _entry_invalid_reason with None entry (lines 903-905)."""
+def test_base_router_entry_invalid_reason():
+    """Test BaseRouter._entry_invalid_reason directly.
+
+    BaseRouter provides a default implementation that returns "not_found"
+    for None entries. Router overrides this, so we test BaseRouter directly.
+    """
     from genro_routes.core.base_router import BaseRouter
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            # Use BaseRouter directly, not Router
+            self.api = BaseRouter(self, name="api")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+    # BaseRouter._entry_invalid_reason with None returns "not_found"
+    assert svc.api._entry_invalid_reason(None) == "not_found"
+    # BaseRouter._entry_invalid_reason with valid entry returns ""
+    entry = svc.api._entries.get("handler")
+    assert svc.api._entry_invalid_reason(entry) == ""
+
+
+# --- base_router.py:251-255 - meta_* kwargs shorthand ---
+
+
+def test_add_entry_meta_kwargs_shorthand():
+    """Test that meta_* kwargs are grouped under 'meta' key.
+
+    This is a convenience syntax that allows:
+        router.add_entry(handler, meta_foo="bar", meta_baz=123)
+
+    Instead of:
+        router.add_entry(handler, meta={"foo": "bar", "baz": 123})
+    """
 
     class Svc(RoutingClass):
         def __init__(self):
@@ -884,6 +918,364 @@ def test_entry_invalid_reason_with_none():
             return "ok"
 
     svc = Svc()
-    # Access internal method - entry is None should return "not_found"
-    result = svc.api._entry_invalid_reason(None)
-    assert result == "not_found"
+
+    # Add entry using meta_* shorthand syntax
+    def extra_handler():
+        return "extra"
+
+    svc.api.add_entry(extra_handler, name="extra", meta_author="john", meta_version=2)
+
+    # Verify the metadata was correctly grouped
+    entry = svc.api._entries["extra"]
+    assert entry.metadata.get("meta", {}).get("author") == "john"
+    assert entry.metadata.get("meta", {}).get("version") == 2
+
+
+# --- base_router.py:261 - non-plugin options as metadata ---
+
+
+def test_add_entry_custom_options_as_metadata():
+    """Test that non-plugin options are merged into entry metadata.
+
+    Options that are not plugin-scoped (no underscore or unknown plugin)
+    and not meta_* prefixed are merged directly into entry.metadata.
+    """
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    svc = Svc()
+
+    def handler():
+        return "ok"
+
+    # Pass custom options without underscore (so they don't go through plugin check)
+    svc.api.add_entry(handler, name="test", deprecated=True, priority=10)
+
+    entry = svc.api._entries["test"]
+    assert entry.metadata.get("deprecated") is True
+    assert entry.metadata.get("priority") == 10
+
+
+def test_add_entry_unknown_plugin_option_as_metadata():
+    """Test that underscore options with unknown plugin prefix go to metadata.
+
+    If an option like 'foo_bar=123' is passed and 'foo' is not a known plugin,
+    the entire key 'foo_bar' is stored in metadata (not treated as plugin config).
+    """
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    svc = Svc()
+
+    def handler():
+        return "ok"
+
+    # 'unknown' is not a registered plugin, so 'unknown_option' goes to metadata
+    svc.api.add_entry(handler, name="test", unknown_option="value")
+
+    entry = svc.api._entries["test"]
+    assert entry.metadata.get("unknown_option") == "value"
+
+
+# --- router_node.py - custom exceptions and properties when entry is None ---
+
+
+def test_router_node_custom_exceptions_in_init():
+    """Test RouterNode with custom exceptions passed to constructor."""
+    from genro_routes.core.router_node import RouterNode
+
+    class CustomNotFound(Exception):
+        pass
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+
+    # Create node with custom exceptions
+    node = RouterNode(
+        svc.api,
+        errors={"not_found": CustomNotFound},
+        entry_name="nonexistent",
+    )
+
+    # Should raise custom exception
+    with pytest.raises(CustomNotFound):
+        node()
+
+
+def test_router_node_doc_and_metadata_when_entry_none():
+    """Test doc and metadata properties return empty when entry is None."""
+    from genro_routes.core.router_node import RouterNode
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+
+    # Create node for nonexistent entry
+    node = RouterNode(svc.api, entry_name="nonexistent")
+
+    # Properties should return empty values when entry is None
+    assert node.doc == ""
+    assert node.metadata == {}
+
+
+def test_router_node_custom_validation_error_exception():
+    """Test RouterNode remaps ValidationError to custom exception."""
+    from pydantic import ValidationError as PydanticValidationError
+
+    class CustomValidationError(Exception):
+        pass
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            # Raise a pydantic ValidationError
+            from pydantic import BaseModel
+
+            class Model(BaseModel):
+                value: int
+
+            Model(value="not_an_int")  # This raises ValidationError
+
+    svc = Svc()
+    node = svc.api.node("handler")
+    node.set_custom_exceptions({"validation_error": CustomValidationError})
+
+    with pytest.raises(CustomValidationError):
+        node()
+
+
+# --- auth.py:111 - deny_reason with RouterInterface where child is accessible ---
+
+
+def test_auth_deny_reason_router_with_accessible_child():
+    """Test auth deny_reason returns empty when at least one child is accessible."""
+    import genro_routes.plugins.auth  # noqa: F401
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api", auth_rule="public")
+        def public_handler(self):
+            return "public"
+
+        @route("api", auth_rule="admin")
+        def admin_handler(self):
+            return "admin"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("auth")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="child")
+
+    parent = Parent()
+    auth_plugin = parent.api._plugins_by_name["auth"]
+
+    # Get child router
+    child_router = parent.child.api
+
+    # deny_reason on router should return "" if any child is accessible
+    result = auth_plugin.deny_reason(child_router, auth_tags="public")
+    assert result == ""
+
+
+# --- routing.py coverage ---
+
+
+def test_result_wrapper():
+    """Test ResultWrapper class."""
+    from genro_routes.core.routing import ResultWrapper, is_result_wrapper
+
+    wrapper = ResultWrapper("test_value", {"mime": "text/plain"})
+    assert wrapper.value == "test_value"
+    assert wrapper.metadata == {"mime": "text/plain"}
+    assert is_result_wrapper(wrapper) is True
+    assert is_result_wrapper("not a wrapper") is False
+
+
+def test_routing_class_result_wrapper_method():
+    """Test RoutingClass.result_wrapper() method."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    svc = Svc()
+    result = svc.result_wrapper("content", mime_type="application/json")
+
+    from genro_routes.core.routing import ResultWrapper
+
+    assert isinstance(result, ResultWrapper)
+    assert result.value == "content"
+    assert result.metadata == {"mime_type": "application/json"}
+
+
+def test_routing_class_context_property():
+    """Test RoutingClass.context getter and setter."""
+    from genro_routes.core.context import RoutingContext
+
+    class TestContext(RoutingContext):
+        """Concrete context for testing."""
+
+        def __init__(self, user: str):
+            self._user = user
+
+        @property
+        def db(self):
+            return None
+
+        @property
+        def avatar(self):
+            return None
+
+        @property
+        def session(self):
+            return None
+
+        @property
+        def app(self):
+            return None
+
+        @property
+        def server(self):
+            return None
+
+        @property
+        def user(self):
+            return self._user
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    svc = Svc()
+
+    # Initially None
+    assert svc.context is None
+
+    # Set context
+    ctx = TestContext(user="test_user")
+    svc.context = ctx
+    assert svc.context is ctx
+    assert svc.context.user == "test_user"
+
+    # Clear context
+    svc.context = None
+    assert svc.context is None
+
+
+def test_routing_class_context_type_error():
+    """Test that setting invalid context raises TypeError."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    svc = Svc()
+
+    with pytest.raises(TypeError, match="context must be a RoutingContext"):
+        svc.context = "not a context"
+
+
+def test_routing_class_context_propagates_from_parent():
+    """Test that context propagates from parent to child."""
+    from genro_routes.core.context import RoutingContext
+
+    class TestContext(RoutingContext):
+        """Concrete context for testing."""
+
+        @property
+        def db(self):
+            return None
+
+        @property
+        def avatar(self):
+            return None
+
+        @property
+        def session(self):
+            return None
+
+        @property
+        def app(self):
+            return None
+
+        @property
+        def server(self):
+            return None
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="child")
+
+    parent = Parent()
+    ctx = TestContext()
+    parent.context = ctx
+
+    # Child should inherit context from parent
+    assert parent.child.context is ctx
+
+
+def test_plugin_on_parent_config_changed_propagates():
+    """Test that parent config changes propagate to aligned children."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def child_handler(self):
+            return "child"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="child")
+
+        @route("api")
+        def parent_handler(self):
+            return "parent"
+
+    parent = Parent()
+
+    # Get child's logging plugin
+    child_plugin = parent.child.api._plugins_by_name.get("logging")
+    assert child_plugin is not None
+
+    # Initially child should have same config as parent (aligned)
+    parent_plugin = parent.api._plugins_by_name.get("logging")
+    assert child_plugin.configuration() == parent_plugin.configuration()
+
+    # Change parent config
+    parent_plugin.configure(before=True)
+
+    # Child should have been updated (was aligned with parent)
+    assert child_plugin.configuration().get("before") is True

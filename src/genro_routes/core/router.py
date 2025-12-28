@@ -207,11 +207,8 @@ class Router(BaseRouter):
             raise AttributeError(f"No plugin named '{name}' attached to router '{self.name}'")
         return plugin
 
-    def _get_plugin_bucket(self, plugin_name: str, create: bool = False) -> dict[str, Any] | None:
+    def _get_plugin_bucket(self, plugin_name: str) -> dict[str, Any] | None:
         bucket = self._plugin_info.get(plugin_name)
-        if bucket is None and create:
-            bucket = {"_all_": {"config": {}, "locals": {}}}
-            self._plugin_info[plugin_name] = bucket
         if bucket is not None and "_all_" not in bucket:
             bucket["_all_"] = {"config": {}, "locals": {}}
         return bucket
@@ -221,7 +218,7 @@ class Router(BaseRouter):
     # ------------------------------------------------------------------
     def set_plugin_enabled(self, method_name: str, plugin_name: str, enabled: bool = True) -> None:
         """Enable or disable a plugin for a specific handler."""
-        bucket = self._get_plugin_bucket(plugin_name, create=False)
+        bucket = self._get_plugin_bucket(plugin_name)
         if bucket is None:
             raise AttributeError(
                 f"No plugin named '{plugin_name}' attached to router '{self.name}'"
@@ -239,7 +236,7 @@ class Router(BaseRouter):
         4. global config (static via configure(enabled=...))
         5. default: True
         """
-        bucket = self._get_plugin_bucket(plugin_name, create=False)
+        bucket = self._get_plugin_bucket(plugin_name)
         if bucket is None:
             raise AttributeError(
                 f"No plugin named '{plugin_name}' attached to router '{self.name}'"
@@ -260,7 +257,7 @@ class Router(BaseRouter):
 
     def set_runtime_data(self, method_name: str, plugin_name: str, key: str, value: Any) -> None:
         """Set runtime data for a plugin/handler combination."""
-        bucket = self._get_plugin_bucket(plugin_name, create=False)
+        bucket = self._get_plugin_bucket(plugin_name)
         if bucket is None:
             raise AttributeError(
                 f"No plugin named '{plugin_name}' attached to router '{self.name}'"
@@ -272,7 +269,7 @@ class Router(BaseRouter):
         self, method_name: str, plugin_name: str, key: str, default: Any = None
     ) -> Any:
         """Get runtime data for a plugin/handler combination."""
-        bucket = self._get_plugin_bucket(plugin_name, create=False)
+        bucket = self._get_plugin_bucket(plugin_name)
         if bucket is None:
             raise AttributeError(
                 f"No plugin named '{plugin_name}' attached to router '{self.name}'"
