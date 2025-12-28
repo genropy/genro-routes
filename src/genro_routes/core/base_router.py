@@ -590,22 +590,6 @@ class BaseRouter(RouterInterface):
         return list(source._routers.items())
 
     # ------------------------------------------------------------------
-    # Routing helpers
-    # ------------------------------------------------------------------
-    def _resolve_path(self, selector: str) -> tuple[RouterInterface, str]:
-        if "/" not in selector:
-            return self, selector
-        node: RouterInterface = self
-        parts = selector.split("/")
-        for segment in parts[:-1]:
-            # Use get() to allow non-BaseRouter children (e.g., StaticRouter)
-            child = node._children.get(segment) if hasattr(node, "_children") else None
-            if child is None:
-                raise KeyError(segment)
-            node = child
-        return node, parts[-1]
-
-    # ------------------------------------------------------------------
     # Node resolution
     # ------------------------------------------------------------------
     def _find_candidate_node(self, path: str) -> RouterNode:

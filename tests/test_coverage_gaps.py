@@ -808,3 +808,90 @@ def test_openapi_h_openapi_child_included():
     assert "routers" in result
     assert "child" in result["routers"]
     assert result["routers"]["child"]["description"] == "A child router"
+
+
+# --- base_router.py: additional coverage ---
+
+
+def test_get_default_handler_constructor_param():
+    """Test get_default_handler constructor parameter (line 154)."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api", get_default_handler="index")
+
+        @route("api")
+        def index(self):
+            return "index"
+
+        @route("api")
+        def other(self):
+            return "other"
+
+    svc = Svc()
+    # Default handler should be index
+    assert svc.api.default_entry == "index"
+
+
+def test_add_entry_with_meta_kwargs():
+    """Test add_entry with meta_* kwargs (lines 261-263, 376-378)."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api", meta_author="John", meta_version="1.0")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+    node = svc.api.node("handler")
+    # meta_ kwargs should be grouped under "meta" key
+    assert node.metadata.get("author") == "John"
+    assert node.metadata.get("version") == "1.0"
+
+
+def test_nodes_with_pattern_filter():
+    """Test nodes() with pattern filter (line 721)."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def get_users(self):
+            return []
+
+        @route("api")
+        def get_orders(self):
+            return []
+
+        @route("api")
+        def create_user(self):
+            return {}
+
+    svc = Svc()
+    # Filter by pattern
+    nodes = svc.api.nodes(pattern="^get_")
+    entries = nodes.get("entries", {})
+    assert "get_users" in entries
+    assert "get_orders" in entries
+    assert "create_user" not in entries
+
+
+def test_entry_invalid_reason_with_none():
+    """Test _entry_invalid_reason with None entry (lines 903-905)."""
+    from genro_routes.core.base_router import BaseRouter
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+    # Access internal method - entry is None should return "not_found"
+    result = svc.api._entry_invalid_reason(None)
+    assert result == "not_found"
