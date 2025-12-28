@@ -133,6 +133,297 @@ svc = APIService()
 
 See [Quick Start - Plugins](../quickstart.md#adding-plugins) for more examples.
 
+## Built-in Plugins API Reference
+
+This section provides detailed API documentation for each built-in plugin.
+
+### AuthPlugin API
+
+The AuthPlugin provides **tag-based authorization** with boolean rule expressions. It enables fine-grained access control at the handler level.
+
+**Plugin code**: `auth`
+
+**Route decorator parameters**:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `auth_rule` | `str` | Boolean expression defining required tags |
+
+**Rule syntax**:
+
+| Operator | Meaning | Example |
+|----------|---------|---------|
+| `\|` | OR - user must have at least one | `"admin\|manager"` |
+| `&` | AND - user must have all | `"admin&internal"` |
+| `!` | NOT - user must not have | `"!guest"` |
+| `()` | Grouping | `"(admin\|manager)&!banned"` |
+
+**Query parameters** (passed to `node()` or `nodes()`):
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `auth_tags` | `str` | Comma-separated list of tags the user has |
+
+**Error codes returned by `deny_reason()`**:
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `""` | - | Access allowed |
+| `"not_authenticated"` | 401 | Entry requires tags but none provided |
+| `"not_authorized"` | 403 | Tags provided but don't match rule |
+
+**Complete example**:
+
+```python
+from genro_routes import RoutingClass, Router, route
+from genro_routes import NotAuthenticated, NotAuthorized
+
+class SecureAPI(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("auth")
+
+    @route("api")  # No rule = always accessible
+    def public_info(self):
+        return "public"
+
+    @route("api", auth_rule="user")  # Requires "user" tag
+    def user_profile(self):
+        return "profile"
+
+    @route("api", auth_rule="admin|moderator")  # Requires admin OR moderator
+    def manage_content(self):
+        return "content"
+
+    @route("api", auth_rule="admin&!banned")  # Requires admin AND NOT banned
+    def admin_panel(self):
+        return "admin"
+
+api = SecureAPI()
+
+# No tags - only public entries visible
+public_entries = api.api.nodes()
+assert "public_info" in public_entries["entries"]
+assert "user_profile" not in public_entries["entries"]
+
+# With user tag
+user_entries = api.api.nodes(auth_tags="user")
+assert "user_profile" in user_entries["entries"]
+
+# Calling protected handler
+node = api.api.node("admin_panel", auth_tags="admin")
+assert node.error is None  # Authorized
+
+node = api.api.node("admin_panel", auth_tags="admin,banned")
+assert node.error == "not_authorized"  # Has admin but also banned
+
+node = api.api.node("admin_panel")  # No tags
+assert node.error == "not_authenticated"
+```
+
+### EnvPlugin API
+
+The EnvPlugin provides **capability-based access control**. It filters entries based on system capabilities that can be static or dynamic.
+
+**Plugin code**: `env`
+
+**Route decorator parameters**:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `env_requires` | `str` | Boolean expression defining required capabilities |
+
+**Rule syntax**: Same as AuthPlugin (`|`, `&`, `!`, `()`)
+
+**Query parameters** (passed to `node()` or `nodes()`):
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `env_capabilities` | `str` | Comma-separated list of additional capabilities |
+
+**Capability sources** (combined automatically):
+
+1. **Instance capabilities**: Via `self.capabilities` attribute (a `CapabilitiesSet` subclass)
+2. **Request capabilities**: Via `env_capabilities` parameter
+
+**Error codes returned by `deny_reason()`**:
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `""` | - | Access allowed |
+| `"not_available"` | 501 | Required capabilities not present |
+
+**CapabilitiesSet class**:
+
+Create dynamic capabilities by subclassing `CapabilitiesSet` and decorating methods with `@capability`:
+
+```python
+from genro_routes.plugins.env import CapabilitiesSet, capability
+
+class ServerCapabilities(CapabilitiesSet):
+    def __init__(self, config):
+        self._config = config
+
+    @capability
+    def redis(self) -> bool:
+        """Check if Redis is available."""
+        return self._config.get("redis_enabled", False)
+
+    @capability
+    def email(self) -> bool:
+        """Check if email service is configured."""
+        return "smtp_host" in self._config
+
+    @capability
+    def maintenance_mode(self) -> bool:
+        """Dynamic capability based on time."""
+        from datetime import datetime
+        return datetime.now().hour < 6  # Only available 00:00-06:00
+```
+
+**CapabilitiesSet behavior**:
+
+- `"redis" in caps` - Check if capability is currently active
+- `list(caps)` - List all currently active capabilities
+- `len(caps)` - Count of active capabilities
+
+**Complete example**:
+
+```python
+from genro_routes import RoutingClass, Router, route
+from genro_routes.plugins.env import CapabilitiesSet, capability
+
+class AppCapabilities(CapabilitiesSet):
+    @capability
+    def cache(self) -> bool:
+        return True  # Always available
+
+    @capability
+    def premium(self) -> bool:
+        return False  # Not available
+
+class FeatureAPI(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("env")
+        self.capabilities = AppCapabilities()
+
+    @route("api")  # No requirements = always available
+    def basic_feature(self):
+        return "basic"
+
+    @route("api", env_requires="cache")
+    def cached_data(self):
+        return "cached"
+
+    @route("api", env_requires="premium")
+    def premium_feature(self):
+        return "premium"
+
+    @route("api", env_requires="cache|premium")
+    def either_feature(self):
+        return "either"
+
+    @route("api", env_requires="cache&premium")
+    def both_features(self):
+        return "both"
+
+api = FeatureAPI()
+
+# Based on capabilities (cache=True, premium=False)
+entries = api.api.nodes()["entries"]
+assert "basic_feature" in entries
+assert "cached_data" in entries      # cache is True
+assert "premium_feature" not in entries  # premium is False
+assert "either_feature" in entries   # cache OR premium
+assert "both_features" not in entries    # cache AND premium
+
+# Override with request capabilities
+entries = api.api.nodes(env_capabilities="premium")["entries"]
+assert "premium_feature" in entries  # Now available
+assert "both_features" in entries    # cache (instance) + premium (request)
+```
+
+### OpenAPIPlugin API
+
+The OpenAPIPlugin provides **explicit control over OpenAPI schema generation**. It allows overriding automatically guessed HTTP methods and adding OpenAPI-specific metadata.
+
+**Plugin code**: `openapi`
+
+**Route decorator parameters**:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `openapi_method` | `str` | HTTP method override (`get`, `post`, `put`, `delete`, `patch`) |
+| `openapi_tags` | `str \| list[str]` | OpenAPI tags for grouping operations |
+| `openapi_summary` | `str` | Summary text override |
+| `openapi_deprecated` | `bool` | Mark operation as deprecated |
+
+**HTTP method guessing rules** (when not explicitly set):
+
+| Condition | Method |
+|-----------|--------|
+| Has parameters | `POST` |
+| No parameters, returns `None` | `POST` (side effect assumed) |
+| No parameters, returns value | `GET` |
+
+**OpenAPITranslator class**:
+
+The plugin includes `OpenAPITranslator` for converting `nodes()` output to OpenAPI format:
+
+```python
+from genro_routes.plugins.openapi import OpenAPITranslator
+
+# Get nodes data
+nodes_data = api.api.nodes()
+
+# Flat OpenAPI format (all paths merged)
+openapi = OpenAPITranslator.translate_openapi(nodes_data)
+# Returns: {"paths": {"/handler1": {...}, "/child/handler2": {...}}}
+
+# Hierarchical format (preserves router structure)
+h_openapi = OpenAPITranslator.translate_h_openapi(nodes_data)
+# Returns: {"paths": {...}, "routers": {"child": {"paths": {...}}}}
+```
+
+**Complete example**:
+
+```python
+from genro_routes import RoutingClass, Router, route
+from genro_routes.plugins.openapi import OpenAPITranslator
+
+class UserAPI(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("openapi")
+
+    @route("api", openapi_tags=["users"])
+    def list_users(self) -> list:
+        """Get all users."""
+        return []
+
+    @route("api", openapi_method="post", openapi_tags=["users"])
+    def create_user(self, name: str, email: str) -> dict:
+        """Create a new user."""
+        return {"name": name, "email": email}
+
+    @route("api", openapi_method="delete", openapi_tags=["users", "admin"])
+    def delete_user(self, user_id: int) -> dict:
+        """Delete a user (admin only)."""
+        return {"deleted": user_id}
+
+    @route("api", openapi_deprecated=True)
+    def legacy_endpoint(self) -> str:
+        """Deprecated endpoint."""
+        return "legacy"
+
+api = UserAPI()
+nodes = api.api.nodes()
+openapi = OpenAPITranslator.translate_openapi(nodes)
+
+# openapi["paths"] contains:
+# "/list_users": {"get": {"operationId": "list_users", "tags": ["users"], ...}}
+# "/create_user": {"post": {"operationId": "create_user", "tags": ["users"], ...}}
+# "/delete_user": {"delete": {"operationId": "delete_user", "tags": ["users", "admin"], ...}}
+```
+
 ## Creating Custom Plugins
 
 Extend `BasePlugin` and implement hooks. Every plugin **must** define two class attributes:
