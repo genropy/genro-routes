@@ -65,8 +65,6 @@ You can use Genro Routes **alongside** FastAPI to organize your internal handler
 
 **Question**: What exactly does a `Router` do?
 
-<!-- test: test_router_basic.py::test_instance_bound_methods_are_isolated -->
-
 **Answer**: A `Router` is an object that:
 
 1. **Registers handlers**: methods decorated with `@route()`
@@ -165,8 +163,8 @@ dashboard.sales.api.node("report")()
 # Introspection
 nodes = dashboard.api.nodes()
 # {
-#   "handlers": {...},
-#   "children": {
+#   "entries": {...},
+#   "routers": {
 #     "sales": {...},
 #     "finance": {...}
 #   }
@@ -176,8 +174,6 @@ nodes = dashboard.api.nodes()
 ### Do plugins inherit to children?
 
 **Question**: If I attach a plugin to the parent router, do children see it?
-
-<!-- test: test_router_basic.py::test_parent_plugins_inherit_to_children -->
 
 **Answer**: **Yes, automatically**. Plugins propagate from parent to children:
 
@@ -410,9 +406,7 @@ node()            # raises NotFound
 
 ### How do I introspect the structure?
 
-**Question**: I want to see all registered handlers and children.
-
-<!-- test: test_router_basic.py::test_describe_returns_hierarchy -->
+**Question**: I want to see all registered entries and child routers.
 
 **Answer**: Use `nodes()`:
 

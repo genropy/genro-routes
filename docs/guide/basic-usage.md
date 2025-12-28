@@ -15,8 +15,6 @@ Genro Routes provides instance-scoped routing with hierarchical organization and
 
 ## Creating Your First Router
 
-<!-- test: test_router_basic.py::test_instance_bound_methods_are_isolated -->
-
 Create a service with instance-scoped routing:
 
 ```python

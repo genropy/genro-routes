@@ -12,10 +12,6 @@ pip install genro-routes
 
 ## Your First Router
 
-<!-- test: test_router_basic.py::test_instance_bound_methods_are_isolated -->
-
-[From test](https://github.com/genropy/genro-routes/blob/main/tests/test_router_basic.py#L141-L148)
-
 Create a service with instance-scoped routing:
 
 ```python
@@ -93,10 +89,6 @@ assert t.table.node("add")("x") == "added:x"
 If the class has multiple routers, you must specify the router name explicitly.
 
 ## Building Hierarchies
-
-<!-- test: test_router_basic.py::test_hierarchical_binding_with_instances -->
-
-[From test](https://github.com/genropy/genro-routes/blob/main/tests/test_router_basic.py#L159-L167)
 
 Create nested router structures:
 
