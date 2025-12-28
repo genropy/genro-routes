@@ -12,7 +12,22 @@ For additional reference, see:
 ## Auto-Generated Plugin API
 
 ```{eval-rst}
+.. automodule:: genro_routes.plugins.auth
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: genro_routes.plugins.env
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 .. automodule:: genro_routes.plugins.logging
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: genro_routes.plugins.openapi
    :members:
    :undoc-members:
    :show-inheritance:
