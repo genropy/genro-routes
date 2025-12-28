@@ -418,14 +418,14 @@ assert "list" in sub_info["entries"]
 
 # Use lazy=True for on-demand expansion of children
 lazy_info = insp.api.nodes(lazy=True)
-assert callable(lazy_info["routers"]["sub"])  # Callable, not expanded
-sub_expanded = lazy_info["routers"]["sub"]()  # Expand on demand
+sub_router = lazy_info["routers"]["sub"]  # Router reference, not expanded
+sub_expanded = sub_router.nodes()  # Expand on demand
 ```
 
 **`nodes()` parameters**:
 
 - `basepath`: Start from a specific point in the hierarchy
-- `lazy`: Return callables for child routers instead of expanding recursively
+- `lazy`: Return router references instead of expanding recursively
 - `mode`: Output format mode (e.g., `"openapi"` for OpenAPI schema generation)
 - `forbidden`: Include blocked entries with their rejection reason (default `False`)
 

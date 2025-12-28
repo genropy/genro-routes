@@ -29,7 +29,7 @@ Objects
         - ``configuration(method_name=None)``: Read merged configuration
         - ``on_decore(router, func, entry)``: Called when handler is registered
         - ``wrap_handler(router, entry, call_next)``: Build middleware chain
-        - ``allow_entry(entry, **filters)``: Control handler visibility
+        - ``deny_reason(entry, **filters)``: Control handler visibility
         - ``entry_metadata(router, entry)``: Provide plugin-specific metadata
 
 Example::
@@ -296,7 +296,7 @@ class BasePlugin:
         """
         return call_next
 
-    def allow_entry(self, entry: Any, **filters: Any) -> str:  # pragma: no cover - optional hook
+    def deny_reason(self, entry: Any, **filters: Any) -> str:  # pragma: no cover - optional hook
         """Override to control entry visibility during introspection.
 
         Called by ``router.nodes()`` and ``router.node()`` to decide if an entry
@@ -307,7 +307,7 @@ class BasePlugin:
             **filters: All filter criteria passed to ``nodes()`` or ``node()``.
 
         Returns:
-            "": Entry is allowed.
+            "": Entry is allowed (no reason to deny).
             "not_authenticated": Entry requires auth but no credentials (401).
             "not_authorized": Credentials provided but insufficient (403).
             "not_available": Capability not available (501).

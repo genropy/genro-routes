@@ -374,7 +374,7 @@ class Router(BaseRouter):
                 allowing_args, f"{plugin.plugin_code}_", slice_prefix=True, pop=False
             )
             # Always consult plugin - it decides based on entry rules and user kwargs
-            result = plugin.allow_entry(entry, **plugin_kwargs)
+            result = plugin.deny_reason(entry, **plugin_kwargs)
             if result:
                 return result
         return ""

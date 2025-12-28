@@ -88,7 +88,7 @@ class AuthPlugin(BasePlugin):
             )
         pass  # Storage handled by wrapper
 
-    def allow_entry(
+    def deny_reason(
         self, entry: MethodEntry | RouterInterface, **filters: Any
     ) -> str:
         """Filter entries based on authorization rule.
@@ -98,7 +98,7 @@ class AuthPlugin(BasePlugin):
             **filters: May contain ``tags`` with user's tags.
 
         Returns:
-            "": Access allowed (entry has no rule, or tags match).
+            "": Access allowed (no reason to deny).
             "not_authenticated": Entry requires tags but none provided.
             "not_authorized": Tags provided but don't match rule.
         """
@@ -106,7 +106,7 @@ class AuthPlugin(BasePlugin):
             # Iterate over entries and children using internal attributes
             # These are implementation details of BaseRouter, not part of RouterInterface
             all_nodes = list(entry._entries.values()) + list(entry._children.values())  # type: ignore[attr-defined]
-            results = [self.allow_entry(n, **filters) for n in all_nodes]
+            results = [self.deny_reason(n, **filters) for n in all_nodes]
             if any(r == "" for r in results):
                 return ""
             return results[0] if results else ""

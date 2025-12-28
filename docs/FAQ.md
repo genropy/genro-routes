@@ -443,7 +443,7 @@ schema = router.nodes(mode="openapi")
 **`nodes()` parameters**:
 
 - `basepath`: Start from a specific point in the hierarchy
-- `lazy`: Return callables for child routers instead of expanding
+- `lazy`: Return router references instead of expanding
 - `mode`: Output format (`"openapi"` for OpenAPI schema)
 
 ## Comparisons

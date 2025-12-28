@@ -222,7 +222,7 @@ Genro Routes plugins can override these methods:
 | `configure()` | At plugin init and runtime | Define configuration schema | No |
 | `on_decore()` | Handler registration | Add metadata, validate signatures | No |
 | `wrap_handler()` | Handler invocation | Middleware (logging, auth, etc.) | No |
-| `allow_entry()` | `nodes()` introspection | Filter visible handlers | No |
+| `deny_reason()` | `nodes()` introspection | Filter visible handlers | No |
 | `entry_metadata()` | `nodes()` introspection | Add plugin metadata to output | No |
 | `on_attached_to_parent()` | Child attached to parent | Handle plugin inheritance | No |
 | `on_parent_config_changed()` | Parent config changes | React to parent updates | No |
@@ -325,7 +325,7 @@ def wrap_handler(self, router, entry, call_next):
     return wrapper
 ```
 
-### allow_entry(entry, **filters)
+### deny_reason(entry, **filters)
 
 Control handler visibility during introspection (`nodes()`).
 
@@ -340,18 +340,18 @@ The plugin receives all filter arguments passed to `nodes(**filters)` and is res
 - `entry` - MethodEntry being checked
 - `**filters` - All filter criteria passed to `nodes()`. The plugin decides which filters to handle and how to interpret them.
 
-**Returns**: `True` to allow, `False` or error string to deny (e.g., `"not_authorized"`, `"not_available"`)
+**Returns**: `""` (empty string) to allow, or a reason string to deny (e.g., `"not_authorized"`, `"not_available"`)
 
 **Example**:
 
 ```python
-def allow_entry(self, entry, visibility=None, **filters):
+def deny_reason(self, entry, visibility=None, **filters):
     # Plugin interprets 'visibility' filter against entry metadata
     if visibility:
         entry_visibility = entry.metadata.get("visibility", "public")
         if entry_visibility != visibility:
             return "not_visible"  # deny with reason
-    return True  # no objection
+    return ""  # no reason to deny
 ```
 
 ### entry_metadata(router, entry)

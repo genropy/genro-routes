@@ -68,7 +68,7 @@ class RouterInterface(ABC):
 
         Args:
             basepath: Optional path to start from.
-            lazy: If True, child data returned as callables.
+            lazy: If True, child routers returned as references.
             mode: Output format mode (e.g., "openapi"). If None, returns
                   standard introspection format.
             pattern: Regex pattern to filter entry names.

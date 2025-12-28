@@ -685,12 +685,12 @@ class BaseRouter(RouterInterface):
 
             pattern: Optional regex pattern to filter entry names.
                      Only entries whose name matches the pattern are included.
-                     Applied before plugin allow_entry() checks.
+                     Applied before plugin deny_reason() checks.
             forbidden: If True, include entries that are not allowed (e.g.,
                        due to authorization or capability requirements). These
                        entries will have a ``forbidden`` field with the reason
                        (e.g., "not_authorized", "not_available"). Default False.
-            **kwargs: Filter arguments passed to plugins via allow_entry().
+            **kwargs: Filter arguments passed to plugins via deny_reason().
 
         Returns:
             A dict containing:

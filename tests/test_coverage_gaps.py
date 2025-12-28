@@ -674,11 +674,11 @@ def test_not_available_with_router_name():
     assert "my_path" in str(exc)
 
 
-# --- auth.py: allow_entry with RouterInterface ---
+# --- auth.py: deny_reason with RouterInterface ---
 
 
-def test_auth_allow_entry_with_router_interface():
-    """Test auth plugin allow_entry when passed a RouterInterface (child router)."""
+def test_auth_deny_reason_with_router_interface():
+    """Test auth plugin deny_reason when passed a RouterInterface (child router)."""
 
     class ChildSvc(RoutingClass):
         def __init__(self):
@@ -707,20 +707,20 @@ def test_auth_allow_entry_with_router_interface():
     # Get child router via parent
     child_router = parent.api._children["child"]
 
-    # Test allow_entry with RouterInterface
+    # Test deny_reason with RouterInterface
     auth_plugin = parent.api._plugins_by_name["auth"]
 
     # Without tags - should return "" because public handler exists
-    result = auth_plugin.allow_entry(child_router)
+    result = auth_plugin.deny_reason(child_router)
     assert result == ""  # At least one entry is allowed (public)
 
     # With admin tags - should return ""
-    result = auth_plugin.allow_entry(child_router, tags="admin")
+    result = auth_plugin.deny_reason(child_router, tags="admin")
     assert result == ""
 
 
-def test_auth_allow_entry_router_empty():
-    """Test auth allow_entry with empty router returns empty string."""
+def test_auth_deny_reason_router_empty():
+    """Test auth deny_reason with empty router returns empty string."""
 
     class ChildSvc(RoutingClass):
         def __init__(self):
@@ -743,7 +743,7 @@ def test_auth_allow_entry_router_empty():
     auth_plugin = parent.api._plugins_by_name["auth"]
 
     # Empty router returns "" (no entries to check)
-    result = auth_plugin.allow_entry(child_router)
+    result = auth_plugin.deny_reason(child_router)
     assert result == ""
 
 

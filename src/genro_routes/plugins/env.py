@@ -130,7 +130,7 @@ class EnvPlugin(BasePlugin):
             )
         pass  # Storage handled by wrapper
 
-    def allow_entry(self, entry: MethodEntry, **filters: Any) -> str:
+    def deny_reason(self, entry: MethodEntry, **filters: Any) -> str:
         """Filter entries based on capability requirements.
 
         Capabilities are accumulated from:
@@ -145,7 +145,7 @@ class EnvPlugin(BasePlugin):
                       ``capabilities`` (from request).
 
         Returns:
-            "": Access allowed (entry has no rule, or capabilities match).
+            "": Access allowed (no reason to deny).
             "not_available": Entry requires capabilities but none available,
                            or capabilities don't match rule.
         """
