@@ -122,14 +122,18 @@ class OpenAPITranslator:
 
         Returns:
             Dict with "paths" containing OpenAPI path items (flat structure),
+            "$defs" containing all type definitions (if any nested types),
             and "routers" for children in lazy mode.
         """
         paths: dict[str, Any] = {}
+        all_defs: dict[str, Any] = {}
 
         entries = nodes_data.get("entries", {})
         for entry_name, entry_info in entries.items():
             path = f"{path_prefix}/{entry_name}" if path_prefix else f"/{entry_name}"
-            paths[path] = OpenAPITranslator.entry_info_to_openapi(entry_name, entry_info)
+            path_item, defs = OpenAPITranslator.entry_info_to_openapi(entry_name, entry_info)
+            paths[path] = path_item
+            all_defs.update(defs)
 
         routers_data = nodes_data.get("routers", {})
         routers: dict[str, Any]
@@ -142,9 +146,14 @@ class OpenAPITranslator:
                     child_data, lazy=False, path_prefix=child_prefix
                 )
                 paths.update(child_openapi.get("paths", {}))
+                # Collect $defs from children
+                if "$defs" in child_openapi:
+                    all_defs.update(child_openapi["$defs"])
             routers = {}
 
         result: dict[str, Any] = {"paths": paths}
+        if all_defs:
+            result["$defs"] = all_defs
         if routers:
             result["routers"] = routers
         return result
@@ -165,14 +174,18 @@ class OpenAPITranslator:
 
         Returns:
             Dict with "paths" containing local OpenAPI path items,
+            "$defs" containing all type definitions (if any nested types),
             and "routers" containing nested h_openapi structures for children.
         """
         paths: dict[str, Any] = {}
+        all_defs: dict[str, Any] = {}
 
         entries = nodes_data.get("entries", {})
         for entry_name, entry_info in entries.items():
             path = f"/{entry_name}"
-            paths[path] = OpenAPITranslator.entry_info_to_openapi(entry_name, entry_info)
+            path_item, defs = OpenAPITranslator.entry_info_to_openapi(entry_name, entry_info)
+            paths[path] = path_item
+            all_defs.update(defs)
 
         routers_data = nodes_data.get("routers", {})
         routers: dict[str, Any]
@@ -184,6 +197,9 @@ class OpenAPITranslator:
                 child_h_openapi = OpenAPITranslator.translate_h_openapi(child_data, lazy=False)
                 if child_h_openapi:
                     routers[child_name] = child_h_openapi
+                    # Collect $defs from children
+                    if "$defs" in child_h_openapi:
+                        all_defs.update(child_h_openapi.pop("$defs"))
 
         result: dict[str, Any] = {
             "description": nodes_data.get("description"),
@@ -191,22 +207,31 @@ class OpenAPITranslator:
         }
         if paths:
             result["paths"] = paths
+        if all_defs:
+            result["$defs"] = all_defs
         if routers:
             result["routers"] = routers
         return result
 
     @staticmethod
-    def entry_info_to_openapi(name: str, entry_info: dict[str, Any]) -> dict[str, Any]:
+    def entry_info_to_openapi(
+        name: str, entry_info: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Convert entry info dict to OpenAPI path item format.
 
         HTTP method determination priority:
         1. Explicit override via openapi plugin config (openapi_method in metadata)
         2. Guessed from function signature (guess_http_method)
+
+        Returns:
+            Tuple of (path_item, defs) where defs contains any $defs extracted
+            from schemas (for nested types like TypedDict).
         """
         func = entry_info.get("callable")
         doc = entry_info.get("doc", "")
         summary = doc.split("\n")[0] if doc else name
         metadata = entry_info.get("metadata", {})
+        collected_defs: dict[str, Any] = {}
 
         openapi_config = metadata.get("plugin_config", {}).get("openapi", {})
         explicit_method = openapi_config.get("method")
@@ -236,6 +261,9 @@ class OpenAPITranslator:
 
         if model and hasattr(model, "model_json_schema"):
             schema = model.model_json_schema()
+            # Extract $defs from request body schema
+            if "$defs" in schema:
+                collected_defs.update(schema.pop("$defs"))
             if http_method == "get":
                 parameters = OpenAPITranslator.schema_to_parameters(schema)
                 if parameters:
@@ -251,14 +279,16 @@ class OpenAPITranslator:
                 hints = get_type_hints(func)
                 return_hint = hints.get("return")
                 if return_hint:
+                    response_schema = OpenAPITranslator.python_type_to_openapi_schema(
+                        return_hint
+                    )
+                    # Extract $defs from response schema
+                    if "$defs" in response_schema:
+                        collected_defs.update(response_schema.pop("$defs"))
                     operation["responses"] = {
                         "200": {
                             "description": "Successful response",
-                            "content": {
-                                "application/json": {
-                                    "schema": OpenAPITranslator.python_type_to_openapi_schema(return_hint)
-                                }
-                            },
+                            "content": {"application/json": {"schema": response_schema}},
                         }
                     }
             except Exception:
@@ -267,7 +297,7 @@ class OpenAPITranslator:
         if "responses" not in operation:
             operation["responses"] = {"200": {"description": "Successful response"}}
 
-        return {http_method: operation}
+        return {http_method: operation}, collected_defs
 
     @staticmethod
     def create_pydantic_model_for_func(func: Callable) -> Any | None:

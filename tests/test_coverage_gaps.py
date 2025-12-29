@@ -761,11 +761,12 @@ def test_openapi_translator_entry_without_callable():
         "callable": None,
         "doc": "Some documentation",
     }
-    result = OpenAPITranslator.entry_info_to_openapi("test_entry", entry_info)
+    path_item, defs = OpenAPITranslator.entry_info_to_openapi("test_entry", entry_info)
 
     # Should default to POST when no callable
-    assert "post" in result
-    assert result["post"]["operationId"] == "test_entry"
+    assert "post" in path_item
+    assert path_item["post"]["operationId"] == "test_entry"
+    assert defs == {}  # No $defs when no callable
 
 
 def test_openapi_translator_create_model_no_fields():
@@ -800,6 +801,78 @@ def test_openapi_h_openapi_child_included():
     assert "routers" in result
     assert "child" in result["routers"]
     assert result["routers"]["child"]["description"] == "A child router"
+
+
+def test_openapi_nested_typeddict_defs_at_root():
+    """Test that nested TypedDict $defs are collected at the root level.
+
+    When a return type uses nested TypedDict, pydantic generates $defs
+    for the inner types. These should be collected at the OpenAPI doc root,
+    not embedded in each response schema.
+
+    Fixes: https://github.com/softwellsrl/genro-routes/issues/15
+    """
+    from typing import TypedDict
+
+    from genro_routes.plugins.openapi import OpenAPITranslator
+
+    class Address(TypedDict):
+        street: str
+        city: str
+
+    class Person(TypedDict):
+        name: str
+        address: Address  # Nested TypedDict -> generates $defs
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def get_person(self) -> Person:
+            return {"name": "John", "address": {"street": "123 Main", "city": "NYC"}}
+
+    svc = Svc()
+    nodes = svc.api.nodes()
+    result = OpenAPITranslator.translate_openapi(nodes)
+
+    # $defs should be at the root level
+    assert "$defs" in result, "Expected $defs at root level for nested TypedDict"
+    assert "Address" in result["$defs"], "Expected Address in $defs"
+
+    # Response schema should reference $defs, not embed them
+    path_item = result["paths"]["/get_person"]
+    response_schema = path_item["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    assert "$defs" not in response_schema, "$defs should not be in response schema"
+
+
+def test_openapi_nested_typeddict_h_openapi_defs_at_root():
+    """Test that h_openapi also collects $defs at root level."""
+    from typing import TypedDict
+
+    from genro_routes.plugins.openapi import OpenAPITranslator
+
+    class Inner(TypedDict):
+        value: int
+
+    class Outer(TypedDict):
+        inner: Inner
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def get_outer(self) -> Outer:
+            return {"inner": {"value": 42}}
+
+    svc = Svc()
+    nodes = svc.api.nodes()
+    result = OpenAPITranslator.translate_h_openapi(nodes)
+
+    # $defs should be at the root level
+    assert "$defs" in result, "Expected $defs at root level for nested TypedDict"
+    assert "Inner" in result["$defs"], "Expected Inner in $defs"
 
 
 # --- base_router.py: additional coverage ---
