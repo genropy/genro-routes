@@ -413,13 +413,13 @@ def test_openapi_lazy_returns_router_references():
     assert "routers" in lazy_schema
     assert isinstance(lazy_schema["routers"]["child"], Router)
 
-    # Expand child via basepath
+    # Expand child via basepath - paths are absolute from root
     child_schema = root.api.nodes(basepath="child", mode="openapi")
-    assert "/action" in child_schema["paths"]
+    assert "/child/action" in child_schema["paths"]
 
 
 def test_openapi_with_basepath():
-    """Test openapi(basepath=...) navigates to child."""
+    """Test openapi(basepath=...) navigates to child with absolute paths."""
 
     class Child(RoutingClass):
         def __init__(self):
@@ -441,10 +441,66 @@ def test_openapi_with_basepath():
 
     root = Root()
 
-    # Get schema starting from child (paths are relative to child)
+    # Get schema starting from child - paths include basepath prefix (issue #16)
     child_schema = root.api.nodes(mode="openapi", basepath="child")
-    assert "/child_action" in child_schema["paths"]
+    assert "/child/child_action" in child_schema["paths"]
     assert "/root_action" not in child_schema.get("paths", {})
+
+
+def test_openapi_basepath_absolute_paths_issue_16():
+    """Test that basepath produces absolute paths from root (issue #16).
+
+    When using nodes(basepath="shop", mode="openapi"), the paths should be
+    absolute from the root (/shop/purchase/list) not relative (/purchase/list).
+    This is required for Swagger UI "Try it out" to work correctly.
+    """
+
+    class PurchaseService(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def list(self) -> list:
+            """List all purchases."""
+            return []
+
+        @route("api")
+        def create(self, item: str, qty: int = 1) -> dict:
+            """Create a purchase."""
+            return {"item": item, "qty": qty}
+
+    class Shop(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.purchase = PurchaseService()
+            self.api.attach_instance(self.purchase, name="purchase")
+
+        @route("api")
+        def info(self) -> dict:
+            """Shop info."""
+            return {"name": "My Shop"}
+
+    shop = Shop()
+
+    # Get OpenAPI for purchase subtree via basepath
+    purchase_schema = shop.api.nodes(basepath="purchase", mode="openapi")
+
+    # Paths must be absolute from root (include /purchase prefix)
+    assert "/purchase/list" in purchase_schema["paths"]
+    assert "/purchase/create" in purchase_schema["paths"]
+
+    # Verify operations are correct
+    list_op = purchase_schema["paths"]["/purchase/list"]["get"]
+    assert list_op["operationId"] == "list"
+    assert list_op["summary"] == "List all purchases."
+
+    create_op = purchase_schema["paths"]["/purchase/create"]["post"]
+    assert create_op["operationId"] == "create"
+    assert "requestBody" in create_op  # Has parameters, so POST with body
+
+    # Root handlers should NOT be included
+    assert "/info" not in purchase_schema["paths"]
+    assert "/purchase/info" not in purchase_schema["paths"]
 
 
 def test_configure_validates_inputs_and_targets():
@@ -904,9 +960,9 @@ def test_h_openapi_lazy_returns_router_references():
     # In lazy mode, child is a Router reference
     assert isinstance(lazy["routers"]["child"], Router)
 
-    # Can expand via basepath
+    # Can expand via basepath - paths are absolute from root
     child_schema = root.api.nodes(basepath="child", mode="h_openapi")
-    assert "/action" in child_schema["paths"]
+    assert "/child/action" in child_schema["paths"]
 
 
 def test_h_openapi_preserves_openapi_format():

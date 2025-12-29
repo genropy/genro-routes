@@ -686,7 +686,19 @@ class BaseRouter(RouterInterface):
         if basepath:
             router = self.router_at_path(basepath)
             if router:
-                return router.nodes(lazy=lazy, mode=mode, pattern=pattern, forbidden=forbidden, **kwargs)
+                # Get nodes from child router, then apply basepath prefix for openapi modes
+                child_nodes = router.nodes(lazy=lazy, mode=None, pattern=pattern, forbidden=forbidden, **kwargs)
+                if mode and child_nodes:
+                    from genro_routes.plugins.openapi import OpenAPITranslator
+
+                    translator = getattr(OpenAPITranslator, f"translate_{mode}", None)
+                    if translator is None:
+                        raise ValueError(f"Unknown mode: {mode}")
+                    # Prepend basepath to paths so they are absolute from root
+                    path_prefix = "/" + basepath.strip("/")
+                    basepath_result: dict[str, Any] = translator(child_nodes, lazy=lazy, path_prefix=path_prefix)
+                    return basepath_result
+                return child_nodes
             return {}
         # Compile pattern once if provided
         pattern_re = re.compile(pattern) if pattern else None

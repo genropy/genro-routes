@@ -162,6 +162,7 @@ class OpenAPITranslator:
     def translate_h_openapi(
         nodes_data: dict[str, Any],
         lazy: bool = False,
+        path_prefix: str = "",
     ) -> dict[str, Any]:
         """Translate nodes() output to hierarchical OpenAPI format.
 
@@ -171,6 +172,7 @@ class OpenAPITranslator:
         Args:
             nodes_data: Output from nodes() in standard format.
             lazy: If True, child routers are returned as router references.
+            path_prefix: Prefix for generated paths (used when called with basepath).
 
         Returns:
             Dict with "paths" containing local OpenAPI path items,
@@ -182,7 +184,7 @@ class OpenAPITranslator:
 
         entries = nodes_data.get("entries", {})
         for entry_name, entry_info in entries.items():
-            path = f"/{entry_name}"
+            path = f"{path_prefix}/{entry_name}" if path_prefix else f"/{entry_name}"
             path_item, defs = OpenAPITranslator.entry_info_to_openapi(entry_name, entry_info)
             paths[path] = path_item
             all_defs.update(defs)
