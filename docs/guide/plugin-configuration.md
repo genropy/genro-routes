@@ -33,9 +33,65 @@ A configuration target has three parts:
 
 - `_all_` (case-insensitive) - Global plugin settings
 - Handler name - Specific handler (e.g., `foo`, `bar`)
-- Glob pattern - Multiple handlers (e.g., `admin_*`, `*/detail`)
+- Glob pattern - Multiple handlers (e.g., `admin_*`, `*_detail`)
 
-Glob patterns use `fnmatch` for matching.
+## Glob Pattern Syntax
+
+The selector part of the target supports `fnmatch` glob patterns for matching multiple handlers:
+
+| Pattern | Matches | Example Target |
+|---------|---------|----------------|
+| `*` | Any string | `api:logging/*` (all handlers) |
+| `?` | Any single character | `api:logging/get_?` (get_a, get_b, ...) |
+| `[abc]` | Any char in brackets | `api:logging/get_[123]` |
+| `[!abc]` | Any char NOT in brackets | `api:logging/[!_]*` (not starting with _) |
+| `admin_*` | Prefix match | `api:logging/admin_*` |
+| `*_detail` | Suffix match | `api:logging/*_detail` |
+
+**Glob pattern examples**:
+
+```python
+class Service(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("logging")
+
+    @route("api")
+    def admin_list(self): pass
+
+    @route("api")
+    def admin_create(self): pass
+
+    @route("api")
+    def admin_delete(self): pass
+
+    @route("api")
+    def user_profile(self): pass
+
+    @route("api")
+    def user_settings(self): pass
+
+svc = Service()
+
+# Disable logging for all admin handlers
+svc.routing.configure("api:logging/admin_*", enabled=False)
+
+# Set debug level for all user handlers
+svc.routing.configure("api:logging/user_*", level="debug")
+
+# Configure multiple patterns with comma-separated selector
+svc.routing.configure("api:logging/admin_list,admin_create", threshold=5)
+```
+
+**Combining patterns**:
+
+```python
+# Multiple comma-separated patterns in selector
+svc.routing.configure("api:logging/admin_*,user_*", enabled=True)
+
+# Each pattern is matched independently:
+# admin_* matches: admin_list, admin_create, admin_delete
+# user_* matches: user_profile, user_settings
+```
 
 ## Basic Configuration
 

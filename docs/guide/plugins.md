@@ -520,6 +520,90 @@ Genro Routes plugins can override these methods:
 
 **All hooks are optional.** Override only what you need. A minimal plugin can have just `plugin_code` and `plugin_description` with no hooks.
 
+## Plugin Execution Order
+
+The order in which you call `plug()` determines the middleware execution order.
+
+### The Onion Model
+
+Plugins wrap handlers like layers of an onion:
+
+```
+Request → [Last Plugin] → [Middle Plugin] → [First Plugin] → Handler
+Response ← [Last Plugin] ← [Middle Plugin] ← [First Plugin] ← Handler
+```
+
+**The last plugin attached is the outermost layer** (first to receive requests, last to process responses).
+
+### Example: Logging then Validation
+
+```python
+class Service(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api")\
+            .plug("logging")\
+            .plug("pydantic")
+
+    @route("api")
+    def process(self, count: int):
+        return f"processed:{count}"
+```
+
+**Execution flow**:
+
+```
+1. Request arrives
+2. LoggingPlugin.wrap_handler (before)
+   3. PydanticPlugin.wrap_handler (before - validates input)
+      4. Handler executes: process(count=5)
+   5. PydanticPlugin.wrap_handler (after)
+6. LoggingPlugin.wrap_handler (after - logs result)
+7. Response returned
+```
+
+### Practical Ordering Guidelines
+
+| Plugin Order | Use Case |
+|--------------|----------|
+| `logging` then `auth` then `pydantic` | Log all requests, check auth, then validate |
+| `auth` then `logging` then `pydantic` | Only log authenticated requests |
+| `pydantic` then `logging` | Log includes validation errors |
+
+**Common pattern for production**:
+
+```python
+self.api = Router(self, name="api")\
+    .plug("logging")\
+    .plug("auth")\
+    .plug("pydantic")\
+    .plug("openapi")
+```
+
+This order means:
+1. **logging** - Log everything (including auth failures)
+2. **auth** - Check authentication/authorization
+3. **pydantic** - Validate input
+4. **openapi** - OpenAPI metadata (no wrapping, just metadata)
+
+### Visualizing the Stack
+
+```
+┌─────────────────────────────────┐
+│         LoggingPlugin           │  ← Outermost (sees all)
+│  ┌───────────────────────────┐  │
+│  │       AuthPlugin          │  │
+│  │  ┌─────────────────────┐  │  │
+│  │  │  PydanticPlugin     │  │  │
+│  │  │  ┌───────────────┐  │  │  │
+│  │  │  │   Handler     │  │  │  │  ← Innermost
+│  │  │  └───────────────┘  │  │  │
+│  │  └─────────────────────┘  │  │
+│  └───────────────────────────┘  │
+└─────────────────────────────────┘
+```
+
+**Note**: OpenAPIPlugin doesn't wrap handlers - it only provides metadata for introspection. It can be placed anywhere in the chain.
+
 ### configure(**kwargs)
 
 Define accepted configuration parameters. The method signature becomes the configuration schema, validated by Pydantic.

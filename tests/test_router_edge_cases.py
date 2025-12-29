@@ -400,6 +400,93 @@ def test_attach_instance_requires_mapping_when_parent_has_multiple_routers():
         parent.api.attach_instance(parent.child)  # parent has multiple routers, mapping required
 
 
+def test_routing_proxy_attach_instance_with_single_router():
+    """Test routing.attach_instance delegates to default_router."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def hello(self):
+            return "hello from child"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+
+    parent = Parent()
+    # Use routing.attach_instance instead of parent.api.attach_instance
+    parent.routing.attach_instance(parent.child, name="child")
+
+    # Verify child is accessible
+    assert parent.api.node("child/hello")() == "hello from child"
+
+
+def test_routing_proxy_attach_instance_fails_with_multiple_routers():
+    """Test routing.attach_instance raises RuntimeError with multiple routers."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.admin = Router(self, name="admin")
+            self.child = Child()
+
+    parent = Parent()
+    with pytest.raises(RuntimeError) as exc_info:
+        parent.routing.attach_instance(parent.child, name="child")
+    assert "exactly one router" in str(exc_info.value)
+    assert "has 2" in str(exc_info.value)
+
+
+def test_routing_proxy_attach_instance_with_router_name():
+    """Test routing.attach_instance with explicit router_name."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def hello(self):
+            return "hello from child"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.admin = Router(self, name="admin")
+            self.child = Child()
+
+    parent = Parent()
+    # With multiple routers, use router_name to specify which one
+    parent.routing.attach_instance(parent.child, name="child", router_name="admin")
+
+    # Verify child is accessible on the specified router
+    assert parent.admin.node("child/hello")() == "hello from child"
+
+
+def test_routing_proxy_attach_instance_invalid_router_name():
+    """Test routing.attach_instance raises AttributeError for invalid router_name."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+
+    parent = Parent()
+    with pytest.raises(AttributeError) as exc_info:
+        parent.routing.attach_instance(parent.child, name="child", router_name="nonexistent")
+    assert "No router named 'nonexistent'" in str(exc_info.value)
+
+
 def test_branch_router_blocks_entries():
     """Branch routers cannot register handlers directly."""
 

@@ -380,6 +380,45 @@ class _RoutingProxy:
             },
         }
 
+    def attach_instance(
+        self,
+        instance: RoutingClass,
+        name: str | None = None,
+        router_name: str | None = None,
+    ):
+        """Attach a child instance to a router.
+
+        Convenience method that delegates to a router's attach_instance.
+
+        Args:
+            instance: The RoutingClass instance to attach.
+            name: Optional name for the child. If not provided, uses instance class name.
+            router_name: Optional router name. If not provided, uses the default router
+                (only works when exactly one router is registered).
+
+        Returns:
+            The result of router.attach_instance().
+
+        Raises:
+            RuntimeError: If router_name is not provided and no default router exists.
+            AttributeError: If router_name is provided but not found.
+        """
+        if router_name is not None:
+            router = self._owner._routers.get(router_name)
+            if router is None:
+                raise AttributeError(
+                    f"No router named '{router_name}' on {type(self._owner).__name__}"
+                )
+        else:
+            router = self._owner.default_router
+            if router is None:
+                count = len(self._owner._routers)
+                raise RuntimeError(
+                    f"attach_instance requires exactly one router; "
+                    f"{type(self._owner).__name__} has {count}"
+                )
+        return router.attach_instance(instance, name=name)
+
     def configure(self, target: Any, **options: Any):
         """Configure router plugins.
 

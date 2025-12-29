@@ -303,6 +303,63 @@ node = router.node("unknown/path")
 result = node()  # calls handler("unknown", "path")
 ```
 
+## Custom Exception Mapping
+
+Map router error codes to your framework's exception classes using the `errors` parameter in `node()`:
+
+```python
+from genro_routes import RoutingClass, Router, route
+
+# Define your framework's exceptions
+class HTTPNotFound(Exception):
+    pass
+
+class HTTPForbidden(Exception):
+    pass
+
+class HTTPUnauthorized(Exception):
+    pass
+
+class MyAPI(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("auth")
+
+    @route("api", auth_rule="admin")
+    def admin_only(self):
+        return "secret"
+
+api = MyAPI()
+
+# Map error codes to custom exceptions
+node = api.api.node("admin_only", auth_tags="guest", errors={
+    "not_found": HTTPNotFound,
+    "not_authorized": HTTPForbidden,
+    "not_authenticated": HTTPUnauthorized,
+})
+
+# Calling raises your custom exception
+try:
+    node()
+except HTTPForbidden:
+    print("Access denied!")  # Your exception type
+```
+
+**Available error codes** (see `RouterNode.ERROR_CODES`):
+
+| Code | Default Exception | HTTP Status | When |
+|------|-------------------|-------------|------|
+| `not_found` | `NotFound` | 404 | Path doesn't resolve |
+| `not_authenticated` | `NotAuthenticated` | 401 | Auth required, none provided |
+| `not_authorized` | `NotAuthorized` | 403 | Auth provided, insufficient |
+| `not_available` | `NotAvailable` | 501 | Capability missing |
+| `validation_error` | `ValidationError` | 422 | Pydantic validation failed |
+
+**Use cases**:
+
+- Integrate with web frameworks (FastAPI, Starlette, Flask)
+- Consistent error handling across your application
+- Custom error responses with framework-specific exception types
+
 ## Catch-All Routing with `default_entry`
 
 Routers have a `default_entry` parameter (default: `"index"`) that enables catch-all routing patterns via best-match resolution:

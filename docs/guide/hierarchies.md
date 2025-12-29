@@ -206,11 +206,42 @@ service.api.node("products/create")()
 self.api = Router(self, name="api", branch=True)
 self.api.attach_instance(self.auth, name="auth")
 self.api.attach_instance(self.users, name="users")
-# Routes: api.auth.login, api.users.list
+# Routes: api/auth/login, api/users/list
 
 # Not needed: Single level with handlers
 self.api = Router(self, name="api")  # Regular router
 ```
+
+**When NOT to use branches**:
+
+Branch routers add a level to your URL hierarchy. Use them only when you need pure organizational containers:
+
+```python
+# DON'T: Branch with single child (unnecessary nesting)
+self.api = Router(self, name="api", branch=True)
+self.users = UserService()
+self.api.attach_instance(self.users, name="users")
+# Result: api/users/list - the "api" level adds nothing
+
+# DO: Regular router with handlers + attached children
+self.api = Router(self, name="api")  # Has its own handlers
+self.users = UserService()
+self.api.attach_instance(self.users, name="users")
+
+@route("api")
+def health(self):  # api/health - root level handler
+    return "ok"
+# Result: api/health + api/users/list - "api" has purpose
+```
+
+**Decision guide**:
+
+| Scenario | Use Branch? |
+|----------|-------------|
+| Pure namespace (no root handlers) | Yes |
+| Root router with handlers + children | No |
+| Single child service | No (attach directly) |
+| Multiple children, common namespace | Yes |
 
 ## Direct Router Hierarchies with parent_router
 
