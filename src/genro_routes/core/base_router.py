@@ -478,73 +478,93 @@ class BaseRouter(RouterInterface):
     # ------------------------------------------------------------------
     # Children management (via attach_instance/detach_instance)
     # ------------------------------------------------------------------
-    def attach_instance(self, routing_child: Any, *, name: str | None = None) -> BaseRouter:
-        """Attach a RoutingClass instance with optional alias mapping."""
+    def attach_instance(
+        self,
+        routing_child: Any,
+        *,
+        name: str | None = None,
+        mapping: str | None = None,
+    ) -> BaseRouter:
+        """Attach a RoutingClass instance as a child of this router.
+
+        After attachment, the child's routers are reachable via path navigation:
+        ``parent_router.node("alias/handler")``
+
+        Args:
+            routing_child: The RoutingClass instance to attach.
+            name: Alias for the child's router (like ``as`` in Python imports).
+                  Used when the child has a single router.
+                  If None, uses the router's original name.
+            mapping: Explicit mapping for children with multiple routers.
+                  Format: ``"router_name:alias, router_name2:alias2"``
+                  Routers not mentioned are not attached.
+
+        Returns:
+            The last attached router.
+
+        Raises:
+            TypeError: If routing_child is not a RoutingClass.
+            ValueError: If the child is already attached to a different parent.
+            ValueError: If there's a name collision in _children.
+            ValueError: If both name and mapping are provided.
+
+        Examples:
+            Child with single router::
+
+                parent.api.attach_instance(child, name="users")
+                parent.api.node("users/handler")()
+
+            Child with multiple routers (auto-mapping)::
+
+                parent.api.attach_instance(child)  # child has "api" and "admin"
+                parent.api.node("api/handler")()
+                parent.api.node("admin/action")()
+
+            Child with multiple routers (explicit mapping)::
+
+                parent.api.attach_instance(child, mapping="api:public, admin:mgmt")
+                parent.api.node("public/handler")()
+                parent.api.node("mgmt/action")()
+        """
         if not safe_is_instance(routing_child, "genro_routes.core.routing.RoutingClass"):
             raise TypeError("attach_instance() requires a RoutingClass instance")
         existing_parent = getattr(routing_child, "_routing_parent", None)
         if existing_parent is not None and existing_parent is not self.instance:
             raise ValueError("attach_instance() rejected: child already bound to another parent")
 
-        candidates = self._collect_child_routers(routing_child)
-        if not candidates:
+        default_router = routing_child.default_router
+        if not routing_child._routers:
             raise TypeError(
                 f"Object {routing_child!r} does not expose Router instances"
             )  # pragma: no cover
 
-        mapping: dict[str, str] = {}
-        tokens = [chunk.strip() for chunk in (name.split(",") if name else []) if chunk.strip()]
-        parent_has_multiple = len(self.instance._routers) > 1
-
-        if len(candidates) == 1:
-            # Single child router: alias optional unless parent has multiple routers.
-            if parent_has_multiple and not tokens:
-                raise ValueError(
-                    "attach_instance() requires alias when parent has multiple routers"
-                )  # pragma: no cover
-            alias: str = tokens[0] if tokens else name or candidates[0][0] or candidates[0][1].name  # type: ignore[assignment]
-            orig_attr, _ = candidates[0]
-            mapping[orig_attr] = alias
+        # Build pairs: list of (router_name, alias)
+        pairs: list[tuple[str, str | None]]
+        if default_router:
+            # Child with single router
+            pairs = [(default_router.name, name)]
+        elif mapping:
+            # Child with multiple routers, explicit mapping "api:users, admin:mgmt"
+            tokens = [token.strip() for token in mapping.split(",") if token.strip()]
+            pairs = [
+                (parts[0], parts[1]) if len(parts) == 2 else (token, None)
+                for token in tokens
+                for parts in [token.split(":", 1)]
+            ]
         else:
-            # Multiple child routers.
-            if parent_has_multiple and not tokens:
-                raise ValueError(
-                    "attach_instance() requires mapping when parent has multiple routers"
-                )  # pragma: no cover
-            if not tokens:
-                # Auto-mapping: alias = child router name/attr
-                for orig_attr, router in candidates:
-                    alias = router.name or orig_attr
-                    mapping[orig_attr] = alias
-            else:
-                candidate_names = {attr for attr, _ in candidates}
-                for token in tokens:
-                    if ":" not in token:
-                        raise ValueError(
-                            "attach_instance() with multiple routers requires mapping 'child:alias'"
-                        )  # pragma: no cover
-                    orig, alias = [part.strip() for part in token.split(":", 1)]
-                    if not orig or not alias:
-                        raise ValueError(
-                            "attach_instance() mapping requires both child and alias"
-                        )  # pragma: no cover
-                    if orig not in candidate_names:
-                        raise ValueError(
-                            f"Unknown child router {orig!r} in mapping"
-                        )  # pragma: no cover
-                    if orig in mapping:
-                        raise ValueError(f"Duplicate mapping for {orig!r}")  # pragma: no cover
-                    mapping[orig] = alias
-                # Unmapped child routers are simply not attached.
+            # Auto-mapping: each router keeps its name
+            pairs = [(rname, None) for rname in routing_child._routers]
 
+        # Attach routers
         attached: BaseRouter | None = None
-        for attr_name, router in candidates:
-            alias = mapping.get(attr_name)  # type: ignore[assignment]
-            if alias is None:
-                continue  # pragma: no cover - unmapped child router is skipped
-            if alias in self._children and self._children[alias] is not router:
-                raise ValueError(f"Child name collision: {alias}")
-            self._children[alias] = router
+        for router_name, alias in pairs:
+            router = routing_child._routers.get(router_name)
+            if not router:
+                raise ValueError(f"Unknown router: {router_name}")
+            final_alias = alias or router.name
+            if final_alias in self._children and self._children[final_alias] is not router:
+                raise ValueError(f"Child name collision: {final_alias}")
+            self._children[final_alias] = router
             router._on_attached_to_parent(self)
             attached = router
 

@@ -268,25 +268,6 @@ def test_attach_instance_multiple_routers_requires_mapping():
     assert parent.api.node("admin")
 
 
-def test_attach_instance_single_child_requires_alias_when_parent_multi():
-    class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-    class Parent(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-            self.admin = Router(self, name="admin")
-            self.child = Child()
-
-    parent = Parent()
-    with pytest.raises(ValueError):
-        parent.api.attach_instance(parent.child)
-    parent.api.attach_instance(parent.child, name="child_alias")
-    # Verify child is accessible via node()
-    assert parent.api.node("child_alias")
-
-
 def test_attach_instance_name_collision():
     class Child(RoutingClass):
         def __init__(self):
@@ -381,23 +362,6 @@ def test_attach_instance_rejects_other_parent_when_already_bound():
     # Attempt to bind same child to another parent should fail
     with pytest.raises(ValueError):
         second.api.attach_instance(first.child, name="child")
-
-
-def test_attach_instance_requires_mapping_when_parent_has_multiple_routers():
-    class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-            self.admin = Router(self, name="admin")
-
-    class Parent(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-            self.admin = Router(self, name="admin")
-            self.child = Child()
-
-    parent = Parent()
-    with pytest.raises(ValueError):
-        parent.api.attach_instance(parent.child)  # parent has multiple routers, mapping required
 
 
 def test_routing_proxy_attach_instance_with_single_router():

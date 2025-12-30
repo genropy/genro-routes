@@ -430,6 +430,7 @@ class _RoutingProxy:
         self,
         instance: RoutingClass,
         name: str | None = None,
+        mapping: str | None = None,
         router_name: str | None = None,
     ):
         """Attach a child instance to a router.
@@ -439,7 +440,8 @@ class _RoutingProxy:
 
         Args:
             instance: The RoutingClass instance to attach.
-            name: Optional name for the child. If not provided, uses instance class name.
+            name: Alias for the child's router.
+            mapping: Explicit mapping for children with multiple routers.
             router_name: Optional router name to attach to. If not provided, uses
                 the default router (only works if exactly one router exists).
 
@@ -464,7 +466,7 @@ class _RoutingProxy:
                     f"attach_instance requires exactly one router; "
                     f"{type(self._owner).__name__} has {count}"
                 )
-        return router.attach_instance(instance, name=name)
+        return router.attach_instance(instance, name=name, mapping=mapping)
 
     def configure(self, target: Any, **options: Any):
         """Configure router plugins.
