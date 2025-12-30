@@ -98,6 +98,36 @@ assert t.table.node("add")("x") == "added:x"
 assert t.table.node("remove")(1) == "removed:1"
 ```
 
+## RoutingClassAuto: For the Lazy
+
+<!-- test: test_router_edge_cases.py::test_routing_class_auto_creates_main_router -->
+
+Don't want to create a router explicitly? Use `RoutingClassAuto` - it creates a "main" router automatically when none exist:
+
+```python
+from genro_routes import RoutingClassAuto, route
+
+class SimpleAPI(RoutingClassAuto):
+    @route()  # No router name needed, no Router() creation needed!
+    def hello(self):
+        return "Hello, World!"
+
+    @route()
+    def goodbye(self):
+        return "Goodbye!"
+
+api = SimpleAPI()
+assert api.default_router.node("hello")() == "Hello, World!"
+assert api.default_router.node("goodbye")() == "Goodbye!"
+```
+
+**Key points**:
+
+- The auto-created router is named "main"
+- Stored internally in `_main_router` to avoid conflicts with your attributes
+- If you define an explicit router, `RoutingClassAuto` uses it instead
+- If you define multiple routers, `default_router` returns `None` (same as `RoutingClass`)
+
 **Rules**:
 
 - If the class has exactly one router: `@route()` works without arguments

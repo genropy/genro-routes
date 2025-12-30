@@ -51,7 +51,7 @@ from .context import RoutingContext
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from .router import Router
 
-__all__ = ["RoutingClass", "ResultWrapper", "is_routing_class", "is_result_wrapper"]
+__all__ = ["RoutingClass", "RoutingClassAuto", "ResultWrapper", "is_routing_class", "is_result_wrapper"]
 
 
 class ResultWrapper:
@@ -276,6 +276,52 @@ class RoutingClass:
         return ResultWrapper(value, metadata)
 
 
+class RoutingClassAuto(RoutingClass):
+    """RoutingClass with automatic main router creation.
+
+    Subclass this instead of RoutingClass when you want a router
+    to be created automatically if none is defined.
+
+    The auto-created router is named "main" and is stored internally
+    in ``_main_router`` to avoid conflicts with user attributes.
+
+    Example::
+
+        from genro_routes import RoutingClassAuto, route
+
+        class SimpleService(RoutingClassAuto):
+            @route()  # Works without explicit Router creation
+            def hello(self):
+                return "Hello!"
+
+        svc = SimpleService()
+        svc.default_router.node("hello")()  # "Hello!"
+    """
+
+    __slots__ = ("_main_router",)
+
+    @property
+    def default_router(self) -> Any:
+        """Return the default router, auto-creating one if none exist.
+
+        If exactly one router is registered, returns it.
+        If no routers exist, creates and returns a "main" router.
+        If multiple routers exist, returns None.
+        """
+        routers = self._routers
+        if len(routers) == 1:
+            return next(iter(routers.values()))
+        if len(routers) == 0:
+            existing = getattr(self, "_main_router", None)
+            if existing is not None:
+                return existing
+            from .router import Router
+            router = Router(self, name="main")
+            object.__setattr__(self, "_main_router", router)
+            return router
+        return None
+
+
 class _RoutingProxy:
     """Proxy for accessing and configuring routers on a RoutingClass instance."""
 
@@ -389,22 +435,23 @@ class _RoutingProxy:
         """Attach a child instance to a router.
 
         Convenience method that delegates to a router's attach_instance.
+        Uses the default router unless router_name is specified.
 
         Args:
             instance: The RoutingClass instance to attach.
             name: Optional name for the child. If not provided, uses instance class name.
-            router_name: Optional router name. If not provided, uses the default router
-                (only works when exactly one router is registered).
+            router_name: Optional router name to attach to. If not provided, uses
+                the default router (only works if exactly one router exists).
 
         Returns:
             The result of router.attach_instance().
 
         Raises:
-            RuntimeError: If router_name is not provided and no default router exists.
-            AttributeError: If router_name is provided but not found.
+            RuntimeError: If no default router exists and router_name not specified.
+            AttributeError: If router_name doesn't match any registered router.
         """
         if router_name is not None:
-            router = self._owner._routers.get(router_name)
+            router = self._lookup_router(self._owner, router_name)
             if router is None:
                 raise AttributeError(
                     f"No router named '{router_name}' on {type(self._owner).__name__}"

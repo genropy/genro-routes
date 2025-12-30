@@ -18,14 +18,15 @@ from .context import RoutingContext
 from .decorators import route
 from .router import Router
 from .router_interface import RouterInterface
-from .routing import RoutingClass, is_result_wrapper
+from .routing import RoutingClass, RoutingClassAuto, is_result_wrapper
 
 __all__ = [
     "BaseRouter",
     "Router",
     "RouterInterface",
+    "RoutingClass",
+    "RoutingClassAuto",
     "RoutingContext",
     "is_result_wrapper",
     "route",
-    "RoutingClass",
 ]

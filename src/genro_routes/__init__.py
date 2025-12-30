@@ -31,7 +31,15 @@ from importlib.metadata import version as get_version
 
 __version__ = get_version("genro-routes")
 
-from .core import Router, RouterInterface, RoutingClass, RoutingContext, is_result_wrapper, route
+from .core import (
+    Router,
+    RouterInterface,
+    RoutingClass,
+    RoutingClassAuto,
+    RoutingContext,
+    is_result_wrapper,
+    route,
+)
 from .core.router_node import RouterNode
 from .exceptions import (
     NotAuthenticated,
@@ -50,6 +58,7 @@ __all__ = [
     "RouterInterface",
     "RouterNode",
     "RoutingClass",
+    "RoutingClassAuto",
     "RoutingContext",
     "is_result_wrapper",
     "route",

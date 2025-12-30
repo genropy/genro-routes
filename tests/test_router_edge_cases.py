@@ -16,7 +16,7 @@
 
 import pytest
 
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, RoutingClassAuto, Router, route
 from genro_routes.plugins import pydantic as pyd_mod
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry  # Not public API
 
@@ -485,6 +485,76 @@ def test_routing_proxy_attach_instance_invalid_router_name():
     with pytest.raises(AttributeError) as exc_info:
         parent.routing.attach_instance(parent.child, name="child", router_name="nonexistent")
     assert "No router named 'nonexistent'" in str(exc_info.value)
+
+
+# --- RoutingClassAuto tests ---
+
+
+def test_routing_class_auto_creates_main_router():
+    """RoutingClassAuto creates a main router automatically when none exist."""
+
+    class SimpleService(RoutingClassAuto):
+        @route()
+        def hello(self):
+            return "Hello!"
+
+    svc = SimpleService()
+
+    # default_router should return the auto-created router
+    assert svc.default_router is not None
+    assert svc.default_router.name == "main"
+
+    # The route should be registered
+    node = svc.default_router.node("hello")
+    assert node() == "Hello!"
+
+
+def test_routing_class_auto_returns_same_router():
+    """RoutingClassAuto returns the same router on multiple accesses."""
+
+    class SimpleService(RoutingClassAuto):
+        @route()
+        def hello(self):
+            return "Hello!"
+
+    svc = SimpleService()
+
+    # Access multiple times - should be the same instance
+    router1 = svc.default_router
+    router2 = svc.default_router
+    assert router1 is router2
+
+
+def test_routing_class_auto_respects_explicit_router():
+    """RoutingClassAuto uses explicit router if one is defined."""
+
+    class Service(RoutingClassAuto):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def hello(self):
+            return "Hello!"
+
+    svc = Service()
+
+    # Should use the explicit router, not create a new one
+    assert svc.default_router is svc.api
+    assert svc.default_router.name == "api"
+
+
+def test_routing_class_auto_returns_none_with_multiple_routers():
+    """RoutingClassAuto returns None if multiple routers are defined."""
+
+    class Service(RoutingClassAuto):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.admin = Router(self, name="admin")
+
+    svc = Service()
+
+    # Multiple routers - cannot auto-select
+    assert svc.default_router is None
 
 
 def test_branch_router_blocks_entries():

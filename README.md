@@ -134,11 +134,30 @@ cd genro-routes
 pip install -e ".[all]"
 ```
 
+## For the Lazy: RoutingClassAuto
+
+Don't want to create a router explicitly? Use `RoutingClassAuto` - it creates a "main" router automatically:
+
+```python
+from genro_routes import RoutingClassAuto, route
+
+class SimpleAPI(RoutingClassAuto):
+    @route()  # No router name needed!
+    def hello(self):
+        return "Hello, World!"
+
+api = SimpleAPI()
+api.default_router.node("hello")()  # "Hello, World!"
+```
+
+The auto-created router is named "main" and stored internally to avoid conflicts with your attributes.
+
 ## Core Concepts
 
 - **`Router`** - Runtime router bound directly to an object via `Router(self, name="api")`
 - **`@route("name")`** - Decorator that marks bound methods for the router with the matching name
 - **`RoutingClass`** - Mixin that tracks routers per instance and exposes the `routing` proxy
+- **`RoutingClassAuto`** - Like `RoutingClass` but auto-creates a "main" router if none defined
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
 - **`obj.routing`** - Proxy exposed by every RoutingClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
 - **`RouterNode`** - Callable wrapper returned by `node()`, with `path`, `error`, `doc`, `metadata` properties.
