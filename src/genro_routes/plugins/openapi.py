@@ -102,9 +102,19 @@ class OpenAPITranslator:
     This class provides static methods to translate the output of
     ``router.nodes()`` to OpenAPI-compatible formats.
 
-    Two modes are supported:
-    - ``openapi``: Flat format with all paths merged into a single paths dict.
-    - ``h_openapi``: Hierarchical format preserving the router tree structure.
+    Modes for nodes():
+        - ``openapi``: Flat format with all paths merged into a single paths dict.
+        - ``h_openapi``: Hierarchical format preserving the router tree structure.
+
+    For single entry info:
+        - ``entry_to_openapi(entry)``: Convert a MethodEntry to OpenAPI path item.
+          Used by ``router.node(path, openapi=True)`` to populate the ``openapi``
+          attribute on the returned RouterNode.
+
+    Example::
+
+        node = router.node("my_handler", openapi=True)
+        print(node.openapi)  # {"get": {"operationId": "my_handler", ...}}
     """
 
     @staticmethod
@@ -417,3 +427,23 @@ class OpenAPITranslator:
             return "post"
 
         return "get"
+
+    @staticmethod
+    def entry_to_openapi(entry: MethodEntry) -> dict[str, Any]:
+        """Convert a MethodEntry to OpenAPI format.
+
+        This is a convenience method for use with router.node(openapi=True).
+
+        Args:
+            entry: The MethodEntry to convert.
+
+        Returns:
+            Dict with the OpenAPI path item (e.g., {"get": {...}} or {"post": {...}}).
+        """
+        entry_info: dict[str, Any] = {
+            "callable": entry.func,
+            "doc": inspect.getdoc(entry.func) or entry.func.__doc__ or "",
+            "metadata": entry.metadata,
+        }
+        path_item, _defs = OpenAPITranslator.entry_info_to_openapi(entry.name, entry_info)
+        return path_item

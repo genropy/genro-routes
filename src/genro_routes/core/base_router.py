@@ -782,6 +782,7 @@ class BaseRouter(RouterInterface):
         self,
         path: str,
         errors: dict[str, type[Exception]] | None = None,
+        openapi: bool = False,
         **kwargs: Any,
     ) -> RouterNode:
         """Return info about a single node (router or entry) at the given path.
@@ -814,6 +815,7 @@ class BaseRouter(RouterInterface):
                             'not_authorized': HTTPForbidden,
                         })
 
+            openapi: If True, populate the ``openapi`` attribute with OpenAPI info.
             **kwargs: Plugin-prefixed filter kwargs (e.g., auth_tags="x").
 
         Returns:
@@ -823,6 +825,7 @@ class BaseRouter(RouterInterface):
                 - ``error``: Error code (None if ok, else "not_found", "not_authorized", etc.)
                 - ``doc``: Entry docstring
                 - ``metadata``: Entry metadata dict
+                - ``openapi``: OpenAPI info dict (if ``openapi=True`` was passed)
 
             The RouterNode is callable::
 
@@ -837,6 +840,12 @@ class BaseRouter(RouterInterface):
 
         # Set error via _entry_invalid_reason (handles both missing entry and plugin checks)
         candidate.error = candidate._router._entry_invalid_reason(candidate._entry, **kwargs) or None
+
+        # Populate openapi if requested
+        if openapi and candidate._entry is not None:
+            from genro_routes.plugins.openapi import OpenAPITranslator
+
+            candidate.openapi = OpenAPITranslator.entry_to_openapi(candidate._entry)
 
         return candidate
 
