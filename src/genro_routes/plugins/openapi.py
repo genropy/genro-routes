@@ -41,7 +41,8 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from typing import Any, get_type_hints
+from enum import Enum
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from genro_routes.core.router import Router
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
@@ -393,19 +394,52 @@ class OpenAPITranslator:
         except Exception:
             return {"type": "object"}
 
+    # Scalar types that can be serialized as query string parameters
+    SCALAR_TYPES: set[type] = {str, int, float, bool, type(None)}
+
+    @staticmethod
+    def _is_scalar_type(hint: Any) -> bool:
+        """Check if a type hint represents a scalar (GET-friendly) type.
+
+        Scalar types can be serialized as query string parameters.
+        Complex types (dict, list, models) require POST body.
+        """
+        # Direct scalar types
+        if hint in OpenAPITranslator.SCALAR_TYPES:
+            return True
+
+        # Enum subclasses are scalar (serializable as string)
+        if isinstance(hint, type) and issubclass(hint, Enum):
+            return True
+
+        # Handle Optional[X] and Union types
+        origin = get_origin(hint)
+        if origin is Union:
+            args = get_args(hint)
+            # All union members must be scalar
+            return all(OpenAPITranslator._is_scalar_type(arg) for arg in args)
+
+        # Any other type (dict, list, TypedDict, Pydantic, classes) is complex
+        return False
+
     @staticmethod
     def guess_http_method(func: Callable) -> str:
         """Guess HTTP method from function signature.
 
         Rules:
-        - Default = POST (safer, no caching, no URL exposure)
-        - GET only if: no parameters AND returns something (not None)
+        - GET if all parameters are scalar types (str, int, float, bool, Enum)
+        - POST if any parameter is complex (dict, list, TypedDict, models)
+        - POST on error (safer fallback)
+
+        Scalar types can be serialized as query string parameters.
+        Complex types require a request body.
 
         Examples:
-            def health() -> dict:      # GET - no params, returns data
-            def list() -> list:        # GET - no params, returns data
-            def add(id: int):          # POST - has params
-            def reset():               # POST - no params, no return (side effect)
+            def health() -> dict:              # GET - no params
+            def get_user(id: int) -> dict:     # GET - scalar param
+            def search(q: str, limit: int):    # GET - all scalars
+            def create(data: dict):            # POST - complex param
+            def update(user: UserModel):       # POST - model param
 
         Args:
             func: The callable to analyze.
@@ -418,13 +452,13 @@ class OpenAPITranslator:
         except Exception:
             return "post"
 
-        return_hint = hints.pop("return", None)
+        # Remove return type, we only care about parameters
+        hints.pop("return", None)
 
-        if hints:
-            return "post"
-
-        if return_hint is None or return_hint is type(None):
-            return "post"
+        # Check if all parameter types are scalar
+        for param_type in hints.values():
+            if not OpenAPITranslator._is_scalar_type(param_type):
+                return "post"
 
         return "get"
 
