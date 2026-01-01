@@ -96,8 +96,50 @@ __all__ = ["EnvPlugin", "CapabilitiesSet", "capability"]
 class EnvPlugin(BasePlugin):
     """Environment capability-based access control plugin.
 
-    Accumulates capabilities from RoutingClass instances along the
-    router hierarchy, combining them with request capabilities.
+    Controls access to router entries based on system capabilities. Capabilities
+    represent runtime features (installed modules, configured services, etc.)
+    that may or may not be available.
+
+    Capability sources (combined with OR):
+        1. **Instance capabilities**: Declared on RoutingClass via ``CapabilitiesSet``
+        2. **Request capabilities**: Passed via ``env_capabilities`` parameter
+        3. **Accumulated capabilities**: Inherited from parent RoutingClass instances
+
+    Rule syntax (on entry via ``env_requires``):
+        - ``|`` : OR (system must have at least one capability)
+        - ``&`` : AND (system must have all capabilities)
+        - ``!`` : NOT (system must not have capability)
+        - ``()`` : grouping for complex expressions
+
+    Attributes:
+        plugin_code: "env" - used for registration and config prefix.
+        plugin_description: Human-readable description.
+
+    Example:
+        Entry definition::
+
+            @route("api", env_requires="redis&pyjwt")  # requires both
+            def create_session(self): ...
+
+            @route("api", env_requires="stripe|paypal")  # requires one
+            def process_payment(self): ...
+
+        Dynamic capabilities via CapabilitiesSet::
+
+            class ServerCaps(CapabilitiesSet):
+                @capability
+                def redis(self) -> bool:
+                    return self._redis_client is not None
+
+            class MyService(RoutingClass):
+                def __init__(self):
+                    self.api = Router(self, name="api").plug("env")
+                    self.capabilities = ServerCaps()
+
+        Query with additional request capabilities::
+
+            # Adds pyjwt to instance capabilities for this request
+            router.node("create_session", env_capabilities="pyjwt")
     """
 
     plugin_code = "env"

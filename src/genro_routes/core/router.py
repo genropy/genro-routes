@@ -193,7 +193,31 @@ class Router(BaseRouter):
         return list(self._plugins)
 
     def get_config(self, plugin_name: str, method_name: str | None = None) -> dict[str, Any]:
-        """Return plugin config (global + per-handler overrides) for an attached plugin."""
+        """Return merged plugin configuration.
+
+        Retrieves the effective configuration for a plugin, merging global
+        (router-level) settings with optional per-handler overrides.
+
+        Args:
+            plugin_name: Name of the attached plugin.
+            method_name: If provided, includes handler-specific overrides
+                merged on top of global config.
+
+        Returns:
+            Dict of configuration values. Per-handler values override global.
+
+        Raises:
+            AttributeError: If no plugin with that name is attached.
+
+        Example:
+            >>> router.plug("logging")
+            >>> router.logging.configure(before=False)
+            >>> router.logging.configure(_target="slow_handler", after=True)
+            >>> router.get_config("logging")
+            {'enabled': True, 'before': False}
+            >>> router.get_config("logging", "slow_handler")
+            {'enabled': True, 'before': False, 'after': True}
+        """
         plugin = self._plugins_by_name.get(plugin_name)
         if plugin is None:
             raise AttributeError(
@@ -202,12 +226,33 @@ class Router(BaseRouter):
         return plugin.configuration(method_name)
 
     def __getattr__(self, name: str) -> Any:
+        """Access attached plugins by name as attributes.
+
+        Enables fluent plugin configuration via attribute access syntax.
+        Only works for attached plugins; other attribute access follows
+        normal Python behavior.
+
+        Args:
+            name: Plugin name (e.g., "logging", "auth", "pydantic").
+
+        Returns:
+            The BasePlugin instance attached under that name.
+
+        Raises:
+            AttributeError: If no plugin with that name is attached.
+
+        Example:
+            >>> router.plug("logging").plug("auth")
+            >>> router.logging.configure(before=False)
+            >>> router.auth.configure(rule="admin")
+        """
         plugin = self._plugins_by_name.get(name)
         if plugin is None:
             raise AttributeError(f"No plugin named '{name}' attached to router '{self.name}'")
         return plugin
 
     def _get_plugin_bucket(self, plugin_name: str) -> dict[str, Any] | None:
+        """Get the plugin_info bucket for a plugin, initializing _all_ if needed."""
         bucket = self._plugin_info.get(plugin_name)
         if bucket is not None and "_all_" not in bucket:
             bucket["_all_"] = {"config": {}, "locals": {}}
@@ -217,7 +262,24 @@ class Router(BaseRouter):
     # Runtime helpers (state stored on plugin_info)
     # ------------------------------------------------------------------
     def set_plugin_enabled(self, method_name: str, plugin_name: str, enabled: bool = True) -> None:
-        """Enable or disable a plugin for a specific handler."""
+        """Enable or disable a plugin for a specific handler at runtime.
+
+        Sets a runtime override in the "locals" store, which takes precedence
+        over static configuration. Use "_all_" as method_name to affect all
+        handlers globally.
+
+        Args:
+            method_name: Handler name or "_all_" for global setting.
+            plugin_name: Name of the attached plugin.
+            enabled: True to enable, False to disable.
+
+        Raises:
+            AttributeError: If no plugin with that name is attached.
+
+        Example:
+            >>> router.set_plugin_enabled("slow_handler", "logging", False)
+            >>> router.set_plugin_enabled("_all_", "pydantic", False)
+        """
         bucket = self._get_plugin_bucket(plugin_name)
         if bucket is None:
             raise AttributeError(
@@ -256,7 +318,23 @@ class Router(BaseRouter):
         return True
 
     def set_runtime_data(self, method_name: str, plugin_name: str, key: str, value: Any) -> None:
-        """Set runtime data for a plugin/handler combination."""
+        """Store arbitrary runtime data for a plugin/handler combination.
+
+        Plugins can use this to store handler-specific state that persists
+        across invocations but is not part of the configuration schema.
+
+        Args:
+            method_name: Handler name or "_all_" for global data.
+            plugin_name: Name of the attached plugin.
+            key: Data key to store.
+            value: Value to store (any type).
+
+        Raises:
+            AttributeError: If no plugin with that name is attached.
+
+        Example:
+            >>> router.set_runtime_data("handler", "auth", "last_access", time.time())
+        """
         bucket = self._get_plugin_bucket(plugin_name)
         if bucket is None:
             raise AttributeError(
@@ -268,7 +346,23 @@ class Router(BaseRouter):
     def get_runtime_data(
         self, method_name: str, plugin_name: str, key: str, default: Any = None
     ) -> Any:
-        """Get runtime data for a plugin/handler combination."""
+        """Retrieve runtime data for a plugin/handler combination.
+
+        Args:
+            method_name: Handler name or "_all_" for global data.
+            plugin_name: Name of the attached plugin.
+            key: Data key to retrieve.
+            default: Value to return if key not found.
+
+        Returns:
+            The stored value, or default if not found.
+
+        Raises:
+            AttributeError: If no plugin with that name is attached.
+
+        Example:
+            >>> last = router.get_runtime_data("handler", "auth", "last_access")
+        """
         bucket = self._get_plugin_bucket(plugin_name)
         if bucket is None:
             raise AttributeError(
@@ -281,6 +375,18 @@ class Router(BaseRouter):
     # Overrides/hooks
     # ------------------------------------------------------------------
     def _wrap_handler(self, entry: MethodEntry, call_next: Callable) -> Callable:  # type: ignore[override]
+        """Build the middleware pipeline for a handler.
+
+        Wraps the handler with each plugin's wrap_handler in reverse order
+        (last plugin attached is closest to the handler).
+
+        Args:
+            entry: The MethodEntry being wrapped.
+            call_next: The base callable (entry.func).
+
+        Returns:
+            The fully wrapped handler with all plugin middleware applied.
+        """
         wrapped = call_next
         for plugin in reversed(self._plugins):
             plugin_call = plugin.wrap_handler(self, entry, wrapped)
@@ -294,6 +400,17 @@ class Router(BaseRouter):
         plugin_call: Callable,
         next_handler: Callable,
     ) -> Callable:
+        """Create a wrapper that checks plugin enabled state before invoking.
+
+        Args:
+            plugin: The plugin providing the wrapper.
+            entry: The entry being wrapped.
+            plugin_call: The plugin's wrapped callable.
+            next_handler: The next handler in the chain (to use if disabled).
+
+        Returns:
+            A wrapper that skips the plugin if disabled.
+        """
         @wraps(next_handler)
         def wrapper(*args, **kwargs):
             if not self.is_plugin_enabled(entry.name, plugin.name):
@@ -303,6 +420,10 @@ class Router(BaseRouter):
         return wrapper
 
     def _apply_plugin_to_entries(self, plugin: BasePlugin) -> None:
+        """Apply a plugin's on_decore to all existing entries.
+
+        Called when a plugin is attached after entries have been registered.
+        """
         # Access raw dict to avoid triggering lazy binding
         for entry in self._BaseRouter__entries_raw.values():  # type: ignore[attr-defined]
             if plugin.name not in entry.plugins:
@@ -310,6 +431,12 @@ class Router(BaseRouter):
             plugin.on_decore(self, entry.func, entry)
 
     def _on_attached_to_parent(self, parent: Router) -> None:  # type: ignore[override]
+        """Handle plugin inheritance when this router is attached to a parent.
+
+        Creates or notifies child plugins based on parent's plugin configuration.
+        Inherited plugins receive on_attached_to_parent hook and on_decore is
+        called for all existing entries.
+        """
         parent_id = id(parent)
         if parent_id in self._inherited_from:
             return
@@ -346,6 +473,11 @@ class Router(BaseRouter):
             self._rebuild_handlers()
 
     def _after_entry_registered(self, entry: MethodEntry) -> None:  # type: ignore[override]
+        """Process plugin config and apply on_decore after a handler is registered.
+
+        Extracts plugin_config from entry metadata and applies it via
+        plugin.configure(). Then calls on_decore for each attached plugin.
+        """
         for pname, cfg in entry.metadata.get("plugin_config", {}).items():
             plugin = self._plugins_by_name.get(pname)
             if plugin:
@@ -361,6 +493,19 @@ class Router(BaseRouter):
             plugin.on_decore(self, entry.func, entry)
 
     def _entry_invalid_reason(self, entry: MethodEntry | None, **allowing_args: Any) -> str:
+        """Check if an entry should be denied based on plugin rules.
+
+        Consults each plugin's deny_reason() method to determine if access
+        should be denied. Plugin kwargs are extracted by prefix (e.g., auth_*
+        goes to auth plugin).
+
+        Args:
+            entry: The entry to check (None if not found).
+            **allowing_args: Plugin-prefixed filter kwargs.
+
+        Returns:
+            Empty string if allowed, otherwise the deny reason code.
+        """
         if entry is None:
             return "not_found"
         # Filter out None and False values

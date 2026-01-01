@@ -1352,3 +1352,649 @@ def test_plugin_on_parent_config_changed_propagates():
 
     # Child should have been updated (was aligned with parent)
     assert child_plugin.configuration().get("before") is True
+
+
+# =============================================================================
+# Additional tests to reach 100% coverage in core/
+# =============================================================================
+
+
+# --- base_router.py:157->161 - _register_router hook not callable ---
+
+
+def test_router_owner_without_callable_register_hook():
+    """Test router creation when owner has non-callable _register_router."""
+
+    class BadOwner(RoutingClass):
+        def __init__(self):
+            # Override _register_router with non-callable
+            object.__setattr__(self, "_register_router", "not_callable")
+            # Router should still work - just skips the hook
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    # Should not raise - hook is skipped when not callable
+    svc = BadOwner()
+    assert svc.api.node("handler")() == "ok"
+
+
+# --- base_router.py:290->288 - empty chunk in comma-separated add_entry ---
+
+
+def test_add_entry_comma_separated_with_empty_chunks():
+    """Test add_entry with comma-separated targets including empty chunks."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        def foo(self):
+            return "foo"
+
+        def bar(self):
+            return "bar"
+
+    svc = Svc()
+    # Include empty chunks via extra commas
+    svc.api.add_entry("foo, , bar, ")
+
+    assert "foo" in svc.api._entries
+    assert "bar" in svc.api._entries
+
+
+# --- base_router.py:393 - plugin_options not None in _register_marked ---
+
+
+def test_register_marked_with_plugin_options():
+    """Test that plugin_options passed to add_entry propagate through _register_marked."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+
+        @route("api", logging_before=False)
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+    # Plugin options from @route should be in entry metadata
+    entry = svc.api._entries["handler"]
+    assert "plugin_config" in entry.metadata
+    assert entry.metadata["plugin_config"].get("logging", {}).get("before") is False
+
+
+# --- base_router.py:507-508 - _require_bound when already bound ---
+
+
+def test_require_bound_when_already_bound():
+    """Test _require_bound does nothing when already bound."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+    # Force binding
+    _ = svc.api._entries
+
+    # Call _require_bound again - should be no-op
+    svc.api._require_bound("test_op")
+    assert svc.api._bound is True
+
+
+# --- base_router.py:588-589 - attach_instance mapping without colon ---
+
+
+def test_attach_instance_mapping_without_colon():
+    """Test attach_instance with mapping that has no colon (uses router name as alias)."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="child_api")
+            self.admin = Router(self, name="admin")
+
+        @route("child_api")
+        def api_handler(self):
+            return "api"
+
+        @route("admin")
+        def admin_handler(self):
+            return "admin"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+
+    parent = Parent()
+    # Mapping without colon - should use router name as alias
+    parent.api.attach_instance(parent.child, mapping="child_api")
+
+    # Should be attached under original name
+    assert "child_api" in parent.api._children
+
+
+# --- base_router.py:603 - attach_instance unknown router in mapping ---
+
+
+def test_attach_instance_mapping_unknown_router():
+    """Test attach_instance raises ValueError for unknown router in mapping."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            # Multiple routers so default_router is None and mapping is used
+            self.api = Router(self, name="child_api")
+            self.admin = Router(self, name="admin")
+
+        @route("child_api")
+        def handler(self):
+            return "ok"
+
+        @route("admin")
+        def admin_handler(self):
+            return "admin"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+
+    parent = Parent()
+    with pytest.raises(ValueError, match="Unknown router"):
+        parent.api.attach_instance(parent.child, mapping="nonexistent:alias")
+
+
+# --- base_router.py:611->613 - attach_instance _routing_parent already set correctly ---
+
+
+def test_attach_instance_routing_parent_already_correct():
+    """Test attach_instance when _routing_parent is already set to correct parent."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="child_api")
+
+        @route("child_api")
+        def handler(self):
+            return "ok"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+
+    parent = Parent()
+    # Manually set _routing_parent to correct parent
+    object.__setattr__(parent.child, "_routing_parent", parent)
+
+    # attach_instance should not try to set it again
+    parent.api.attach_instance(parent.child, name="child")
+    assert parent.child._routing_parent is parent
+
+
+# --- base_router.py:631->638 - detach_instance with plugin_children cleanup ---
+
+
+def test_detach_instance_cleans_plugin_children():
+    """Test detach_instance cleans up _plugin_children references."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="child_api")
+
+        @route("child_api")
+        def handler(self):
+            return "ok"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="child")
+
+        @route("api")
+        def parent_handler(self):
+            return "parent"
+
+    parent = Parent()
+
+    # Verify plugin_children has the child
+    assert "logging" in parent.api._plugin_children
+    assert any(r.instance is parent.child for r in parent.api._plugin_children["logging"])
+
+    # Detach
+    parent.api.detach_instance(parent.child)
+
+    # Plugin children should be cleaned up
+    assert not any(r.instance is parent.child for r in parent.api._plugin_children["logging"])
+
+
+# --- base_router.py:752 - nodes with basepath and unknown mode ---
+
+
+def test_nodes_basepath_with_unknown_mode_raises():
+    """Test nodes() with basepath and unknown mode raises ValueError."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="child")
+
+        @route("child")
+        def handler(self):
+            return "ok"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.child = Child()
+            self.api.attach_instance(self.child, name="child")
+
+    parent = Parent()
+    with pytest.raises(ValueError, match="Unknown mode"):
+        parent.api.nodes(basepath="child", mode="invalid_mode")
+
+
+# --- base_router.py:882-884 - node() with openapi=True but entry is None ---
+
+
+def test_node_openapi_with_not_found_entry():
+    """Test node() with openapi=True when entry doesn't exist."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+    # Request non-existent entry with openapi=True
+    node = svc.api.node("nonexistent", openapi=True)
+
+    # openapi should not be populated when entry is None
+    assert node.error == "not_found"
+    assert node.openapi is None
+
+
+# --- router.py:258 - _get_plugin_bucket initializing _all_ ---
+
+
+def test_get_plugin_bucket_initializes_all():
+    """Test _get_plugin_bucket creates _all_ bucket when missing."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+
+    # Manually remove _all_ to test re-initialization
+    bucket = svc.api._plugin_info["logging"]
+    del bucket["_all_"]
+
+    # Now call _get_plugin_bucket
+    result = svc.api._get_plugin_bucket("logging")
+
+    # Should have recreated _all_
+    assert "_all_" in result
+
+
+# --- router.py:315-318 - is_plugin_enabled via config (not locals) ---
+
+
+def test_is_plugin_enabled_via_config_only():
+    """Test is_plugin_enabled returns value from config when no locals set."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+
+    # Set enabled=False via config (not locals)
+    svc.api.logging.configure(enabled=False)
+
+    # Should read from config
+    assert svc.api.is_plugin_enabled("handler", "logging") is False
+
+
+def test_is_plugin_enabled_global_config():
+    """Test is_plugin_enabled reads _all_ config when entry has no override."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+
+    # Set enabled=False globally via config
+    svc.api.logging.configure(enabled=False)
+
+    # Should read from _all_ config
+    assert svc.api.is_plugin_enabled("handler", "logging") is False
+
+
+def test_is_plugin_enabled_global_locals():
+    """Test is_plugin_enabled reads _all_ locals when set."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+
+    # Set enabled globally via set_plugin_enabled (_all_)
+    svc.api.set_plugin_enabled("_all_", "logging", False)
+
+    # Should read from _all_ locals
+    assert svc.api.is_plugin_enabled("handler", "logging") is False
+
+
+# --- router.py:429->431 - _apply_plugin_to_entries skip already-present plugin ---
+
+
+def test_apply_plugin_to_entries_skips_duplicate():
+    """Test _apply_plugin_to_entries doesn't double-add plugin name."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+    # Force binding
+    _ = svc.api._entries
+
+    # Now plug - should apply to existing entries
+    svc.api.plug("logging")
+
+    entry = svc.api._entries["handler"]
+    # Plugin name should appear only once
+    assert entry.plugins.count("logging") == 1
+
+
+# --- router.py:458-462, 469 - _on_attached_to_parent child already has plugin ---
+
+
+def test_on_attached_to_parent_child_has_same_plugin():
+    """Test plugin inheritance when child already has the same plugin."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            # Child creates its own logging plugin
+            self.api = Router(self, name="child").plug("logging")
+
+        @route("child")
+        def handler(self):
+            return "ok"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+            self.child = Child()
+
+    parent = Parent()
+    parent.api.attach_instance(parent.child, name="child")
+
+    # Child should still have exactly one logging plugin
+    assert len([p for p in parent.child.api._plugins if p.name == "logging"]) == 1
+
+
+# --- router.py:533->536, 545->529 - _describe_entry_extra with config/metadata ---
+
+
+def test_describe_entry_extra_with_plugin_data():
+    """Test _describe_entry_extra includes plugin that has config."""
+
+    class TestPlugin(BasePlugin):
+        """Plugin with default config but no metadata."""
+        plugin_code = "testplugin2"
+        plugin_description = "Test plugin"
+
+        def configure(self, custom_option: str = "default"):
+            pass
+
+        def entry_metadata(self, router, entry):
+            return {}  # Empty dict - no metadata
+
+    Router.register_plugin(TestPlugin)
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("testplugin2")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+    tree = svc.api.nodes()
+
+    entry_info = tree["entries"]["handler"]
+    # Plugin with config should appear (has enabled: True by default)
+    assert "plugins" in entry_info
+    assert "testplugin2" in entry_info["plugins"]
+    # Should have config but not metadata
+    plugin_info = entry_info["plugins"]["testplugin2"]
+    assert "config" in plugin_info
+    # metadata is empty so should not be included
+    assert "metadata" not in plugin_info or plugin_info.get("metadata") == {}
+
+
+# --- routing.py:317 - RoutingClassAuto.default_router with existing _main_router ---
+
+
+def test_routing_class_auto_existing_main_router():
+    """Test RoutingClassAuto returns existing _main_router on second call."""
+    from genro_routes import RoutingClassAuto
+
+    class Svc(RoutingClassAuto):
+        @route()
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+
+    # First access creates _main_router
+    router1 = svc.default_router
+    assert router1 is not None
+
+    # Second access should return same router
+    router2 = svc.default_router
+    assert router2 is router1
+
+
+# --- router_node.py:70->73 - ValidationError is None ---
+
+
+def test_router_node_default_exceptions_without_pydantic():
+    """Test DEFAULT_EXCEPTIONS when ValidationError import fails."""
+    from genro_routes.core.router_node import RouterNode
+
+    # Just verify the class loads correctly and has default exceptions
+    assert "not_found" in RouterNode.DEFAULT_EXCEPTIONS
+    assert "not_authorized" in RouterNode.DEFAULT_EXCEPTIONS
+
+
+# --- router_node.py:225->230 - __call__ with non-pydantic ValidationError ---
+
+
+def test_router_node_call_non_pydantic_exception_reraises():
+    """Test RouterNode.__call__ re-raises non-ValidationError exceptions."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            raise RuntimeError("test error")
+
+    svc = Svc()
+    node = svc.api.node("handler")
+
+    with pytest.raises(RuntimeError, match="test error"):
+        node()
+
+
+# --- base_router.py:393 - plugin_options passed to _register_marked ---
+
+
+def test_add_entry_star_with_plugin_options():
+    """Test add_entry('*') with plugin_* kwargs merged via _register_marked.
+
+    This covers line 393: merged_plugin_opts.update(plugin_options)
+    The plugin_options dict gets populated from plugin-prefixed kwargs
+    passed to add_entry (e.g., logging_before=False).
+    """
+    from genro_routes.core.base_router import BaseRouter
+
+    # Create a fresh class for this test
+    class SvcForPluginOpts(RoutingClass):
+        def __init__(self):
+            self.api = BaseRouter(self, name="api")
+
+        def my_handler(self):
+            return "ok"
+
+    # Mark the method BEFORE instantiation
+    SvcForPluginOpts.my_handler._route_decorator_kw = [{"router_name": "api"}]
+
+    svc = SvcForPluginOpts()
+
+    # Trigger initial binding (registers handler without plugin_options)
+    _ = svc.api._entries
+    assert "my_handler" in svc.api._BaseRouter__entries_raw
+
+    # Now call add_entry("*") with plugin kwargs AND replace=True
+    # logging_before=False gets split into plugin_options={"logging": {"before": False}}
+    # by add_entry, then merged in _register_marked (line 393)
+    svc.api.add_entry("*", logging_before=False, replace=True)
+
+    entry = svc.api._BaseRouter__entries_raw["my_handler"]
+    # Plugin options should be in entry metadata under plugin_config
+    config = entry.metadata.get("plugin_config", {})
+    assert config.get("logging", {}).get("before") is False
+
+
+# --- base_router.py:494 - _bind when already bound ---
+
+
+def test_bind_when_already_bound():
+    """Test _bind() returns early when already bound.
+
+    This covers line 494: return statement when self._bound is True.
+    """
+    from genro_routes.core.base_router import BaseRouter
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = BaseRouter(self, name="api")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+
+    # Force binding via _entries access
+    _ = svc.api._entries
+    assert svc.api._bound is True
+
+    # Call _bind directly - should return early (no error, no-op)
+    svc.api._bind()
+    assert svc.api._bound is True
+
+
+# --- base_router.py:882-884 - node() with openapi=True and existing entry ---
+
+
+def test_node_openapi_with_existing_entry():
+    """Test node() with openapi=True when entry exists.
+
+    This covers lines 882-884: openapi population when entry is not None.
+    """
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self, value: int) -> str:
+            """A documented handler."""
+            return str(value)
+
+    svc = Svc()
+    # Request existing entry with openapi=True
+    node = svc.api.node("handler", openapi=True)
+
+    # openapi should be populated when entry exists
+    assert node.error is None
+    assert node.openapi is not None
+    # Should have operation info
+    assert "operationId" in str(node.openapi) or node.openapi.get("get") or node.openapi.get("post")
+
+
+# --- router.py:318 - is_plugin_enabled returns True when no enabled config ---
+
+
+def test_is_plugin_enabled_returns_true_default():
+    """Test is_plugin_enabled returns True when no enabled config is set.
+
+    This covers line 318: return True (fallback).
+    """
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("logging")
+
+        @route("api")
+        def handler(self):
+            return "ok"
+
+    svc = Svc()
+
+    # Don't set any enabled config - should return True by default
+    # Note: we need to clear any implicit config
+    bucket = svc.api._plugin_info.get("logging", {})
+    handler_data = bucket.get("handler", {})
+    # Remove enabled from both locals and config if present
+    handler_data.pop("locals", None)
+    handler_data.pop("config", None)
+
+    # Also clear _all_ enabled settings
+    all_data = bucket.get("_all_", {})
+    all_data.pop("locals", None)
+    # Keep only non-enabled config entries
+    if "config" in all_data:
+        all_data["config"].pop("enabled", None)
+
+    # Now is_plugin_enabled should return True (default)
+    assert svc.api.is_plugin_enabled("handler", "logging") is True

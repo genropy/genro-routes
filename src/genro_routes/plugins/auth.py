@@ -56,7 +56,43 @@ __all__ = ["AuthPlugin"]
 
 
 class AuthPlugin(BasePlugin):
-    """Authorization plugin with tag-based access control."""
+    """Authorization plugin with tag-based access control.
+
+    Evaluates boolean rule expressions against user tags to control access
+    to router entries. Rules are defined per-entry via ``@route(auth_rule=...)``
+    and checked at runtime against tags provided via ``auth_tags`` parameter.
+
+    Rule syntax (on entry):
+        - ``|`` : OR (user must have at least one tag)
+        - ``&`` : AND (user must have all tags)
+        - ``!`` : NOT (user must not have tag)
+        - ``()`` : grouping for complex expressions
+
+    User tags (on query):
+        Comma-separated string of tags the user possesses. The comma means
+        the user has ALL those tags (implicit AND).
+
+    Attributes:
+        plugin_code: "auth" - used for registration and config prefix.
+        plugin_description: Human-readable description.
+
+    Example:
+        Entry definition::
+
+            @route("api", auth_rule="admin|manager")  # OR
+            def sensitive_action(self): ...
+
+            @route("api", auth_rule="admin&!guest")   # AND + NOT
+            def admin_only(self): ...
+
+        Query with user tags::
+
+            # User has admin tag -> can access admin|manager entries
+            router.node("sensitive_action", auth_tags="admin")
+
+            # User has both admin and hr tags
+            router.nodes(auth_tags="admin,hr")
+    """
 
     plugin_code = "auth"
     plugin_description = "Authorization plugin with tag-based access control"

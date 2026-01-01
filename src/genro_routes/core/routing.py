@@ -323,7 +323,27 @@ class RoutingClassAuto(RoutingClass):
 
 
 class _RoutingProxy:
-    """Proxy for accessing and configuring routers on a RoutingClass instance."""
+    """Proxy for accessing and configuring routers on a RoutingClass instance.
+
+    Provides a unified interface for router lookup and plugin configuration.
+    Access via the ``routing`` property on any RoutingClass instance.
+
+    Main operations:
+        - ``get_router(name)``: Look up a router by name
+        - ``configure(target, **options)``: Configure plugin settings
+        - ``attach_instance(child)``: Attach child RoutingClass instances
+
+    Target syntax for configure():
+        - ``"router:plugin"`` - Global plugin config
+        - ``"router:plugin/handler"`` - Per-handler config
+        - ``"router:plugin/pattern*"`` - Glob pattern matching
+        - ``"?"`` - Describe all routers and their configuration
+
+    Example:
+        >>> svc.routing.configure("api:logging", before=False)
+        >>> svc.routing.configure("api:auth/admin_*", rule="admin")
+        >>> svc.routing.configure("?")  # introspection
+    """
 
     _owner: RoutingClass
 
@@ -331,7 +351,24 @@ class _RoutingProxy:
         object.__setattr__(self, "_owner", owner)
 
     def get_router(self, name: str, path: str | None = None):
-        """Look up a router by name, optionally navigating a path with '/' separator."""
+        """Look up a router by name, optionally navigating child routers.
+
+        Args:
+            name: Router name, or "name/child/grandchild" path notation.
+            path: Optional additional path to navigate after finding router.
+
+        Returns:
+            The resolved Router (or child router if path provided).
+
+        Raises:
+            AttributeError: If no router with that name exists.
+            KeyError: If child path navigation fails.
+
+        Example:
+            >>> svc.routing.get_router("api")
+            >>> svc.routing.get_router("api/users")  # child router
+            >>> svc.routing.get_router("api", "users/detail")
+        """
         owner = self._owner
         base_name, extra_path = self._split_router_spec(name, path)
         router = self._lookup_router(owner, base_name)
@@ -342,6 +379,7 @@ class _RoutingProxy:
         return self._navigate_router(router, extra_path)
 
     def _lookup_router(self, owner: RoutingClass, name: str) -> Router | None:
+        """Find a router by name in the owner's registry or as attribute."""
         router = owner._routers.get(name)
         if router:
             return router  # type: ignore[no-any-return]
@@ -353,6 +391,7 @@ class _RoutingProxy:
 
     # Helpers -------------------------------------------------
     def _split_router_spec(self, name: str, path: str | None) -> tuple[str, str | None]:
+        """Split 'router/path' into (router, path) components."""
         extra_path = path
         base_name = name
         if not path and "/" in name:
@@ -360,6 +399,7 @@ class _RoutingProxy:
         return base_name, extra_path
 
     def _navigate_router(self, root, path: str):
+        """Walk child routers following the path segments."""
         node = root
         for segment in path.split("/"):
             segment = segment.strip()
@@ -369,6 +409,7 @@ class _RoutingProxy:
         return node
 
     def _parse_target(self, target: str) -> tuple[str, str, str]:
+        """Parse 'router:plugin/selector' into (router, plugin, selector)."""
         if ":" not in target:
             raise ValueError("Target must include router:plugin")
         router_part, rest = target.split(":", 1)
@@ -386,6 +427,7 @@ class _RoutingProxy:
         return router_part, plugin_part, selector
 
     def _match_handlers(self, router, selector: str) -> set[str]:
+        """Match handler names against glob patterns (comma-separated)."""
         names = list(router._entries.keys())
         patterns = [token.strip() for token in selector.split(",") if token.strip()]
         matched: set[str] = set()
@@ -395,10 +437,8 @@ class _RoutingProxy:
                     matched.add(handler_name)
         return matched
 
-    def _apply_config(self, plugin: Any, target: str, options: dict[str, Any]) -> None:
-        plugin.configure(_target=target, **options)
-
     def _describe_all(self) -> dict[str, Any]:
+        """Build introspection dict for all routers on the owner."""
         owner = self._owner
         result: dict[str, Any] = {}
         for attr_name, router in owner._routers.items():
@@ -406,6 +446,7 @@ class _RoutingProxy:
         return result
 
     def _describe_router(self, router) -> dict[str, Any]:
+        """Build introspection dict for a single router."""
         return {
             "name": router.name,
             "plugins": [
@@ -510,13 +551,13 @@ class _RoutingProxy:
             raise ValueError("No configuration options provided")
         selector = selector or "_all_"
         if selector.lower() == "_all_":
-            self._apply_config(plugin, "_all_", options)
+            plugin.configure(_target="_all_", **options)
             return {"target": target, "updated": ["_all_"]}
         matches = self._match_handlers(bound_router, selector)
         if not matches:
             raise KeyError(f"No handlers matching '{selector}' on router '{router_spec}'")
         for handler in matches:
-            self._apply_config(plugin, handler, options)
+            plugin.configure(_target=handler, **options)
         return {"target": target, "updated": sorted(matches)}
 
 

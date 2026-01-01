@@ -53,8 +53,44 @@ if TYPE_CHECKING:
 class PydanticPlugin(BasePlugin):
     """Validate handler inputs with Pydantic using type hints.
 
-    Builds a validation model from function type hints at registration time
-    and validates all annotated parameters at call time.
+    Automatically validates handler parameters against their type annotations.
+    At registration time (``on_decore``), builds a Pydantic model from function
+    type hints. At call time (``wrap_handler``), validates all annotated
+    arguments before invoking the handler.
+
+    Behavior:
+        - Only annotated parameters are validated
+        - Unannotated parameters pass through unchanged
+        - ValidationError is raised on invalid input
+        - Can be disabled per-handler via ``pydantic_disabled=True``
+
+    Configuration options:
+        - ``disabled``: Skip validation for this handler/router (default False)
+
+    Attributes:
+        plugin_code: "pydantic" - used for registration and config prefix.
+        plugin_description: Human-readable description.
+
+    Example:
+        Basic usage::
+
+            class MyService(RoutingClass):
+                def __init__(self):
+                    self.api = Router(self, name="api").plug("pydantic")
+
+                @route("api")
+                def get_user(self, user_id: int, name: str = "default"):
+                    return {"id": user_id, "name": name}
+
+            svc = MyService()
+            svc.api.node("get_user")(user_id=123)           # OK
+            svc.api.node("get_user")(user_id="not_an_int")  # ValidationError
+
+        Disable validation::
+
+            @route("api", pydantic_disabled=True)
+            def unvalidated(self, data):
+                return data  # no validation
     """
 
     plugin_code = "pydantic"
@@ -150,7 +186,14 @@ class PydanticPlugin(BasePlugin):
         return wrapper
 
     def get_model(self, entry: MethodEntry) -> tuple[str, Any] | None:
-        """Return the Pydantic model for this handler if not disabled."""
+        """Return the Pydantic model for this handler if not disabled.
+
+        Args:
+            entry: The MethodEntry to get the model for.
+
+        Returns:
+            Tuple of ("pydantic_model", model_class) if available, else None.
+        """
         cfg = self.configuration(entry.name)
         if cfg.get("disabled"):
             return None

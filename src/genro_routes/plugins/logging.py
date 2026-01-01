@@ -40,7 +40,49 @@ from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
 
 
 class LoggingPlugin(BasePlugin):
-    """Logging plugin with configurable start/end messages and timing."""
+    """Logging plugin with configurable start/end messages and timing.
+
+    Wraps handler invocations with optional "start" and "end" log messages,
+    including execution timing in milliseconds.
+
+    Configuration options:
+        - ``enabled``: Enable/disable the plugin entirely (default True)
+        - ``before``: Log "{handler} start" before execution (default True)
+        - ``after``: Log "{handler} end (X ms)" after execution (default True)
+        - ``log``: Use logger.info() when handlers available (default True)
+        - ``print``: Always use print() instead of logger (default False)
+
+    Output sinks:
+        By default uses Python's logging module (``logging.getLogger("genro_routes")``).
+        Falls back to print() if no handlers are configured on the logger.
+        Set ``print=True`` to always use print().
+
+    Attributes:
+        plugin_code: "logging" - used for registration and config prefix.
+        plugin_description: Human-readable description.
+
+    Example:
+        Basic usage::
+
+            class MyService(RoutingClass):
+                def __init__(self):
+                    self.api = Router(self, name="api").plug("logging")
+
+                @route("api")
+                def hello(self):
+                    return "Hello!"
+
+        Per-handler configuration::
+
+            @route("api", logging_after=False)  # disable end message
+            def fast_handler(self):
+                return "fast"
+
+        Runtime configuration::
+
+            svc.api.logging.configure(before=False)  # disable globally
+            svc.api.logging.configure(_target="slow_handler", after=True)
+    """
 
     plugin_code = "logging"
     plugin_description = "Logs handler calls with timing"
@@ -71,7 +113,13 @@ class LoggingPlugin(BasePlugin):
         pass  # Storage is handled by the wrapper
 
     def _emit(self, message: str, *, cfg: dict | None = None):
-        """Emit a log message via configured sink."""
+        """Emit a log message via the configured output sink.
+
+        Args:
+            message: The message to emit.
+            cfg: Effective config dict (with "print" and "log" keys).
+                 If None, the message is silently discarded.
+        """
         # If no config is provided, treat as disabled.
         if cfg is None:
             return
@@ -106,7 +154,14 @@ class LoggingPlugin(BasePlugin):
         return logged
 
     def _effective_config(self, entry_name: str) -> dict:
-        """Get effective configuration for a handler, merging defaults."""
+        """Get effective configuration for a handler, merging defaults.
+
+        Args:
+            entry_name: The handler name to get config for.
+
+        Returns:
+            Dict with boolean values for "before", "after", "log", "print".
+        """
         defaults = {"before": True, "after": True, "log": True, "print": False}
         cfg = defaults | self.configuration(entry_name)
 

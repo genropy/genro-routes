@@ -49,7 +49,46 @@ from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
 
 
 class OpenAPIPlugin(BasePlugin):
-    """OpenAPI plugin for explicit schema control."""
+    """OpenAPI plugin for explicit schema control.
+
+    Provides explicit control over OpenAPI schema generation. By default,
+    HTTP methods are guessed from function signatures (GET for scalar params,
+    POST for complex types). Use this plugin to override the guessed method
+    or add OpenAPI-specific metadata.
+
+    Configuration options:
+        - ``enabled``: Enable/disable the plugin (default True)
+        - ``method``: HTTP method override ("get", "post", "put", "delete", "patch")
+        - ``tags``: OpenAPI tags for grouping (string or list of strings)
+        - ``summary``: Summary text override for the operation
+        - ``deprecated``: Mark the operation as deprecated (default False)
+
+    Method guessing rules (when not overridden):
+        - GET: All parameters are scalar types (str, int, float, bool, Enum)
+        - POST: Any parameter is complex (dict, list, TypedDict, Pydantic model)
+
+    Attributes:
+        plugin_code: "openapi" - used for registration and config prefix.
+        plugin_description: Human-readable description.
+
+    Example:
+        Override HTTP method::
+
+            @route("api", openapi_method="delete")
+            def remove_item(self, item_id: int) -> dict:
+                return {"deleted": item_id}
+
+        Add tags and mark deprecated::
+
+            @route("api", openapi_tags=["users", "admin"], openapi_deprecated=True)
+            def old_list_users(self) -> list:
+                return []
+
+        Retrieve OpenAPI info::
+
+            node = router.node("remove_item", openapi=True)
+            print(node.openapi)  # {"delete": {"operationId": "remove_item", ...}}
+    """
 
     plugin_code = "openapi"
     plugin_description = "Provides explicit control over OpenAPI schema generation"

@@ -152,7 +152,10 @@ class BaseRouter(RouterInterface):
         if get_default_handler is not None:
             defaults.setdefault("default_handler", get_default_handler)
         self._get_defaults: dict[str, Any] = defaults
-        self._register_with_owner()
+        # Register with owner's _register_router hook if available
+        hook = getattr(self.instance, "_register_router", None)
+        if callable(hook):
+            hook(self)
 
         # Attach to parent router if specified
         if parent_router is not None:
@@ -196,6 +199,7 @@ class BaseRouter(RouterInterface):
         return accumulated
 
     def _is_known_plugin(self, prefix: str) -> bool:
+        """Check if prefix corresponds to a registered plugin name."""
         try:
             from genro_routes.core.router import Router  # type: ignore
         except Exception:  # pragma: no cover - import safety
@@ -205,11 +209,6 @@ class BaseRouter(RouterInterface):
     # ------------------------------------------------------------------
     # Registration helpers
     # ------------------------------------------------------------------
-    def _register_with_owner(self) -> None:
-        hook = getattr(self.instance, "_register_router", None)
-        if callable(hook):
-            hook(self)
-
     def add_entry(
         self,
         target: Any,
@@ -327,6 +326,15 @@ class BaseRouter(RouterInterface):
         replace: bool = False,
         plugin_options: dict[str, dict[str, Any]] | None = None,
     ) -> None:
+        """Create a MethodEntry and store it in the entries table.
+
+        Args:
+            bound: The bound method to register.
+            name: Optional name override (otherwise uses func name with prefix stripped).
+            metadata: Extra metadata to attach to the entry.
+            replace: If True, allow overwriting existing entry.
+            plugin_options: Per-plugin configuration from decorator kwargs.
+        """
         logical_name = self._resolve_name(bound.__name__, name_override=name)
         if logical_name in self._entries and not replace:
             raise ValueError(f"Handler name collision: {logical_name}")
@@ -353,6 +361,11 @@ class BaseRouter(RouterInterface):
         extra: dict[str, Any],
         plugin_options: dict[str, dict[str, Any]] | None = None,
     ) -> None:
+        """Discover and register all @route-decorated methods for this router.
+
+        Iterates through methods with _route_decorator_kw markers matching
+        this router's name and registers each as an entry.
+        """
         for func, marker in self._iter_marked_methods():
             entry_override = marker.pop("entry_name", None)
             entry_name = name if name is not None else entry_override
@@ -390,6 +403,12 @@ class BaseRouter(RouterInterface):
             )
 
     def _iter_marked_methods(self) -> Iterator[tuple[Callable, dict[str, Any]]]:
+        """Yield (func, marker_dict) for methods decorated with @route for this router.
+
+        Walks the MRO (child classes first) and scans __dict__ for functions
+        carrying _route_decorator_kw markers. Only yields markers where the
+        router name matches this router's name.
+        """
         cls = type(self.instance)
         # Check if instance has exactly one router (default_router)
         default_router_name: str | None = None
@@ -430,6 +449,15 @@ class BaseRouter(RouterInterface):
                     yield value, payload
 
     def _resolve_name(self, func_name: str, *, name_override: str | None) -> str:
+        """Compute the logical entry name from the function name.
+
+        Args:
+            func_name: The __name__ of the function being registered.
+            name_override: Explicit name to use (bypasses prefix stripping).
+
+        Returns:
+            The entry name: either name_override, or func_name with prefix stripped.
+        """
         if name_override:
             return name_override
         if self.prefix and func_name.startswith(self.prefix):
@@ -439,6 +467,18 @@ class BaseRouter(RouterInterface):
     def _wrap_handler(
         self, entry: MethodEntry, call_next: Callable
     ) -> Callable:  # pragma: no cover - overridden by plugin routers
+        """Wrap a handler callable (hook for subclasses to add middleware).
+
+        Default implementation returns call_next unchanged. Subclasses (Router)
+        override this to build a middleware pipeline from attached plugins.
+
+        Args:
+            entry: The MethodEntry being wrapped.
+            call_next: The next callable in the chain (initially entry.func).
+
+        Returns:
+            The wrapped callable to use as entry.handler.
+        """
         return call_next
 
     # ------------------------------------------------------------------
@@ -596,10 +636,6 @@ class BaseRouter(RouterInterface):
 
         # No hard error if nothing was removed; detach is best-effort.
         return routing_child  # type: ignore[no-any-return]
-
-    def _collect_child_routers(self, source: Any) -> list[tuple[str, BaseRouter]]:
-        """Return all routers registered in ``source``'s registry."""
-        return list(source._routers.items())
 
     # ------------------------------------------------------------------
     # Node resolution
