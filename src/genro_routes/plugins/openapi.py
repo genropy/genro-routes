@@ -2,7 +2,7 @@
 
 Provides explicit control over OpenAPI schema generation for handlers.
 Use this plugin to override automatically guessed HTTP methods or add
-OpenAPI-specific metadata like tags, summary, and description.
+OpenAPI-specific metadata like tags, summary, description, and security.
 
 Configuration
 -------------
@@ -11,7 +11,14 @@ Accepted keys (router-level or per-handler):
     - ``method``: HTTP method override (e.g., "get", "post", "delete")
     - ``tags``: OpenAPI tags (string or list of strings)
     - ``summary``: Summary override for the operation
+    - ``description``: Description override for the operation
     - ``deprecated``: Mark the operation as deprecated (default False)
+    - ``security_scheme``: Security scheme name (default "BearerAuth")
+    - ``security``: Explicit security override (list, or [] for public)
+
+Cross-plugin integration:
+    - When auth plugin is active, ``security`` is auto-derived from ``auth_rule``.
+    - When env plugin is active, ``x-requires`` is auto-derived from ``env_requires``.
 
 Example::
 
@@ -19,22 +26,23 @@ Example::
 
     class MyService(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi")
+            self.api = Router(self, name="api").plug("openapi").plug("auth")
 
-        # Method will be guessed as POST (has parameters)
-        @route("api")
-        def get_item(self, item_id: int) -> dict:
-            return {"id": item_id}
-
-        # Explicit override to DELETE
         @route("api", openapi_method="delete")
         def delete_item(self, item_id: int) -> dict:
             return {"deleted": item_id}
 
-        # Add tags
-        @route("api", openapi_tags=["users", "admin"])
-        def list_users(self) -> list:
+        @route("api", openapi_tags=["users"], openapi_deprecated=True)
+        def old_list(self) -> list:
             return []
+
+        @route("api", auth_rule="admin")
+        def admin_only(self) -> dict:
+            return {}
+
+        @route("api", openapi_security=[])
+        def force_public(self) -> dict:
+            return {}
 """
 
 from __future__ import annotations
@@ -61,7 +69,14 @@ class OpenAPIPlugin(BasePlugin):
         - ``method``: HTTP method override ("get", "post", "put", "delete", "patch")
         - ``tags``: OpenAPI tags for grouping (string or list of strings)
         - ``summary``: Summary text override for the operation
+        - ``description``: Description override for the operation
         - ``deprecated``: Mark the operation as deprecated (default False)
+        - ``security_scheme``: Security scheme name (default "BearerAuth")
+        - ``security``: Explicit per-operation security override (list or [])
+
+    Cross-plugin integration:
+        - Auth plugin: ``auth_rule`` auto-generates ``security`` field.
+        - Env plugin: ``env_requires`` auto-generates ``x-requires`` extension.
 
     Method guessing rules (when not overridden):
         - GET: All parameters are scalar types (str, int, float, bool, Enum)
@@ -99,7 +114,10 @@ class OpenAPIPlugin(BasePlugin):
         method: str | None = None,
         tags: str | list[str] | None = None,
         summary: str | None = None,
+        description: str | None = None,
         deprecated: bool = False,
+        security_scheme: str = "BearerAuth",
+        security: list | None = None,
     ):
         """Configure OpenAPI plugin options.
 
@@ -108,7 +126,12 @@ class OpenAPIPlugin(BasePlugin):
             method: HTTP method override (get, post, put, delete, patch).
             tags: OpenAPI tags for grouping operations.
             summary: Summary text override for the operation.
+            description: Description override for the operation.
             deprecated: Mark the operation as deprecated.
+            security_scheme: Name of the security scheme for auth-based
+                security derivation (default "BearerAuth").
+            security: Explicit security override for the operation.
+                Use [] to force public, or [{"OAuth2": ["read"]}] for custom.
         """
         pass  # Storage is handled by the wrapper
 
@@ -127,8 +150,14 @@ class OpenAPIPlugin(BasePlugin):
             metadata["tags"] = cfg["tags"]
         if cfg.get("summary"):
             metadata["summary"] = cfg["summary"]
+        if cfg.get("description"):
+            metadata["description"] = cfg["description"]
         if cfg.get("deprecated"):
             metadata["deprecated"] = cfg["deprecated"]
+        if cfg.get("security_scheme") and cfg["security_scheme"] != "BearerAuth":
+            metadata["security_scheme"] = cfg["security_scheme"]
+        if cfg.get("security") is not None:
+            metadata["security"] = cfg["security"]
 
         return {"openapi": metadata} if metadata else {}
 
@@ -294,12 +323,22 @@ class OpenAPITranslator:
         else:
             http_method = "post"
 
+        # Apply summary override from openapi plugin config
+        if openapi_config.get("summary"):
+            summary = openapi_config["summary"]
+
         operation: dict[str, Any] = {
             "operationId": name,
             "summary": summary,
         }
-        if doc:
+        # Apply description override from openapi plugin config, fallback to docstring
+        if openapi_config.get("description"):
+            operation["description"] = openapi_config["description"]
+        elif doc:
             operation["description"] = doc
+
+        if openapi_config.get("deprecated"):
+            operation["deprecated"] = True
 
         tags = openapi_config.get("tags")
         if tags:
@@ -348,6 +387,30 @@ class OpenAPITranslator:
 
         if "responses" not in operation:
             operation["responses"] = {"200": {"description": "Successful response"}}
+
+        # Security: explicit override takes precedence over auth-derived
+        plugins = entry_info.get("plugins", {})
+        explicit_security = openapi_config.get("security")
+        if explicit_security is not None:
+            operation["security"] = explicit_security
+        else:
+            auth_plugin = plugins.get("auth")
+            if auth_plugin is not None:
+                auth_config = auth_plugin.get("config", {})
+                auth_rule = auth_config.get("rule", "")
+                security_scheme = openapi_config.get("security_scheme", "BearerAuth")
+                if auth_rule:
+                    operation["security"] = [{security_scheme: []}]
+                else:
+                    operation["security"] = []
+
+        # Derive x-requires from env plugin config
+        env_plugin = plugins.get("env")
+        if env_plugin is not None:
+            env_config = env_plugin.get("config", {})
+            env_requires = env_config.get("requires", "")
+            if env_requires:
+                operation["x-requires"] = env_requires
 
         return {http_method: operation}, collected_defs
 

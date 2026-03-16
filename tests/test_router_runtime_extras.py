@@ -1426,3 +1426,201 @@ def test_openapi_non_typeddict_still_works():
 
     dict_schema = schema["paths"]["/get_dict"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
     assert dict_schema["type"] == "object"
+
+
+# -----------------------------------------------------------------------
+# OpenAPI: summary override, deprecated, description
+# -----------------------------------------------------------------------
+
+
+def test_openapi_summary_override():
+    """openapi_summary overrides docstring-derived summary."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi")
+
+        @route("api", openapi_summary="Custom summary")
+        def action(self) -> dict:
+            """Original docstring."""
+            return {}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi")
+    op = schema["paths"]["/action"]["get"]
+    assert op["summary"] == "Custom summary"
+
+
+def test_openapi_deprecated_flag():
+    """openapi_deprecated=True adds deprecated field to operation."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi")
+
+        @route("api", openapi_deprecated=True)
+        def old_action(self) -> dict:
+            """Deprecated endpoint."""
+            return {}
+
+        @route("api")
+        def new_action(self) -> dict:
+            """Active endpoint."""
+            return {}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi")
+    old_op = schema["paths"]["/old_action"]["get"]
+    new_op = schema["paths"]["/new_action"]["get"]
+    assert old_op.get("deprecated") is True
+    assert "deprecated" not in new_op
+
+
+def test_openapi_description_override():
+    """openapi_description overrides docstring-derived description."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi")
+
+        @route("api", openapi_description="Custom description")
+        def action(self) -> dict:
+            """Original docstring."""
+            return {}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi")
+    op = schema["paths"]["/action"]["get"]
+    assert op["description"] == "Custom description"
+
+
+# -----------------------------------------------------------------------
+# OpenAPI: security from auth plugin
+# -----------------------------------------------------------------------
+
+
+def test_openapi_security_from_auth_rule():
+    """Entry with auth_rule gets security in OpenAPI operation."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi").plug("auth")
+
+        @route("api", auth_rule="admin")
+        def admin_action(self) -> dict:
+            return {}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi", forbidden=True)
+    op = schema["paths"]["/admin_action"]["get"]
+    assert "security" in op
+    assert op["security"] == [{"BearerAuth": []}]
+
+
+def test_openapi_security_empty_for_public():
+    """Entry without auth_rule gets security: [] when auth plugin is active."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi").plug("auth")
+
+        @route("api")
+        def public_action(self) -> dict:
+            return {}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi")
+    op = schema["paths"]["/public_action"]["get"]
+    assert "security" in op
+    assert op["security"] == []
+
+
+def test_openapi_security_absent_without_auth_plugin():
+    """Without auth plugin, no security field in operation."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi")
+
+        @route("api")
+        def action(self) -> dict:
+            return {}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi")
+    op = schema["paths"]["/action"]["get"]
+    assert "security" not in op
+
+
+def test_openapi_security_scheme_configurable():
+    """security_scheme parameter changes the scheme name in security field."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi").plug("auth")
+
+        @route("api", auth_rule="admin", openapi_security_scheme="OAuth2")
+        def admin_action(self) -> dict:
+            return {}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi", forbidden=True)
+    op = schema["paths"]["/admin_action"]["get"]
+    assert op["security"] == [{"OAuth2": []}]
+
+
+# -----------------------------------------------------------------------
+# OpenAPI: x-requires from env plugin
+# -----------------------------------------------------------------------
+
+
+def test_openapi_x_requires_from_env():
+    """env_requires generates x-requires extension in operation."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi").plug("env")
+
+        @route("api", env_requires="redis&pyjwt")
+        def cached_action(self) -> dict:
+            return {}
+
+        @route("api")
+        def simple_action(self) -> dict:
+            return {}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi", forbidden=True)
+    cached_op = schema["paths"]["/cached_action"]["get"]
+    simple_op = schema["paths"]["/simple_action"]["get"]
+    assert cached_op.get("x-requires") == "redis&pyjwt"
+    assert "x-requires" not in simple_op
+
+
+# -----------------------------------------------------------------------
+# OpenAPI: explicit security override
+# -----------------------------------------------------------------------
+
+
+def test_openapi_security_explicit_override():
+    """openapi_security overrides auth-derived security."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("openapi").plug("auth")
+
+        @route("api", auth_rule="admin", openapi_security=[{"OAuth2": ["read"]}])
+        def custom_auth(self) -> dict:
+            return {}
+
+        @route("api", auth_rule="admin", openapi_security=[])
+        def force_public(self) -> dict:
+            return {}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi", forbidden=True)
+    custom_op = schema["paths"]["/custom_auth"]["get"]
+    public_op = schema["paths"]["/force_public"]["get"]
+    # Explicit override takes precedence over auth-derived security
+    assert custom_op["security"] == [{"OAuth2": ["read"]}]
+    assert public_op["security"] == []
