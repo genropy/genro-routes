@@ -15,11 +15,33 @@
 """Additional coverage tests for runtime-only Router behavior."""
 
 import sys
+from typing import TypedDict
+
 import pytest
 
 from genro_routes import RoutingClass, Router, route
 from genro_routes.core.routing import is_routing_class
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
+
+
+# TypedDict classes at module level for cross-Python-version compatibility
+# (pydantic handles TypedDict differently when defined inside functions
+# on Python <3.12). Tests using these are skipped on <3.12.
+
+class _UserResponse(TypedDict):
+    id: int
+    name: str
+    active: bool
+
+
+class _PartialUser(TypedDict, total=False):
+    id: int
+    name: str
+
+
+class _FullUser(TypedDict):
+    id: int
+    name: str
 
 
 class ManualService(RoutingClass):
@@ -1323,21 +1345,19 @@ def test_node_returns_entry_info():
 # -----------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="TypedDict type hints not resolved by pydantic on Python <3.12",
+)
 def test_openapi_typeddict_response_schema():
     """Test openapi generates schema from TypedDict return type."""
-    from typing import TypedDict
-
-    class UserResponse(TypedDict):
-        id: int
-        name: str
-        active: bool
 
     class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
         @route("api")
-        def get_user(self) -> UserResponse:
+        def get_user(self) -> _UserResponse:
             """Get user info."""
             return {"id": 1, "name": "test", "active": True}
 
@@ -1356,29 +1376,24 @@ def test_openapi_typeddict_response_schema():
     assert response_schema["properties"]["active"]["type"] == "boolean"
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="TypedDict type hints not resolved by pydantic on Python <3.12",
+)
 def test_openapi_typeddict_with_required_keys():
     """Test openapi includes required keys from TypedDict."""
-    from typing import TypedDict, NotRequired
-
-    class PartialUser(TypedDict, total=False):
-        id: int
-        name: str
-
-    class FullUser(TypedDict):
-        id: int
-        name: str
 
     class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
         @route("api")
-        def get_full_user(self) -> FullUser:
+        def get_full_user(self) -> _FullUser:
             """All fields required."""
             return {"id": 1, "name": "test"}
 
         @route("api")
-        def get_partial_user(self) -> PartialUser:
+        def get_partial_user(self) -> _PartialUser:
             """No fields required (total=False)."""
             return {}
 

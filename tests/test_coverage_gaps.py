@@ -14,6 +14,7 @@
 
 """Tests to cover remaining coverage gaps."""
 
+import sys
 from typing import TypedDict
 
 import pytest
@@ -827,6 +828,10 @@ def test_openapi_h_openapi_child_included():
     assert result["routers"]["child"]["description"] == "A child router"
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="TypedDict type hints not resolved by pydantic on Python <3.12",
+)
 def test_openapi_nested_typeddict_defs_at_root():
     """Test that nested TypedDict $defs are collected at the root level.
 
@@ -860,6 +865,10 @@ def test_openapi_nested_typeddict_defs_at_root():
     assert "$defs" not in response_schema, "$defs should not be in response schema"
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="TypedDict type hints not resolved by pydantic on Python <3.12",
+)
 def test_openapi_nested_typeddict_h_openapi_defs_at_root():
     """Test that h_openapi also collects $defs at root level."""
     from genro_routes.plugins.openapi import OpenAPITranslator
