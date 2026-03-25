@@ -193,19 +193,26 @@ All examples in documentation are verified by the test suite.
 ```text
 genro-routes/
 ├── src/genro_routes/
-│   ├── core/               # Core router implementation
-│   │   ├── base_router.py  # BaseRouter (plugin-free runtime)
-│   │   ├── router.py       # Router (with plugin support)
-│   │   ├── decorators.py   # @route decorator
-│   │   └── routing.py      # RoutingClass mixin
-│   └── plugins/            # Built-in plugins
-│       ├── logging.py      # LoggingPlugin
-│       ├── pydantic.py     # PydanticPlugin
-│       ├── auth.py         # AuthPlugin
-│       ├── env.py          # EnvPlugin
-│       └── openapi.py      # OpenAPIPlugin
-├── tests/                  # Comprehensive test suite
-└── docs/                   # Documentation (Sphinx)
+│   ├── __init__.py          # Public API exports
+│   ├── exceptions.py        # NotFound, NotAuthorized, NotAuthenticated, NotAvailable
+│   ├── core/                # Core router implementation
+│   │   ├── base_router.py   # BaseRouter (plugin-free runtime)
+│   │   ├── router.py        # Router (with plugin support)
+│   │   ├── router_node.py   # RouterNode (callable wrapper from node())
+│   │   ├── router_interface.py  # RouterInterface (abstract base)
+│   │   ├── context.py       # RoutingContext (abstract execution context)
+│   │   ├── decorators.py    # @route decorator
+│   │   └── routing.py       # RoutingClass, RoutingClassAuto, ResultWrapper
+│   └── plugins/             # Built-in plugins
+│       ├── _base_plugin.py  # BasePlugin, MethodEntry
+│       ├── logging.py       # LoggingPlugin
+│       ├── pydantic.py      # PydanticPlugin
+│       ├── auth.py          # AuthPlugin
+│       ├── env.py           # EnvPlugin (+ CapabilitiesSet)
+│       └── openapi.py       # OpenAPIPlugin (+ OpenAPITranslator)
+├── examples/                # Example applications
+├── tests/                   # Comprehensive test suite
+└── docs/                    # Documentation (Sphinx)
 ```
 
 ## Project Status

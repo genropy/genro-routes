@@ -505,17 +505,25 @@ sub_expanded = sub_router.nodes()  # Expand on demand
 
 - `basepath`: Start from a specific point in the hierarchy
 - `lazy`: Return router references instead of expanding recursively
-- `mode`: Output format mode (e.g., `"openapi"` for OpenAPI schema generation)
+- `mode`: Output format mode (see below)
+- `pattern`: Regex pattern to filter entry names (only matching entries are included)
 - `forbidden`: Include blocked entries with their rejection reason (default `False`)
 
 **Output modes**:
 
 - `None` (default): Standard introspection format with entries, routers, plugin_info
-- `"openapi"`: Generate OpenAPI 3.0 schema with paths and operations
+- `"openapi"`: Flat OpenAPI 3.0 schema with all paths merged across the hierarchy
+- `"h_openapi"`: Hierarchical OpenAPI format preserving the router tree structure
 
 ```python
-# Generate OpenAPI schema
+# Flat OpenAPI schema (all paths merged)
 schema = insp.api.nodes(mode="openapi")
+
+# Hierarchical OpenAPI schema (preserves router structure)
+h_schema = insp.api.nodes(mode="h_openapi")
+
+# Filter entries by name pattern
+admin_entries = insp.api.nodes(pattern="admin_.*")
 ```
 
 **Including blocked entries**:
@@ -585,6 +593,93 @@ assert entry_meta["auth_required"] is True
 - Content-type hints
 - Custom authorization requirements
 - Any handler-specific metadata not tied to plugins
+
+## Execution Context
+
+`RoutingContext` is an abstract base class that adapters (ASGI, Telegram, CLI, etc.) implement to provide a uniform execution context to handlers.
+
+```python
+from genro_routes import RoutingContext
+
+class ASGIContext(RoutingContext):
+    def __init__(self, request, app, server):
+        self._request = request
+        self._app = app
+        self._server = server
+
+    @property
+    def db(self):
+        return self._request.state.db
+
+    @property
+    def avatar(self):
+        return self._request.state.avatar
+
+    @property
+    def session(self):
+        return self._request.state.session
+
+    @property
+    def app(self):
+        return self._app
+
+    @property
+    def server(self):
+        return self._server
+```
+
+**Abstract properties** (must be implemented by each adapter):
+
+| Property | Purpose |
+|----------|---------|
+| `db` | Database connection or session |
+| `avatar` | Current user identity with metadata (permissions, locale, etc.) |
+| `session` | Session (macro context) for user state |
+| `app` | Application instance |
+| `server` | Server instance |
+
+**Setting context on a RoutingClass instance**:
+
+```python
+svc = MyService()
+svc.context = ASGIContext(request, app, server)
+
+# Context is accessible from the instance and propagates to children
+assert svc.context.db is not None
+```
+
+## Wrapping Handler Results
+
+Use `ResultWrapper` to return handler results with metadata that the transport layer can use (e.g., for content-type negotiation).
+
+```python
+from genro_routes import RoutingClass, Router, route, is_result_wrapper
+
+class APIService(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api")
+
+    @route("api")
+    def render_html(self):
+        content = "<html><body>Hello</body></html>"
+        return self.result_wrapper(content, mime_type="text/html")
+
+svc = APIService()
+result = svc.api.node("render_html")()
+
+# Check if result is wrapped
+if is_result_wrapper(result):
+    print(result.value)       # "<html><body>Hello</body></html>"
+    print(result.metadata)    # {"mime_type": "text/html"}
+```
+
+**Key points**:
+
+- `self.result_wrapper(value, **metadata)` creates a `ResultWrapper` with arbitrary metadata
+- `is_result_wrapper(obj)` checks if an object is a `ResultWrapper`
+- The transport adapter (e.g., genro-asgi) inspects the wrapper to set response headers
+- `ResultWrapper.value` contains the actual result
+- `ResultWrapper.metadata` contains the metadata dict
 
 ## Next Steps
 

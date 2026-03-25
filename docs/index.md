@@ -39,7 +39,7 @@ The routing logic lives in your application objects - the transport adapter (lik
 - **Plugin inheritance** - Plugins propagate automatically from parent to child routers
 - **Flexible registration** - Use `@route` decorator with prefixes, metadata, and explicit names
 - **Runtime configuration** - Configure plugins with `routing.configure()` using target syntax
-- **Comprehensive test suite** - 134 tests covering all features
+- **Comprehensive test suite** - Full coverage across all features
 
 ## Quick Example
 

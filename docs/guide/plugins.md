@@ -286,6 +286,20 @@ class ServerCapabilities(CapabilitiesSet):
 - `list(caps)` - List all currently active capabilities
 - `len(caps)` - Count of active capabilities
 
+**Hierarchical capabilities** (`current_capabilities` property):
+
+The router automatically collects capabilities from the instance and its entire parent chain. When a child is attached to a parent, the child's `current_capabilities` includes capabilities from all ancestors:
+
+```python
+parent.capabilities = ParentCapabilities()   # has "redis"
+child.capabilities = ChildCapabilities()     # has "email"
+
+parent.api.attach_instance(child, name="child")
+
+# child.api.current_capabilities returns {"redis", "email"}
+# (accumulated from parent + child)
+```
+
 **Complete example**:
 
 ```python
@@ -355,7 +369,10 @@ The OpenAPIPlugin provides **explicit control over OpenAPI schema generation**. 
 | `openapi_method` | `str` | HTTP method override (`get`, `post`, `put`, `delete`, `patch`) |
 | `openapi_tags` | `str \| list[str]` | OpenAPI tags for grouping operations |
 | `openapi_summary` | `str` | Summary text override |
+| `openapi_description` | `str` | Description text for the operation |
 | `openapi_deprecated` | `bool` | Mark operation as deprecated |
+| `openapi_security_scheme` | `str` | Security scheme name (default `"BearerAuth"`) |
+| `openapi_security` | `list` | Explicit security override (list, or `[]` for public) |
 
 **HTTP method guessing rules** (when not explicitly set):
 
@@ -1213,6 +1230,53 @@ def wrap_handler(self, router, entry, call_next):
             raise
     return wrapper
 ```
+
+## Runtime Plugin Management
+
+The `Router` class provides methods to enable/disable plugins and store runtime data at the handler level, without modifying the static configuration.
+
+### Enabling and Disabling Plugins
+
+```python
+svc = MyService()
+
+# Disable pydantic validation for a specific handler at runtime
+svc.api.set_plugin_enabled("handler_name", "pydantic", enabled=False)
+
+# Disable globally for all handlers
+svc.api.set_plugin_enabled("_all_", "logging", enabled=False)
+
+# Check if a plugin is enabled for a handler
+if svc.api.is_plugin_enabled("handler_name", "pydantic"):
+    print("Validation active")
+```
+
+**Resolution order** for `is_plugin_enabled` (first found wins):
+
+1. Entry-level runtime override (via `set_plugin_enabled` for specific handler)
+2. Entry-level static config (via `configure(_target=handler_name, enabled=...)`)
+3. Global runtime override (via `set_plugin_enabled` for `_all_`)
+4. Global static config (via `configure(enabled=...)`)
+5. Default: `True`
+
+### Storing Runtime Data
+
+Plugins can use `set_runtime_data` / `get_runtime_data` to store handler-specific state that persists across invocations but is not part of the configuration schema:
+
+```python
+# Store runtime data for a plugin/handler combination
+svc.api.set_runtime_data("handler_name", "my_plugin", "call_count", 0)
+
+# Retrieve runtime data
+count = svc.api.get_runtime_data("handler_name", "my_plugin", "call_count", default=0)
+```
+
+**Use cases**:
+
+- Counters and metrics per handler
+- Rate limiting state
+- Cache invalidation flags
+- Plugin-specific state that should not be part of the config schema
 
 ## Next Steps
 

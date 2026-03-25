@@ -169,6 +169,5 @@ Now that you've learned the basics:
 
 ## Need Help?
 
-- **LLM Reference**: See [llm-docs](https://github.com/genropy/genro-routes/tree/main/llm-docs) for AI-optimized documentation
 - **Examples**: Check the [examples](https://github.com/genropy/genro-routes/tree/main/examples) directory
 - **Issues**: Report bugs on [GitHub Issues](https://github.com/genropy/genro-routes/issues)

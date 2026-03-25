@@ -474,6 +474,23 @@ assert child_router.instance is parent.child
 - Enables programmatic router access
 - Useful for dynamic configuration
 
+### Direct Router Lookup with `router_at_path`
+
+You can also navigate the hierarchy directly from any router using `router_at_path()`:
+
+```python
+# From a router, find a child router by path
+child_router = parent.api.router_at_path("child/grandchild")
+if child_router is not None:
+    print(child_router.name)
+```
+
+**Differences from `routing.get_router()`**:
+
+- `router_at_path(path)` is called directly on a `Router` instance and navigates its children
+- Returns `None` if the path doesn't resolve (instead of raising `AttributeError`)
+- Does not require `RoutingClass` — works on any `BaseRouter`
+
 ## Introspection
 
 <!-- test: test_router_basic.py::test_dotted_path_and_nodes_with_attached_child -->

@@ -224,19 +224,13 @@ router.node("method")()  # Auto-logs the call
 <!-- test: test_pydantic_plugin.py::test_pydantic_plugin_accepts_valid_input -->
 
 ```python
-from pydantic import BaseModel
-
-class CreateRequest(BaseModel):
-    name: str
-    count: int
-
 @route("api")
-def create(self, req: CreateRequest):
-    return {"status": "created"}
+def concat(self, text: str, number: int = 1) -> str:
+    return f"{text}:{number}"
 
 router.plug("pydantic")
-router.node("create")({"name": "test", "count": 5})  # OK
-router.node("create")({"name": "test"})  # ValidationError
+router.node("concat")("hello", 3)    # OK → "hello:3"
+router.node("concat")(123, "oops")   # ValidationError
 ```
 
 **3. AuthPlugin** - Role-based access control
@@ -282,13 +276,13 @@ router.plug("openapi")
 
 ```python
 # Global for all handlers
-obj.routing.configure("api:logging", level="warning")
+obj.routing.configure("api:logging/_all_", level="warning")
 
 # For specific handler
 obj.routing.configure("api:logging/create", enabled=False)
 
-# With wildcards
-obj.routing.configure("*:logging/*", level="debug")
+# With glob patterns
+obj.routing.configure("api:logging/admin_*", level="debug")
 
 # Query configuration
 report = obj.routing.configure("?")
