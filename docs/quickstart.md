@@ -157,6 +157,35 @@ assert svc.api.node("concat")("hi") == "hi:1"
 # svc.api.node("concat")(123, "oops")  # ValidationError!
 ```
 
+## Response Schemas
+
+Return type annotations are automatically converted to JSON Schema. This enables bridges (MCP, OpenAPI) to expose typed response contracts:
+
+```python
+from typing import TypedDict
+
+class StatusResponse(TypedDict):
+    ok: bool
+    message: str
+
+class HealthService(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("pydantic")
+
+    @route("api")
+    def health(self) -> StatusResponse:
+        return {"ok": True, "message": "running"}
+
+svc = HealthService()
+
+# Response schema is generated automatically
+entry = svc.api._entries["health"]
+schema = entry.metadata["pydantic"]["response_schema"]
+# {"type": "object", "properties": {"ok": {"type": "boolean"}, "message": {"type": "string"}}, ...}
+```
+
+Supported types: `TypedDict`, `dict[str, T]`, `list[T]`, `str`, `int`, `bool`, and any type Pydantic can serialize. TypedDict requires Python 3.12+.
+
 ## Next Steps
 
 Now that you've learned the basics:

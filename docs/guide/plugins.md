@@ -36,7 +36,15 @@ result = svc.api.node("process")("test")  # Automatically logged
 
 **PydanticPlugin** (`pydantic`):
 
+Validates input parameters and generates response schemas from return type annotations:
+
 ```python
+from typing import TypedDict
+
+class UserResponse(TypedDict):
+    id: int
+    name: str
+
 class ValidatedService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("pydantic")
@@ -45,9 +53,18 @@ class ValidatedService(RoutingClass):
     def concat(self, text: str, number: int = 1) -> str:
         return f"{text}:{number}"
 
+    @route("api")
+    def get_user(self, user_id: int) -> UserResponse:
+        return {"id": user_id, "name": "alice"}
+
 svc = ValidatedService()
 svc.api.node("concat")("hello", 3)  # Valid
 # svc.api.node("concat")(123, "oops")  # ValidationError
+
+# Response schema available in metadata
+entry = svc.api._entries["get_user"]
+schema = entry.metadata["pydantic"]["response_schema"]
+# {"type": "object", "properties": {"id": {"type": "integer"}, "name": {"type": "string"}}, ...}
 ```
 
 **AuthPlugin** (`auth`):
@@ -356,6 +373,69 @@ assert "premium_feature" in entries  # Now available
 assert "both_features" in entries    # cache (instance) + premium (request)
 ```
 
+### PydanticPlugin API
+
+The PydanticPlugin provides **automatic input validation and response schema generation**. It validates handler parameters against their type annotations and generates JSON Schema from return type annotations.
+
+**Plugin code**: `pydantic`
+
+**Route decorator parameters**:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pydantic_disabled` | `bool` | Skip validation for this handler (default `False`) |
+
+**Response schema generation**:
+
+When a handler has a return type annotation, the plugin automatically generates a JSON Schema using Pydantic's `TypeAdapter`. The schema is stored in `entry.metadata["pydantic"]["response_schema"]` and exposed through `nodes()` introspection.
+
+Supported return types: `TypedDict`, `dict[str, T]`, `list[T]`, `str`, `int`, `bool`, Pydantic models, and any type Pydantic can serialize. TypedDict support requires Python 3.12+.
+
+**Metadata exposed via `entry_metadata()`**:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `model` | `type \| None` | Pydantic model for input validation |
+| `hints` | `dict` | Input parameter type hints |
+| `accepts_varargs` | `bool` | Whether handler accepts `*args` |
+| `response_schema` | `dict \| None` | JSON Schema for the return type (if annotated) |
+
+**Example**:
+
+```python
+from typing import TypedDict
+from genro_routes import RoutingClass, Router, route
+
+class UserResponse(TypedDict):
+    id: int
+    name: str
+    active: bool
+
+class UserAPI(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("pydantic")
+
+    @route("api")
+    def get_user(self, user_id: int) -> UserResponse:
+        return {"id": user_id, "name": "alice", "active": True}
+
+    @route("api")
+    def list_users(self) -> list[UserResponse]:
+        return []
+
+api = UserAPI()
+
+# Response schema in entry metadata
+entry = api.api._entries["get_user"]
+schema = entry.metadata["pydantic"]["response_schema"]
+# {"type": "object", "properties": {"id": {...}, "name": {...}, "active": {...}}, ...}
+
+# Also exposed via nodes() introspection
+nodes = api.api.nodes()
+pydantic_meta = nodes["entries"]["get_user"]["plugins"]["pydantic"]["metadata"]
+assert "response_schema" in pydantic_meta
+```
+
 ### OpenAPIPlugin API
 
 The OpenAPIPlugin provides **explicit control over OpenAPI schema generation**. It allows overriding automatically guessed HTTP methods and adding OpenAPI-specific metadata.
@@ -381,6 +461,33 @@ The OpenAPIPlugin provides **explicit control over OpenAPI schema generation**. 
 | Has parameters | `POST` |
 | No parameters, returns `None` | `POST` (side effect assumed) |
 | No parameters, returns value | `GET` |
+
+**Response schema generation**:
+
+When handlers have return type annotations, the OpenAPI translator automatically generates response schemas in the `responses` section. If the PydanticPlugin is active, the translator uses the pre-computed response schema from the pydantic metadata. Otherwise, it extracts the return type directly from the function.
+
+```python
+from typing import TypedDict
+from genro_routes import RoutingClass, Router, route
+
+class ItemResponse(TypedDict):
+    id: int
+    name: str
+
+class ItemAPI(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("pydantic").plug("openapi")
+
+    @route("api")
+    def get_item(self, item_id: int) -> ItemResponse:
+        """Get a single item."""
+        return {"id": item_id, "name": "widget"}
+
+api = ItemAPI()
+openapi = api.api.nodes(mode="openapi")
+# paths["/get_item"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
+# → {"type": "object", "properties": {"id": {"type": "integer"}, "name": {"type": "string"}}, ...}
+```
 
 **OpenAPITranslator class**:
 

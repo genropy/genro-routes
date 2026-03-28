@@ -47,7 +47,8 @@ This separation enables:
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
 5. **Runtime configuration** - `routing.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
 6. **Built-in plugins** - `logging`, `pydantic`, `auth`, `env`, and `openapi` plugins are included out of the box.
-7. **Full coverage** - The package ships with a comprehensive test suite and no hidden compatibility layers.
+7. **Response schema generation** - Return type annotations (TypedDict, dataclass, etc.) are automatically converted to JSON Schema and exposed in route metadata for bridges to consume.
+8. **Full coverage** - The package ships with a comprehensive test suite and no hidden compatibility layers.
 
 ## Quick Example
 
@@ -133,6 +134,41 @@ git clone https://github.com/genropy/genro-routes.git
 cd genro-routes
 pip install -e ".[all]"
 ```
+
+## Typed Response Schemas
+
+Annotate return types to generate response schemas automatically. Bridges (MCP, OpenAPI) can expose them without extra work:
+
+```python
+from typing import TypedDict
+from genro_routes import RoutingClass, Router, route
+
+class UserResponse(TypedDict):
+    id: int
+    name: str
+    active: bool
+
+class UsersAPI(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("pydantic")
+
+    @route("api")
+    def get_user(self, user_id: int) -> UserResponse:
+        return {"id": user_id, "name": "alice", "active": True}
+
+api = UsersAPI()
+
+# Response schema is available in route metadata
+entry = api.api._entries["get_user"]
+schema = entry.metadata["pydantic"]["response_schema"]
+# {"type": "object", "properties": {"id": {"type": "integer"}, ...}}
+
+# OpenAPI translation includes it automatically
+openapi = api.api.nodes(mode="openapi")
+# paths["/get_user"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+```
+
+Supported types: `TypedDict`, `dict[str, int]`, `list[...]`, `str`, `int`, `bool`, and any type Pydantic can serialize.
 
 ## For the Lazy: RoutingClassAuto
 
