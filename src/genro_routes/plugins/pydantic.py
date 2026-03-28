@@ -37,7 +37,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, get_type_hints
 
 try:
-    from pydantic import ValidationError, create_model
+    from pydantic import TypeAdapter, ValidationError, create_model
 except ImportError as err:  # pragma: no cover - import guard
     raise ImportError(
         "Pydantic plugin requires pydantic. Install with: pip install genro-routes[pydantic]"
@@ -121,7 +121,7 @@ class PydanticPlugin(BasePlugin):
         except Exception:
             hints = {}
 
-        hints.pop("return", None)
+        return_hint = hints.pop("return", None)
 
         # Always save signature metadata
         pydantic_meta: dict[str, Any] = {
@@ -129,6 +129,14 @@ class PydanticPlugin(BasePlugin):
             "accepts_varargs": accepts_varargs,
             "hints": hints,
         }
+
+        if return_hint is not None:
+            pydantic_meta["return_type"] = return_hint
+            try:
+                adapter = TypeAdapter(return_hint)
+                pydantic_meta["response_schema"] = adapter.json_schema()
+            except Exception:
+                pass
 
         if hints:
             # Build validation model only if we have hints
@@ -207,11 +215,15 @@ class PydanticPlugin(BasePlugin):
     def entry_metadata(self, router: Any, entry: MethodEntry) -> dict[str, Any]:
         """Return pydantic metadata for introspection."""
         meta = entry.metadata.get("pydantic", {})
-        return {
+        result: dict[str, Any] = {
             "model": meta.get("model"),
             "hints": meta.get("hints"),
             "accepts_varargs": meta.get("accepts_varargs", False),
         }
+        response_schema = meta.get("response_schema")
+        if response_schema is not None:
+            result["response_schema"] = response_schema
+        return result
 
 
 Router.register_plugin(PydanticPlugin)

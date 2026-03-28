@@ -29,8 +29,14 @@ class GenroMCPBridge:
             tool = {
                 "name": tool_name.replace("/", "_"), # MCP likes flat names with underscores
                 "description": info.get("doc", "No description provided"),
-                "inputSchema": self._get_schema_from_model(model)
+                "inputSchema": self._get_schema_from_model(model),
             }
+
+            # Add response schema if available
+            response_schema = pydantic_meta.get("response_schema")
+            if response_schema:
+                tool["outputSchema"] = response_schema
+
             tools.append(tool)
             
         # Recurse into child routers

@@ -1639,3 +1639,173 @@ def test_openapi_security_explicit_override():
     # Explicit override takes precedence over auth-derived security
     assert custom_op["security"] == [{"OAuth2": ["read"]}]
     assert public_op["security"] == []
+
+
+# -----------------------------------------------------------------------
+# Response schema in pydantic metadata
+# -----------------------------------------------------------------------
+
+
+def test_pydantic_captures_response_schema():
+    """Pydantic plugin captures response schema from return type annotation."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("pydantic")
+
+        @route("api")
+        def get_data(self) -> dict[str, int]:
+            """Return data."""
+            return {"a": 1}
+
+    svc = Svc()
+    entry = svc.api._entries["get_data"]
+    meta = entry.metadata.get("pydantic", {})
+    assert "response_schema" in meta
+    schema = meta["response_schema"]
+    assert schema["type"] == "object"
+
+
+def test_pydantic_no_response_schema_without_annotation():
+    """No response_schema when handler has no return annotation."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("pydantic")
+
+        @route("api")
+        def no_return(self):
+            return {}
+
+    svc = Svc()
+    entry = svc.api._entries["no_return"]
+    meta = entry.metadata.get("pydantic", {})
+    assert "response_schema" not in meta
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="TypedDict type hints not resolved by pydantic on Python <3.12",
+)
+def test_pydantic_captures_typeddict_response_schema():
+    """Pydantic plugin generates correct schema for TypedDict return type."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("pydantic")
+
+        @route("api")
+        def get_user(self) -> _UserResponse:
+            return {"id": 1, "name": "test", "active": True}
+
+    svc = Svc()
+    entry = svc.api._entries["get_user"]
+    schema = entry.metadata["pydantic"]["response_schema"]
+    assert schema["type"] == "object"
+    assert "properties" in schema
+    assert schema["properties"]["id"]["type"] == "integer"
+    assert schema["properties"]["name"]["type"] == "string"
+    assert schema["properties"]["active"]["type"] == "boolean"
+
+
+def test_response_schema_in_nodes_metadata():
+    """nodes() exposes response_schema in pydantic plugin metadata."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("pydantic")
+
+        @route("api")
+        def get_data(self) -> dict[str, int]:
+            """Return data."""
+            return {"a": 1}
+
+    svc = Svc()
+    nodes = svc.api.nodes()
+    entry_info = nodes["entries"]["get_data"]
+    pydantic_meta = entry_info["plugins"]["pydantic"]["metadata"]
+    assert "response_schema" in pydantic_meta
+    assert pydantic_meta["response_schema"]["type"] == "object"
+
+
+def test_openapi_uses_precomputed_response_schema():
+    """OpenAPI uses pre-computed response schema from pydantic metadata."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("pydantic").plug("openapi")
+
+        @route("api")
+        def get_data(self) -> dict[str, int]:
+            """Return data."""
+            return {"a": 1}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi")
+    response = schema["paths"]["/get_data"]["get"]["responses"]["200"]
+    response_schema = response["content"]["application/json"]["schema"]
+    assert response_schema["type"] == "object"
+
+
+def test_openapi_fallback_without_pydantic():
+    """OpenAPI generates response schema even without pydantic plugin."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def get_data(self) -> dict[str, int]:
+            """Return data."""
+            return {"a": 1}
+
+    svc = Svc()
+    schema = svc.api.nodes(mode="openapi")
+    response = schema["paths"]["/get_data"]["get"]["responses"]["200"]
+    response_schema = response["content"]["application/json"]["schema"]
+    assert response_schema["type"] == "object"
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="TypedDict type hints not resolved by pydantic on Python <3.12",
+)
+def test_list_typeddict_response_schema():
+    """Pydantic plugin handles list[TypedDict] return type."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("pydantic")
+
+        @route("api")
+        def list_users(self) -> list[_UserResponse]:
+            return []
+
+    svc = Svc()
+    entry = svc.api._entries["list_users"]
+    schema = entry.metadata["pydantic"]["response_schema"]
+    assert schema["type"] == "array"
+
+
+def test_response_schema_not_mutated_by_openapi():
+    """Multiple OpenAPI translations do not corrupt the stored response schema."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api").plug("pydantic").plug("openapi")
+
+        @route("api")
+        def get_data(self) -> dict[str, int]:
+            """Return data."""
+            return {"a": 1}
+
+    svc = Svc()
+    entry = svc.api._entries["get_data"]
+    original_schema = entry.metadata["pydantic"]["response_schema"].copy()
+
+    # Call nodes(mode="openapi") twice
+    svc.api.nodes(mode="openapi")
+    svc.api.nodes(mode="openapi")
+
+    # Original schema in metadata should be unchanged
+    assert entry.metadata["pydantic"]["response_schema"] == original_schema

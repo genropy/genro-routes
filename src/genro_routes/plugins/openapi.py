@@ -365,25 +365,31 @@ class OpenAPITranslator:
                     "content": {"application/json": {"schema": schema}},
                 }
 
-        if func:
+        # Response schema: prefer pre-computed from pydantic plugin, fallback to direct extraction
+        response_schema = None
+        pre_computed = pydantic_meta.get("response_schema")
+        if pre_computed is not None:
+            response_schema = pre_computed.copy()
+        elif func:
             try:
-                hints = get_type_hints(func)
-                return_hint = hints.get("return")
+                func_hints = get_type_hints(func)
+                return_hint = func_hints.get("return")
                 if return_hint:
                     response_schema = OpenAPITranslator.python_type_to_openapi_schema(
                         return_hint
                     )
-                    # Extract $defs from response schema
-                    if "$defs" in response_schema:
-                        collected_defs.update(response_schema.pop("$defs"))
-                    operation["responses"] = {
-                        "200": {
-                            "description": "Successful response",
-                            "content": {"application/json": {"schema": response_schema}},
-                        }
-                    }
             except Exception:
                 pass
+
+        if response_schema is not None:
+            if "$defs" in response_schema:
+                collected_defs.update(response_schema.pop("$defs"))
+            operation["responses"] = {
+                "200": {
+                    "description": "Successful response",
+                    "content": {"application/json": {"schema": response_schema}},
+                }
+            }
 
         if "responses" not in operation:
             operation["responses"] = {"200": {"description": "Successful response"}}
