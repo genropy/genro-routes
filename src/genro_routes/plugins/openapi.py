@@ -17,6 +17,8 @@ Accepted keys (router-level or per-handler):
     - ``security``: Explicit security override (list, or [] for public)
 
 Cross-plugin integration:
+    - When pydantic plugin is active, uses pre-computed ``response_schema`` from
+      metadata. Falls back to direct ``get_type_hints`` extraction otherwise.
     - When auth plugin is active, ``security`` is auto-derived from ``auth_rule``.
     - When env plugin is active, ``x-requires`` is auto-derived from ``env_requires``.
 

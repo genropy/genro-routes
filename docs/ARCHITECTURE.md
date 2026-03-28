@@ -164,7 +164,7 @@ graph LR
   R[Router] --> H[handlers]
   R --> C[children]
   R --> P[plugin_info]
-  H --> E1[entry -> {callable, metadata, doc, signature, return_type, plugins, parameters, metadata_keys, extras}]
+  H --> E1[entry -> {callable, metadata, doc, signature, return_type, response_schema, plugins, parameters, metadata_keys, extras}]
   C --> Rchild[child router ...]
 ```
 

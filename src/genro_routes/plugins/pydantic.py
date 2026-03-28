@@ -1,26 +1,41 @@
-"""Pydantic validation plugin for Genro Routes.
+"""Pydantic validation and response schema plugin for Genro Routes.
 
-Automatically validates handler inputs using Pydantic type hints.
+Validates handler inputs using Pydantic type hints and generates JSON Schema
+from return type annotations for bridge consumption (MCP, OpenAPI).
 
-At registration time (``on_decore``), inspects handler type hints and builds
-a Pydantic model capturing annotated parameters. At call time (``wrap_handler``),
-validates annotated args/kwargs before calling the real handler.
+At registration time (``on_decore``):
+- Inspects parameter type hints and builds a Pydantic model for input validation.
+- Inspects return type annotation and generates a JSON Schema via ``TypeAdapter``,
+  stored in ``entry.metadata["pydantic"]["response_schema"]``.
+
+At call time (``wrap_handler``), validates annotated args/kwargs before calling
+the real handler.
 
 Example::
 
+    from typing import TypedDict
     from genro_routes import Router, RoutingClass, route
+
+    class UserResponse(TypedDict):
+        id: int
+        name: str
 
     class MyService(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api").plug("pydantic")
 
         @route("api")
-        def get_user(self, user_id: int, name: str = "default"):
-            return {"id": user_id, "name": name}
+        def get_user(self, user_id: int) -> UserResponse:
+            return {"id": user_id, "name": "alice"}
 
     svc = MyService()
-    svc.api.node("get_user")(user_id=123)  # OK
+    svc.api.node("get_user")(user_id=123)  # OK, validated
     svc.api.node("get_user")(user_id="not_an_int")  # ValidationError
+
+    # Response schema available in metadata
+    entry = svc.api._entries["get_user"]
+    entry.metadata["pydantic"]["response_schema"]
+    # {"type": "object", "properties": {"id": ..., "name": ...}, ...}
 
 Configuration::
 
@@ -51,17 +66,17 @@ if TYPE_CHECKING:
 
 
 class PydanticPlugin(BasePlugin):
-    """Validate handler inputs with Pydantic using type hints.
+    """Validate handler inputs and generate response schemas with Pydantic.
 
-    Automatically validates handler parameters against their type annotations.
-    At registration time (``on_decore``), builds a Pydantic model from function
-    type hints. At call time (``wrap_handler``), validates all annotated
-    arguments before invoking the handler.
+    At registration time (``on_decore``), builds a Pydantic model from parameter
+    type hints for input validation, and generates a JSON Schema from the return
+    type annotation via ``TypeAdapter`` for bridge consumption.
 
     Behavior:
         - Only annotated parameters are validated
         - Unannotated parameters pass through unchanged
         - ValidationError is raised on invalid input
+        - Return type annotations produce ``response_schema`` in metadata
         - Can be disabled per-handler via ``pydantic_disabled=True``
 
     Configuration options:
@@ -79,12 +94,15 @@ class PydanticPlugin(BasePlugin):
                     self.api = Router(self, name="api").plug("pydantic")
 
                 @route("api")
-                def get_user(self, user_id: int, name: str = "default"):
-                    return {"id": user_id, "name": name}
+                def get_user(self, user_id: int) -> dict[str, int]:
+                    return {"id": user_id}
 
             svc = MyService()
             svc.api.node("get_user")(user_id=123)           # OK
             svc.api.node("get_user")(user_id="not_an_int")  # ValidationError
+
+            # Response schema in metadata
+            svc.api._entries["get_user"].metadata["pydantic"]["response_schema"]
 
         Disable validation::
 
@@ -94,7 +112,7 @@ class PydanticPlugin(BasePlugin):
     """
 
     plugin_code = "pydantic"
-    plugin_description = "Validates handler inputs using Pydantic type hints"
+    plugin_description = "Validates inputs and generates response schemas using Pydantic"
 
     def __init__(self, router, **config: Any):
         super().__init__(router, **config)
@@ -108,7 +126,7 @@ class PydanticPlugin(BasePlugin):
         pass  # Storage is handled by the wrapper
 
     def on_decore(self, route: Router, func: Callable, entry: MethodEntry) -> None:
-        """Build Pydantic model from handler type hints and capture signature info."""
+        """Build Pydantic model from handler type hints and generate response schema."""
         # Always capture signature info (even without type hints)
         sig = inspect.signature(func)
         accepts_varargs = any(

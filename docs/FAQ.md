@@ -220,7 +220,7 @@ router = Router(self, name="api").plug("logging")
 router.node("method")()  # Auto-logs the call
 ```
 
-**2. PydanticPlugin** - Input validation
+**2. PydanticPlugin** - Input validation + response schemas
 <!-- test: test_pydantic_plugin.py::test_pydantic_plugin_accepts_valid_input -->
 
 ```python
@@ -231,6 +231,10 @@ def concat(self, text: str, number: int = 1) -> str:
 router.plug("pydantic")
 router.node("concat")("hello", 3)    # OK → "hello:3"
 router.node("concat")(123, "oops")   # ValidationError
+
+# Response schema auto-generated from return type annotation
+router._entries["concat"].metadata["pydantic"]["response_schema"]
+# {"type": "string"}
 ```
 
 **3. AuthPlugin** - Role-based access control
@@ -255,7 +259,7 @@ router.plug("env")
 # Entry only visible if instance has "redis" capability
 ```
 
-**5. OpenAPIPlugin** - Schema metadata
+**5. OpenAPIPlugin** - Schema metadata and response schemas
 
 ```python
 @route("api", openapi_method="post", openapi_tags="users")
@@ -264,6 +268,7 @@ def create_user(self, name: str) -> dict:
 
 router.plug("openapi")
 # Provides metadata for OpenAPI schema generation
+# Response schemas auto-included from return type annotations
 ```
 
 ### How do I configure plugins at runtime?
