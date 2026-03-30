@@ -199,6 +199,14 @@ The auto-created router is named "main" and stored internally to avoid conflicts
 - **`RouterNode`** - Callable wrapper returned by `node()`, with `path`, `error`, `doc`, `metadata` properties.
 - **`NotFound` / `NotAuthenticated` / `NotAuthorized` / `NotAvailable`** - Exceptions for routing errors (not found, auth required, auth denied, capabilities missing)
 
+## One Name Per Operation
+
+Genro Routes uses **unique names** for handlers rather than overloading the same path with different HTTP methods. Each entry is an **operation** (`list_orders`, `create_order`, `approve_order`), not a resource acted upon by a verb.
+
+This matches how modern API paradigms work: GraphQL, gRPC, tRPC, and MCP all identify operations by name, not by HTTP method. The HTTP verb is inferred automatically at the transport layer (e.g., genro-asgi) when generating OpenAPI schemas or mapping to HTTP endpoints.
+
+See [Why One Name Per Operation](docs/guide/why-one-name-per-operation.md) for the full rationale.
+
 ## Pattern Highlights
 
 - **Explicit naming + prefixes** - `@route("api", name="detail")` and `Router(self, prefix="handle_")` separate method names from public route names.
