@@ -15,7 +15,7 @@ Plugins in Genro Routes:
 
 ## Built-in Plugins
 
-Genro Routes includes five production-ready plugins:
+Genro Routes includes six production-ready plugins:
 
 **LoggingPlugin** (`logging`):
 
@@ -148,7 +148,64 @@ svc = APIService()
 # Plugin provides OpenAPI metadata for documentation generation
 ```
 
+**ChannelPlugin** (`channel`):
+
+```python
+class MultiChannelAPI(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("channel")
+        self.api.channel.configure(channels="*")  # default: all channels
+
+    @route("api", channel="mcp")  # shorthand for channel_channels="mcp"
+    def mcp_only(self):
+        return "MCP exclusive"
+
+    @route("api", channel="mcp,bot_.*")  # regex patterns supported
+    def mcp_and_bots(self):
+        return "MCP + any bot channel"
+
+    @route("api")  # inherits "*" from router config
+    def everywhere(self):
+        return "all channels"
+
+svc = MultiChannelAPI()
+entries = svc.api.nodes(channel_channel="mcp")["entries"]   # all three
+entries = svc.api.nodes(channel_channel="rest")["entries"]   # only everywhere
+```
+
 See [Quick Start - Plugins](../quickstart.md#adding-plugins) for more examples.
+
+## Shorthand Plugin Syntax
+
+Plugins that declare a `plugin_default_param` support shorthand syntax in the `@route` decorator. Instead of writing the full `plugin_param=value` form, you can use `plugin=value`:
+
+```python
+# These are equivalent:
+@route("api", auth_rule="admin")        # longform
+@route("api", auth="admin")             # shorthand
+
+@route("api", env_requires="redis")     # longform
+@route("api", env="redis")              # shorthand
+
+@route("api", channel_channels="mcp")   # longform
+@route("api", channel="mcp")            # shorthand
+```
+
+The shorthand is opt-in per plugin. Built-in plugins that support it:
+
+| Plugin | Shorthand | Expands to |
+|--------|-----------|------------|
+| `auth` | `auth="admin"` | `auth_rule="admin"` |
+| `env` | `env="redis"` | `env_requires="redis"` |
+| `channel` | `channel="mcp"` | `channel_channels="mcp"` |
+
+Custom plugins can declare their own default parameter:
+
+```python
+class MyPlugin(BasePlugin):
+    plugin_code = "myplugin"
+    plugin_default_param = "target"  # enables: myplugin="value"
+```
 
 ## Built-in Plugins API Reference
 
@@ -546,6 +603,91 @@ openapi = OpenAPITranslator.translate_openapi(nodes)
 # "/list_users": {"get": {"operationId": "list_users", "tags": ["users"], ...}}
 # "/create_user": {"post": {"operationId": "create_user", "tags": ["users"], ...}}
 # "/delete_user": {"delete": {"operationId": "delete_user", "tags": ["users", "admin"], ...}}
+```
+
+### ChannelPlugin API
+
+The ChannelPlugin provides **channel-based endpoint filtering**. It controls access based on the request channel (mcp, rest, bot_*, web, etc.), working alongside AuthPlugin (who) and EnvPlugin (what's available).
+
+**Plugin code**: `channel`
+
+**Route decorator parameters**:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `channel_channels` | `str` | Comma-separated list of allowed channel patterns |
+| `channel` | `str` | Shorthand for `channel_channels` (via `plugin_default_param`) |
+
+**Channel pattern syntax**:
+
+| Pattern | Matches | Example |
+|---------|---------|---------|
+| `"mcp"` | Exact match | Only MCP channel |
+| `"bot_.*"` | Regex via `re.fullmatch` | Any bot channel |
+| `"mcp,rest"` | Comma-separated list | MCP or REST |
+| `"*"` | Wildcard | Any channel |
+| `""` | Nothing | Default closed |
+
+**Query parameters** (passed to `node()` or `nodes()`):
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `channel_channel` | `str` | The request channel to filter against |
+
+**Error codes returned by `deny_reason()`**:
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `""` | - | Access allowed |
+| `"not_available"` | 501 | Channel doesn't match or not configured |
+
+**Key behaviors**:
+
+- **Default closed**: entry without `channels` configured returns `"not_available"`
+- **Config inheritance**: child routers inherit parent channel config
+- **Regex patterns**: each pattern is matched with `re.fullmatch`
+
+**Complete example**:
+
+```python
+from genro_routes import RoutingClass, Router, route
+
+class MultiChannelAPI(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api").plug("channel")
+        self.api.channel.configure(channels="*")  # default: all channels
+
+    @route("api", channel="mcp")  # shorthand syntax
+    def mcp_tool(self):
+        return "only via MCP"
+
+    @route("api", channel="mcp,bot_.*")
+    def ai_accessible(self):
+        return "MCP + any bot"
+
+    @route("api", channel="rest,web")
+    def browser_only(self):
+        return "REST or web"
+
+    @route("api")  # inherits "*" from router config
+    def universal(self):
+        return "everywhere"
+
+api = MultiChannelAPI()
+
+# MCP client sees: mcp_tool, ai_accessible, universal
+entries = api.api.nodes(channel_channel="mcp")["entries"]
+assert "mcp_tool" in entries
+assert "browser_only" not in entries
+
+# REST client sees: browser_only, universal
+entries = api.api.nodes(channel_channel="rest")["entries"]
+assert "browser_only" in entries
+assert "mcp_tool" not in entries
+
+# Combined with auth
+api2 = Router(Owner(), name="api").plug("channel").plug("auth")
+# Both filters must pass for entry to be visible
 ```
 
 ## Creating Custom Plugins

@@ -46,7 +46,7 @@ This separation enables:
 3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutingClass instances with path access (`parent.api.node("child/method")`).
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
 5. **Runtime configuration** - `routing.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
-6. **Built-in plugins** - `logging`, `pydantic`, `auth`, `env`, and `openapi` plugins are included out of the box.
+6. **Built-in plugins** - `logging`, `pydantic`, `auth`, `env`, `openapi`, and `channel` plugins are included out of the box.
 7. **Response schema generation** - Return type annotations (TypedDict, dataclass, etc.) are automatically converted to JSON Schema and exposed in route metadata for bridges to consume.
 8. **Full coverage** - The package ships with a comprehensive test suite and no hidden compatibility layers.
 
@@ -213,6 +213,8 @@ See [Why One Name Per Operation](docs/guide/why-one-name-per-operation.md) for t
 - **Explicit instance hierarchies** - `self.api.attach_instance(self.child, name="alias")` connects RoutingClass instances with parent tracking and auto-detachment.
 - **Branch routers** - `Router(self, branch=True)` creates pure organizational nodes without handlers.
 - **Built-in and custom plugins** - `Router(self, ...).plug("logging")`, `Router(self, ...).plug("pydantic")`, or custom plugins.
+- **Shorthand plugin syntax** - `@route("api", auth="admin")` instead of `@route("api", auth_rule="admin")`. Plugins declare their default parameter via `plugin_default_param`.
+- **Channel filtering** - `@route("api", channel="mcp,bot_.*")` controls which transport channels can access each handler. Supports regex patterns.
 - **Runtime configuration** - `routing.configure("api:logging/_all_", enabled=False)` applies targeted overrides with wildcards or batch updates.
 - **Lazy binding** - Routers auto-bind on first use; no explicit `bind()` call needed.
 
@@ -253,7 +255,8 @@ genro-routes/
 │       ├── pydantic.py      # PydanticPlugin
 │       ├── auth.py          # AuthPlugin
 │       ├── env.py           # EnvPlugin (+ CapabilitiesSet)
-│       └── openapi.py       # OpenAPIPlugin (+ OpenAPITranslator)
+│       ├── openapi.py       # OpenAPIPlugin (+ OpenAPITranslator)
+│       └── channel.py       # ChannelPlugin (channel-based filtering)
 ├── examples/                # Example applications
 ├── tests/                   # Comprehensive test suite
 └── docs/                    # Documentation (Sphinx)
