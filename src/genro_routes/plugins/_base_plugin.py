@@ -130,6 +130,7 @@ class BasePlugin:
     # Subclasses MUST define these class attributes
     plugin_code: str = ""
     plugin_description: str = ""
+    plugin_default_param: str | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

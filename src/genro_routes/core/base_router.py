@@ -206,6 +206,18 @@ class BaseRouter(RouterInterface):
             return False
         return prefix in Router.available_plugins()
 
+    def _get_plugin_default_param(self, plugin_name: str) -> str | None:
+        """Return the default parameter name for a plugin, or None."""
+        try:
+            from genro_routes.core.router import Router  # type: ignore
+        except Exception:  # pragma: no cover - import safety
+            return None
+        registry = Router.available_plugins()
+        plugin_class = registry.get(plugin_name)
+        if plugin_class is None:
+            return None
+        return getattr(plugin_class, "plugin_default_param", None)
+
     # ------------------------------------------------------------------
     # Registration helpers
     # ------------------------------------------------------------------
@@ -256,6 +268,11 @@ class BaseRouter(RouterInterface):
                 plugin_name, plug_key = key.split("_", 1)
                 if plugin_name and plug_key and self._is_known_plugin(plugin_name):
                     plugin_options.setdefault(plugin_name, {})[plug_key] = value
+                    continue
+            elif self._is_known_plugin(key):
+                default_param = self._get_plugin_default_param(key)
+                if default_param:
+                    plugin_options.setdefault(key, {})[default_param] = value
                     continue
             core_options[key] = value
 
@@ -385,6 +402,11 @@ class BaseRouter(RouterInterface):
                     plugin_name, plug_key = key.split("_", 1)
                     if plugin_name and plug_key and self._is_known_plugin(plugin_name):
                         marker_plugin_opts.setdefault(plugin_name, {})[plug_key] = value
+                        continue
+                elif self._is_known_plugin(key):
+                    default_param = self._get_plugin_default_param(key)
+                    if default_param:
+                        marker_plugin_opts.setdefault(key, {})[default_param] = value
                         continue
                 core_marker[key] = value
             entry_meta = core_marker

@@ -144,6 +144,7 @@ class EnvPlugin(BasePlugin):
 
     plugin_code = "env"
     plugin_description = "Environment capability-based access control plugin"
+    plugin_default_param = "requires"
 
     def configure(
         self,

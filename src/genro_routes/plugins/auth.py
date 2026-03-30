@@ -96,6 +96,7 @@ class AuthPlugin(BasePlugin):
 
     plugin_code = "auth"
     plugin_description = "Authorization plugin with tag-based access control"
+    plugin_default_param = "rule"
 
     def configure(
         self,
