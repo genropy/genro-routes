@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Genro Routes for Dummies</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #232733;
+    --border: #2d3140;
+    --text: #e1e4ed;
+    --text-dim: #8b90a0;
+    --accent: #6c9eff;
+    --accent2: #a78bfa;
+    --green: #4ade80;
+    --orange: #fb923c;
+    --red: #f87171;
+    --cyan: #22d3ee;
+    --pink: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 1.2rem 2rem 0;
+    background: linear-gradient(180deg, #161926 0%, var(--bg) 100%);
+    flex-shrink: 0;
+    text-align: center;
+    position: relative;
+  }
+  header::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(ellipse 500px 200px at 50% 20%, rgba(108,158,255,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  header h1 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.2rem;
+  }
+  header .subtitle {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    margin-bottom: 1rem;
+  }
+
+  /* ── Tab bar ── */
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    flex-shrink: 0;
+    overflow-x: auto;
+    background: var(--bg);
+    scrollbar-width: none;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab-btn {
+    padding: 0.7rem 1.2rem;
+    border: none;
+    background: none;
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── Tab content ── */
+  .tab-panels { flex: 1; overflow: hidden; position: relative; }
+  .tab-panel {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    padding: 2rem;
+    display: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .tab-panel.active { display: block; }
+  .tab-panel .content { max-width: 860px; margin: 0 auto; }
+
+  /* ── Typography ── */
+  h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1.2rem; letter-spacing: -0.02em; }
+  h3 { font-size: 1.1rem; font-weight: 600; margin: 2rem 0 0.8rem; color: var(--accent); }
+  h3:first-child { margin-top: 0; }
+  p { margin-bottom: 1rem; }
+  p.dim { color: var(--text-dim); }
+  ul { color: var(--text-dim); margin: 1rem 0; padding-left: 1.5rem; }
+  li { margin-bottom: 0.3rem; }
+
+  /* ── SVG diagrams ── */
+  .diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    overflow-x: auto;
+    display: flex;
+    justify-content: center;
+  }
+  .diagram svg { max-width: 100%; height: auto; }
+
+  /* ── Code ── */
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    padding-right: 3.5rem;
+    overflow-x: auto;
+    margin: 1rem 0 1.5rem;
+    font-size: 0.85rem;
+    line-height: 1.65;
+    position: relative;
+  }
+  code { font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace; font-size: 0.85rem; }
+  pre code { color: var(--text); }
+  .kw { color: var(--accent2); }
+  .fn { color: var(--accent); }
+  .str { color: var(--green); }
+  .cmt { color: var(--text-dim); font-style: italic; }
+  .dec { color: var(--orange); }
+  .cls { color: var(--cyan); }
+  .num { color: var(--orange); }
+  code.il {
+    background: var(--surface2);
+    padding: 0.15em 0.45em;
+    border-radius: 5px;
+    font-size: 0.83em;
+  }
+
+  /* ── Copy button ── */
+  .copy-btn {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 0.15s, border-color 0.15s;
+    z-index: 1;
+  }
+  .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+  /* ── Cards ── */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--accent); }
+  .card h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.4rem; }
+  .card p { font-size: 0.85rem; color: var(--text-dim); margin: 0; }
+
+  /* ── Plugin badges ── */
+  .plugin-header { display: flex; align-items: center; gap: 0.7rem; margin: 2.5rem 0 0.8rem; }
+  .plugin-header:first-child { margin-top: 0; }
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.6rem;
+    border-radius: 5px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .b-auth { background: rgba(248,113,113,0.15); color: var(--red); }
+  .b-env { background: rgba(34,211,238,0.15); color: var(--cyan); }
+  .b-log { background: rgba(251,146,60,0.15); color: var(--orange); }
+  .b-pyd { background: rgba(167,139,250,0.15); color: var(--accent2); }
+  .b-oai { background: rgba(74,222,128,0.15); color: var(--green); }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size: 0.88rem; }
+  th, td { padding: 0.6rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ── Callout ── */
+  .callout {
+    background: rgba(108,158,255,0.06);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.2rem;
+    margin: 1.2rem 0;
+  }
+  .callout p { margin: 0; font-size: 0.9rem; }
+
+  /* ── Footer ── */
+  .tab-footer {
+    text-align: center;
+    padding: 2rem 0;
+    color: var(--text-dim);
+    font-size: 0.82rem;
+    margin-top: 2rem;
+    border-top: 1px solid var(--border);
+  }
+  .tab-footer a { color: var(--accent); text-decoration: none; }
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {
+    header h1 { font-size: 1.4rem; }
+    .tab-btn { padding: 0.6rem 0.8rem; font-size: 0.8rem; }
+    .tab-panel { padding: 1.2rem; }
+    pre { font-size: 0.78rem; padding: 0.9rem; white-space: pre-wrap; word-break: break-all; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Genro Routes for Dummies</h1>
+  <p class="subtitle">Transport-agnostic routing for Python &mdash; define your logic once, expose it anywhere</p>
+</header>
+
+<nav class="tab-bar">
+  <button class="tab-btn active" data-tab="why">Why</button>
+  <button class="tab-btn" data-tab="quickstart">Quick Start</button>
+  <button class="tab-btn" data-tab="plugins">Plugins</button>
+  <button class="tab-btn" data-tab="auth">Auth</button>
+  <button class="tab-btn" data-tab="pydantic">Pydantic</button>
+  <button class="tab-btn" data-tab="openapi">OpenAPI</button>
+  <button class="tab-btn" data-tab="env">Env</button>
+  <button class="tab-btn" data-tab="logging">Logging</button>
+  <button class="tab-btn" data-tab="compose">Composition</button>
+  <button class="tab-btn" data-tab="cheat">Cheat Sheet</button>
+</nav>
+
+<div class="tab-panels">
+
+<!-- ═══════════════════════ WHY ═══════════════════════ -->
+<div class="tab-panel active" id="tab-why">
+<div class="content">
+
+<h2>The Problem Nobody Talks About</h2>
+
+<p>You write an API. Your framework forces you to think in HTTP from day one: paths, verbs, request objects, response objects. Your business logic is buried inside framework-specific handlers.</p>
+
+<p>Then someone asks: <em>"Can we expose this via CLI too?"</em> Or: <em>"Can the MCP bridge call these methods directly?"</em> Or: <em>"Can I test this without spinning up a server?"</em></p>
+
+<p>And you realize your "API" is not an API &mdash; it's an HTTP handler collection glued to a framework.</p>
+
+<div class="callout">
+<p><strong>Genro Routes separates what your code does from how it's exposed.</strong> Your handlers are plain Python methods. The transport layer (HTTP, CLI, WebSocket, MCP) is a thin adapter on top. This makes everything more natural for GraphQL, tRPC, MCP, direct Python calls, and AI agents.</p>
+</div>
+
+<div class="diagram">
+<svg viewBox="0 0 720 260" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
+  <rect x="220" y="20" width="280" height="60" rx="10" fill="#232733" stroke="#6c9eff" stroke-width="1.5"/>
+  <text x="360" y="48" text-anchor="middle" fill="#6c9eff" font-size="11" font-weight="600">YOUR APPLICATION</text>
+  <text x="360" y="66" text-anchor="middle" fill="#8b90a0" font-size="10">RoutingClass + @route + Plugins</text>
+  <rect x="220" y="110" width="280" height="50" rx="10" fill="#232733" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="360" y="138" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="600">GENRO ROUTES</text>
+  <text x="360" y="153" text-anchor="middle" fill="#8b90a0" font-size="10">Router &bull; Plugins &bull; Introspection</text>
+  <rect x="40" y="200" width="120" height="40" rx="8" fill="#232733" stroke="#4ade80" stroke-width="1"/>
+  <text x="100" y="224" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="600">HTTP / ASGI</text>
+  <rect x="185" y="200" width="105" height="40" rx="8" fill="#232733" stroke="#4ade80" stroke-width="1"/>
+  <text x="237" y="224" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="600">CLI</text>
+  <rect x="315" y="200" width="105" height="40" rx="8" fill="#232733" stroke="#4ade80" stroke-width="1"/>
+  <text x="367" y="224" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="600">WebSocket</text>
+  <rect x="445" y="200" width="105" height="40" rx="8" fill="#232733" stroke="#4ade80" stroke-width="1"/>
+  <text x="497" y="224" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="600">MCP</text>
+  <rect x="575" y="200" width="105" height="40" rx="8" fill="#232733" stroke="#4ade80" stroke-width="1"/>
+  <text x="627" y="224" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="600">Direct Call</text>
+  <line x1="360" y1="80" x2="360" y2="110" stroke="#8b90a0" stroke-width="1" marker-end="url(#a1)"/>
+  <path d="M 360 160 L 360 180 L 100 180 L 100 200" fill="none" stroke="#8b90a0" stroke-width="1" marker-end="url(#a1)"/>
+  <path d="M 360 160 L 360 180 L 237 180 L 237 200" fill="none" stroke="#8b90a0" stroke-width="1" marker-end="url(#a1)"/>
+  <line x1="360" y1="160" x2="360" y2="200" stroke="#8b90a0" stroke-width="1" marker-end="url(#a1)"/>
+  <path d="M 360 160 L 360 180 L 497 180 L 497 200" fill="none" stroke="#8b90a0" stroke-width="1" marker-end="url(#a1)"/>
+  <path d="M 360 160 L 360 180 L 627 180 L 627 200" fill="none" stroke="#8b90a0" stroke-width="1" marker-end="url(#a1)"/>
+  <defs><marker id="a1" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b90a0"/></marker></defs>
+</svg>
+</div>
+
+<h3>When does this actually matter?</h3>
+
+<div class="cards">
+  <div class="card"><h4>One codebase, many frontends</h4><p>HTTP, MCP, CLI, WebSocket &mdash; same handlers, zero duplication. The transport adapter is a thin, replaceable layer.</p></div>
+  <div class="card"><h4>Test without infrastructure</h4><p><code class="il">router.node("create_order")(payload)</code> &mdash; no HTTP client, no server, no mock. Just call the method.</p></div>
+  <div class="card"><h4>Runtime introspection</h4><p><code class="il">router.nodes()</code> returns every handler with metadata, auth rules, capabilities. Build admin UIs or let AI agents discover your API.</p></div>
+  <div class="card"><h4>Compose services like objects</h4><p>Attach/detach child services at runtime. Build complex apps from simple, independent modules that know nothing about each other.</p></div>
+  <div class="card"><h4>Plugins without middleware spaghetti</h4><p>Auth, validation, logging, OpenAPI &mdash; plugins that attach to routers and propagate to children automatically.</p></div>
+  <div class="card"><h4>Evolve without rewriting</h4><p>Started as CLI? Add HTTP. Need AI? Add MCP. Your routing layer stays exactly the same.</p></div>
+</div>
+
+<h3>One name per operation</h3>
+
+<p>Each handler has a <strong>unique name</strong> that <em>is</em> the operation. Not a resource acted upon by a verb. This is how GraphQL, gRPC, tRPC, MCP, and every modern AI agent protocol works. The HTTP verb is inferred automatically when needed.</p>
+
+<table>
+  <tr><th>Traditional REST</th><th>Genro Routes</th></tr>
+  <tr><td><code class="il">GET /users</code></td><td><code class="il">list_users</code></td></tr>
+  <tr><td><code class="il">POST /users</code></td><td><code class="il">create_user</code></td></tr>
+  <tr><td><code class="il">POST /users/123/suspend</code></td><td><code class="il">suspend_user</code></td></tr>
+</table>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ QUICK START ═══════════════════════ -->
+<div class="tab-panel" id="tab-quickstart">
+<div class="content">
+
+<h2>Quick Start</h2>
+
+<h3>Install</h3>
+<pre><code>pip install genro-routes          <span class="cmt"># Core (zero dependencies)</span>
+pip install genro-routes[pydantic] <span class="cmt"># With validation support</span></code></pre>
+
+<h3>Write your service</h3>
+<pre><code><span class="kw">from</span> genro_routes <span class="kw">import</span> <span class="cls">RoutingClass</span>, <span class="cls">Router</span>, <span class="fn">route</span>
+
+<span class="kw">class</span> <span class="cls">BookStore</span>(<span class="cls">RoutingClass</span>):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        self.catalog = [
+            {<span class="str">"id"</span>: <span class="num">1</span>, <span class="str">"title"</span>: <span class="str">"Dune"</span>, <span class="str">"author"</span>: <span class="str">"Herbert"</span>},
+            {<span class="str">"id"</span>: <span class="num">2</span>, <span class="str">"title"</span>: <span class="str">"Neuromancer"</span>, <span class="str">"author"</span>: <span class="str">"Gibson"</span>},
+        ]
+        self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>)
+
+    <span class="dec">@route</span>(<span class="str">"api"</span>)
+    <span class="kw">def</span> <span class="fn">list_books</span>(self):
+        <span class="kw">return</span> self.catalog
+
+    <span class="dec">@route</span>(<span class="str">"api"</span>)
+    <span class="kw">def</span> <span class="fn">find_book</span>(self, book_id: <span class="cls">int</span>):
+        <span class="kw">return</span> next((b <span class="kw">for</span> b <span class="kw">in</span> self.catalog <span class="kw">if</span> b[<span class="str">"id"</span>] == book_id), <span class="kw">None</span>)
+
+    <span class="dec">@route</span>(<span class="str">"api"</span>)
+    <span class="kw">def</span> <span class="fn">add_book</span>(self, title: <span class="cls">str</span>, author: <span class="cls">str</span>):
+        book = {<span class="str">"id"</span>: len(self.catalog) + <span class="num">1</span>, <span class="str">"title"</span>: title, <span class="str">"author"</span>: author}
+        self.catalog.append(book)
+        <span class="kw">return</span> book</code></pre>
+
+<h3>Call it directly &mdash; no server needed</h3>
+<pre><code>store = <span class="cls">BookStore</span>()
+
+store.api.node(<span class="str">"list_books"</span>)()              <span class="cmt"># [{"id": 1, ...}, {"id": 2, ...}]</span>
+store.api.node(<span class="str">"find_book"</span>)(book_id=<span class="num">1</span>)      <span class="cmt"># {"id": 1, "title": "Dune", ...}</span>
+store.api.node(<span class="str">"add_book"</span>)(title=<span class="str">"Snow Crash"</span>, author=<span class="str">"Stephenson"</span>)
+
+<span class="cmt"># Introspect all registered handlers</span>
+info = store.api.nodes()
+print(info[<span class="str">"entries"</span>].keys())  <span class="cmt"># dict_keys(['list_books', 'find_book', 'add_book'])</span></code></pre>
+
+<h3>Test it &mdash; this is your entire test</h3>
+<pre><code><span class="kw">def</span> <span class="fn">test_find_book</span>():
+    store = <span class="cls">BookStore</span>()
+    result = store.api.node(<span class="str">"find_book"</span>)(book_id=<span class="num">1</span>)
+    <span class="kw">assert</span> result[<span class="str">"title"</span>] == <span class="str">"Dune"</span>
+
+<span class="kw">def</span> <span class="fn">test_add_book</span>():
+    store = <span class="cls">BookStore</span>()
+    book = store.api.node(<span class="str">"add_book"</span>)(title=<span class="str">"Snow Crash"</span>, author=<span class="str">"Stephenson"</span>)
+    <span class="kw">assert</span> book[<span class="str">"id"</span>] == <span class="num">3</span>
+    <span class="kw">assert</span> len(store.api.node(<span class="str">"list_books"</span>)()) == <span class="num">3</span></code></pre>
+
+<div class="callout">
+<p><strong>No HTTP client, no mock server, no fixtures.</strong> Your tests call the same methods your HTTP adapter will call. If the test passes, the API works.</p>
+</div>
+
+<h3>Now expose it via HTTP &mdash; three lines</h3>
+<pre><code><span class="cmt"># With genro-asgi (the HTTP bridge)</span>
+<span class="kw">from</span> genro_asgi <span class="kw">import</span> <span class="cls">GenroASGI</span>
+
+store = <span class="cls">BookStore</span>()
+app = <span class="cls">GenroASGI</span>(store)  <span class="cmt"># That's it. uvicorn app:app</span>
+
+<span class="cmt"># GET  /api/list_books     &rarr; [{"id": 1, ...}]</span>
+<span class="cmt"># GET  /api/find_book?book_id=1  &rarr; {"id": 1, "title": "Dune"}</span>
+<span class="cmt"># POST /api/add_book       &rarr; {"id": 3, ...}</span></code></pre>
+
+<p class="dim">Same BookStore, same logic, zero changes. The ASGI adapter maps router entries to HTTP endpoints, infers GET/POST from parameter types, and handles serialization.</p>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ PLUGINS OVERVIEW ═══════════════════════ -->
+<div class="tab-panel" id="tab-plugins">
+<div class="content">
+
+<h2>The Plugin System</h2>
+
+<p>Plugins attach to routers and form a pipeline. Every handler call passes through all attached plugins. They propagate automatically from parent to child routers.</p>
+
+<div class="diagram">
+<svg viewBox="0 0 700 130" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
+  <rect x="30" y="40" width="90" height="40" rx="8" fill="#232733" stroke="#a78bfa" stroke-width="1.2"/>
+  <text x="75" y="64" text-anchor="middle" fill="#a78bfa" font-size="10" font-weight="600">Pydantic</text>
+  <rect x="155" y="40" width="90" height="40" rx="8" fill="#232733" stroke="#f87171" stroke-width="1.2"/>
+  <text x="200" y="64" text-anchor="middle" fill="#f87171" font-size="10" font-weight="600">Auth</text>
+  <rect x="280" y="40" width="90" height="40" rx="8" fill="#232733" stroke="#22d3ee" stroke-width="1.2"/>
+  <text x="325" y="64" text-anchor="middle" fill="#22d3ee" font-size="10" font-weight="600">Env</text>
+  <rect x="405" y="40" width="90" height="40" rx="8" fill="#232733" stroke="#4ade80" stroke-width="1.2"/>
+  <text x="450" y="64" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="600">OpenAPI</text>
+  <rect x="530" y="40" width="90" height="40" rx="8" fill="#232733" stroke="#fb923c" stroke-width="1.2"/>
+  <text x="575" y="64" text-anchor="middle" fill="#fb923c" font-size="10" font-weight="600">Logging</text>
+  <line x1="120" y1="60" x2="155" y2="60" stroke="#8b90a0" stroke-width="1" marker-end="url(#a2)"/>
+  <line x1="245" y1="60" x2="280" y2="60" stroke="#8b90a0" stroke-width="1" marker-end="url(#a2)"/>
+  <line x1="370" y1="60" x2="405" y2="60" stroke="#8b90a0" stroke-width="1" marker-end="url(#a2)"/>
+  <line x1="495" y1="60" x2="530" y2="60" stroke="#8b90a0" stroke-width="1" marker-end="url(#a2)"/>
+  <text x="350" y="20" text-anchor="middle" fill="#8b90a0" font-size="10">Plugin pipeline &mdash; each handler passes through all attached plugins</text>
+  <text x="350" y="110" text-anchor="middle" fill="#8b90a0" font-size="10">Attach: <tspan fill="#6c9eff">Router(self, name="api").plug("pydantic").plug("auth")</tspan></text>
+  <defs><marker id="a2" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b90a0"/></marker></defs>
+</svg>
+</div>
+
+<h3>Three ways to configure</h3>
+
+<p><strong>1. In the decorator</strong> &mdash; static, per-handler</p>
+<pre><code><span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"admin"</span>, pydantic_disabled=<span class="kw">True</span>)</code></pre>
+
+<p><strong>2. On the plugin instance</strong> &mdash; runtime, global or targeted</p>
+<pre><code>router.auth.configure(rule=<span class="str">"user"</span>)                          <span class="cmt"># All handlers</span>
+router.auth.configure(_target=<span class="str">"admin_panel"</span>, rule=<span class="str">"admin"</span>)   <span class="cmt"># One handler</span></code></pre>
+
+<p><strong>3. Via the routing proxy</strong> &mdash; wildcards and introspection</p>
+<pre><code>svc.routing.configure(<span class="str">"api:auth/admin_*"</span>, rule=<span class="str">"admin"</span>)  <span class="cmt"># Glob pattern</span>
+svc.routing.configure(<span class="str">"?"</span>)                              <span class="cmt"># Show full config tree</span></code></pre>
+
+<h3>At a glance</h3>
+<table>
+  <tr><th>Plugin</th><th>What it does</th><th>Main config</th></tr>
+  <tr><td><span class="badge b-pyd">pydantic</span></td><td>Validates inputs from type hints, generates response JSON schemas</td><td><code class="il">disabled</code></td></tr>
+  <tr><td><span class="badge b-auth">auth</span></td><td>Tag-based access control with boolean rule expressions</td><td><code class="il">rule</code></td></tr>
+  <tr><td><span class="badge b-oai">openapi</span></td><td>Controls OpenAPI 3.1 schema generation, infers HTTP methods</td><td><code class="il">method</code>, <code class="il">tags</code>, <code class="il">security</code></td></tr>
+  <tr><td><span class="badge b-env">env</span></td><td>Hides handlers when system capabilities are missing</td><td><code class="il">requires</code></td></tr>
+  <tr><td><span class="badge b-log">logging</span></td><td>Wraps calls with timing and tracing</td><td><code class="il">before</code>, <code class="il">after</code></td></tr>
+</table>
+
+<div class="callout">
+<p><strong>Plugin inheritance:</strong> Plug into the parent router once. Every child service attached later inherits the plugin and its configuration automatically.</p>
+</div>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ AUTH ═══════════════════════ -->
+<div class="tab-panel" id="tab-auth">
+<div class="content">
+
+<div class="plugin-header">
+  <h2 style="margin:0">AuthPlugin</h2>
+  <span class="badge b-auth">auth</span>
+</div>
+
+<p>Tag-based access control. Handlers declare required tags, requests declare user tags. The plugin matches them and blocks unauthorized access.</p>
+
+<h3>What happens at runtime</h3>
+<pre><code><span class="kw">class</span> <span class="cls">API</span>(<span class="cls">RoutingClass</span>):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>).plug(<span class="str">"auth"</span>)
+
+    <span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"admin"</span>)
+    <span class="kw">def</span> <span class="fn">delete_user</span>(self, user_id: <span class="cls">int</span>): ...
+
+    <span class="dec">@route</span>(<span class="str">"api"</span>)                       <span class="cmt"># No rule = public</span>
+    <span class="kw">def</span> <span class="fn">health</span>(self): ...
+
+svc = <span class="cls">API</span>()
+
+<span class="cmt"># Authorized &mdash; works</span>
+svc.api.node(<span class="str">"delete_user"</span>, auth_tags=<span class="str">"admin"</span>)(user_id=<span class="num">42</span>)
+
+<span class="cmt"># Wrong tags &mdash; raises NotAuthorized (403)</span>
+svc.api.node(<span class="str">"delete_user"</span>, auth_tags=<span class="str">"guest"</span>)
+
+<span class="cmt"># No tags at all &mdash; raises NotAuthenticated (401)</span>
+svc.api.node(<span class="str">"delete_user"</span>)
+
+<span class="cmt"># Public handler &mdash; always works</span>
+svc.api.node(<span class="str">"health"</span>)()</code></pre>
+
+<h3>Filtered introspection</h3>
+<pre><code><span class="cmt"># nodes() shows only what the user can access:</span>
+svc.api.nodes(auth_tags=<span class="str">"admin"</span>)            <span class="cmt"># Sees: delete_user, health</span>
+svc.api.nodes(auth_tags=<span class="str">"guest"</span>)            <span class="cmt"># Sees: health only</span>
+svc.api.nodes()                            <span class="cmt"># Sees: health only (no tags = no access)</span></code></pre>
+
+<h3>Rule expressions</h3>
+<pre><code><span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"admin|moderator"</span>)     <span class="cmt"># Admin OR moderator</span>
+<span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"admin&amp;internal"</span>)      <span class="cmt"># Admin AND internal</span>
+<span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"!guest"</span>)              <span class="cmt"># NOT guest</span>
+<span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"(admin|mod)&amp;!banned"</span>) <span class="cmt"># Grouping</span></code></pre>
+
+<table>
+  <tr><th>Operator</th><th>Meaning</th><th>Example</th></tr>
+  <tr><td><code class="il">|</code></td><td>OR</td><td><code class="il">admin|moderator</code></td></tr>
+  <tr><td><code class="il">&amp;</code></td><td>AND</td><td><code class="il">admin&amp;internal</code></td></tr>
+  <tr><td><code class="il">!</code></td><td>NOT</td><td><code class="il">!guest</code></td></tr>
+  <tr><td><code class="il">()</code></td><td>Grouping</td><td><code class="il">(admin|mod)&amp;!banned</code></td></tr>
+</table>
+
+<h3>Parameters</h3>
+<table>
+  <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+  <tr><td><code class="il">rule</code></td><td>str</td><td><code class="il">""</code></td><td>Tag expression. Empty = public.</td></tr>
+  <tr><td><code class="il">enabled</code></td><td>bool</td><td><code class="il">True</code></td><td>Enable/disable the plugin.</td></tr>
+</table>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ PYDANTIC ═══════════════════════ -->
+<div class="tab-panel" id="tab-pydantic">
+<div class="content">
+
+<div class="plugin-header">
+  <h2 style="margin:0">PydanticPlugin</h2>
+  <span class="badge b-pyd">pydantic</span>
+</div>
+
+<p>Two jobs: <strong>(1)</strong> validates inputs against type hints at runtime, <strong>(2)</strong> generates JSON response schemas from return types so bridges (OpenAPI, MCP) can document your API automatically.</p>
+
+<pre><code><span class="kw">from</span> typing <span class="kw">import</span> <span class="cls">TypedDict</span>
+
+<span class="kw">class</span> <span class="cls">BookResponse</span>(<span class="cls">TypedDict</span>):
+    id: <span class="cls">int</span>
+    title: <span class="cls">str</span>
+    author: <span class="cls">str</span>
+
+<span class="kw">class</span> <span class="cls">API</span>(<span class="cls">RoutingClass</span>):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>).plug(<span class="str">"pydantic"</span>)
+
+    <span class="dec">@route</span>(<span class="str">"api"</span>)
+    <span class="kw">def</span> <span class="fn">get_book</span>(self, book_id: <span class="cls">int</span>) -> <span class="cls">BookResponse</span>:
+        <span class="kw">return</span> {<span class="str">"id"</span>: book_id, <span class="str">"title"</span>: <span class="str">"Dune"</span>, <span class="str">"author"</span>: <span class="str">"Herbert"</span>}
+
+svc = <span class="cls">API</span>()
+svc.api.node(<span class="str">"get_book"</span>)(book_id=<span class="num">1</span>)       <span class="cmt"># OK &rarr; {"id": 1, ...}</span>
+svc.api.node(<span class="str">"get_book"</span>)(book_id=<span class="str">"abc"</span>)   <span class="cmt"># ValidationError!</span></code></pre>
+
+<h3>Response schema for free</h3>
+<pre><code><span class="cmt"># The return type annotation auto-generates a JSON Schema:</span>
+entry = svc.api._entries[<span class="str">"get_book"</span>]
+schema = entry.metadata[<span class="str">"pydantic"</span>][<span class="str">"response_schema"</span>]
+<span class="cmt"># {"type": "object", "properties": {"id": {"type": "integer"}, ...}}</span>
+
+<span class="cmt"># OpenAPI and MCP bridges pick this up automatically.</span></code></pre>
+
+<p><strong>Supported return types:</strong> TypedDict, dataclass, dict, list, str, int, bool, Pydantic models &mdash; anything Pydantic can serialize.</p>
+
+<h3>Skip validation for a handler</h3>
+<pre><code><span class="dec">@route</span>(<span class="str">"api"</span>, pydantic_disabled=<span class="kw">True</span>)
+<span class="kw">def</span> <span class="fn">raw_handler</span>(self, data): ...  <span class="cmt"># No validation, no schema</span></code></pre>
+
+<h3>Parameters</h3>
+<table>
+  <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+  <tr><td><code class="il">disabled</code></td><td>bool</td><td><code class="il">False</code></td><td>Skip validation for this handler/router.</td></tr>
+</table>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ OPENAPI ═══════════════════════ -->
+<div class="tab-panel" id="tab-openapi">
+<div class="content">
+
+<div class="plugin-header">
+  <h2 style="margin:0">OpenAPIPlugin</h2>
+  <span class="badge b-oai">openapi</span>
+</div>
+
+<p>Controls OpenAPI 3.1 schema generation. Overrides HTTP methods, adds tags, marks deprecated. Integrates with auth + env + pydantic automatically.</p>
+
+<pre><code>self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>).plug(<span class="str">"openapi"</span>).plug(<span class="str">"auth"</span>).plug(<span class="str">"pydantic"</span>)
+
+<span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"admin"</span>,
+       openapi_tags=<span class="str">"admin"</span>,
+       openapi_deprecated=<span class="kw">True</span>,
+       openapi_method=<span class="str">"delete"</span>)
+<span class="kw">def</span> <span class="fn">remove_item</span>(self, item_id: <span class="cls">int</span>): ...
+
+<span class="cmt"># Generate full spec:</span>
+spec = svc.api.nodes(mode=<span class="str">"openapi"</span>)
+<span class="cmt"># {"paths": {"/remove_item": {"delete": {"security": [...], ...}}}}</span>
+
+<span class="cmt"># Or hierarchical (preserves router tree):</span>
+spec = svc.api.nodes(mode=<span class="str">"h_openapi"</span>)</code></pre>
+
+<h3>Auto-inference</h3>
+<p>Without explicit <code class="il">method</code>: <strong>GET</strong> for scalar-only params (str, int, bool), <strong>POST</strong> for complex params (dict, list, models).</p>
+
+<h3>Cross-plugin integration</h3>
+<table>
+  <tr><th>If present</th><th>OpenAPI generates</th></tr>
+  <tr><td><code class="il">auth_rule="admin"</code></td><td><code class="il">security: [{"BearerAuth": []}]</code></td></tr>
+  <tr><td>No auth_rule</td><td><code class="il">security: []</code> (public)</td></tr>
+  <tr><td><code class="il">env_requires="redis"</code></td><td><code class="il">x-requires: "redis"</code></td></tr>
+  <tr><td>Pydantic return type</td><td><code class="il">responses.200.schema</code></td></tr>
+</table>
+
+<h3>Parameters</h3>
+<table>
+  <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+  <tr><td><code class="il">method</code></td><td>str|None</td><td>auto</td><td>HTTP method override (get, post, put, delete, patch)</td></tr>
+  <tr><td><code class="il">tags</code></td><td>str|list</td><td>None</td><td>OpenAPI tags for grouping</td></tr>
+  <tr><td><code class="il">summary</code></td><td>str</td><td>None</td><td>Summary override</td></tr>
+  <tr><td><code class="il">description</code></td><td>str</td><td>None</td><td>Description override</td></tr>
+  <tr><td><code class="il">deprecated</code></td><td>bool</td><td>False</td><td>Mark as deprecated</td></tr>
+  <tr><td><code class="il">security_scheme</code></td><td>str</td><td>"BearerAuth"</td><td>Security scheme name</td></tr>
+  <tr><td><code class="il">security</code></td><td>list</td><td>None</td><td>Explicit override. <code class="il">[]</code> = public.</td></tr>
+</table>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ ENV ═══════════════════════ -->
+<div class="tab-panel" id="tab-env">
+<div class="content">
+
+<div class="plugin-header">
+  <h2 style="margin:0">EnvPlugin</h2>
+  <span class="badge b-env">env</span>
+</div>
+
+<p>Capability-based filtering. Handlers declare what the system must have (Redis, JWT, Stripe). If requirements aren't met, the handler disappears from introspection and raises <code class="il">NotAvailable</code> on direct call.</p>
+
+<pre><code><span class="kw">from</span> genro_routes.plugins.env <span class="kw">import</span> <span class="cls">CapabilitiesSet</span>, <span class="fn">capability</span>
+
+<span class="kw">class</span> <span class="cls">SystemCaps</span>(<span class="cls">CapabilitiesSet</span>):
+    <span class="dec">@capability</span>
+    <span class="kw">def</span> <span class="fn">redis</span>(self) -> <span class="cls">bool</span>:
+        <span class="kw">return</span> <span class="kw">True</span>
+
+    <span class="dec">@capability</span>
+    <span class="kw">def</span> <span class="fn">stripe</span>(self) -> <span class="cls">bool</span>:
+        <span class="kw">return</span> <span class="kw">False</span>
+
+<span class="kw">class</span> <span class="cls">PaymentAPI</span>(<span class="cls">RoutingClass</span>):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>).plug(<span class="str">"env"</span>)
+        self.capabilities = <span class="cls">SystemCaps</span>()
+
+    <span class="dec">@route</span>(<span class="str">"api"</span>, env_requires=<span class="str">"redis"</span>)
+    <span class="kw">def</span> <span class="fn">cached_lookup</span>(self): ...        <span class="cmt"># Visible (redis available)</span>
+
+    <span class="dec">@route</span>(<span class="str">"api"</span>, env_requires=<span class="str">"stripe|paypal"</span>)
+    <span class="kw">def</span> <span class="fn">charge</span>(self): ...                <span class="cmt"># Hidden (neither available)</span>
+
+svc = <span class="cls">PaymentAPI</span>()
+svc.api.nodes()  <span class="cmt"># Shows cached_lookup only. charge is invisible.</span>
+svc.api.node(<span class="str">"charge"</span>)()  <span class="cmt"># Raises NotAvailable!</span>
+
+<span class="cmt"># Provide capabilities at request time:</span>
+svc.api.node(<span class="str">"charge"</span>, env_capabilities=<span class="str">"stripe"</span>)()  <span class="cmt"># Now works</span></code></pre>
+
+<p><strong>Same rule syntax as auth:</strong> <code class="il">|</code> OR, <code class="il">&amp;</code> AND, <code class="il">!</code> NOT, <code class="il">()</code> grouping.</p>
+<p><strong>Accumulation:</strong> Capabilities from parent instances are inherited. Request-time capabilities add to the set.</p>
+
+<h3>Parameters</h3>
+<table>
+  <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+  <tr><td><code class="il">requires</code></td><td>str</td><td><code class="il">""</code></td><td>Capability expression. Empty = no requirement.</td></tr>
+  <tr><td><code class="il">enabled</code></td><td>bool</td><td><code class="il">True</code></td><td>Enable/disable the plugin.</td></tr>
+</table>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ LOGGING ═══════════════════════ -->
+<div class="tab-panel" id="tab-logging">
+<div class="content">
+
+<div class="plugin-header">
+  <h2 style="margin:0">LoggingPlugin</h2>
+  <span class="badge b-log">logging</span>
+</div>
+
+<p>Wraps handler calls with timing. Logs "start" before and "end (X ms)" after. Useful for debugging and monitoring.</p>
+
+<pre><code>self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>).plug(<span class="str">"logging"</span>)
+
+<span class="dec">@route</span>(<span class="str">"api"</span>)
+<span class="kw">def</span> <span class="fn">slow_op</span>(self):
+    time.sleep(<span class="num">0.1</span>)
+    <span class="kw">return</span> <span class="str">"done"</span>
+
+<span class="cmt"># Output:</span>
+<span class="cmt">#   slow_op start</span>
+<span class="cmt">#   slow_op end (100.45 ms)</span></code></pre>
+
+<h3>Fine-grained control</h3>
+<pre><code><span class="dec">@route</span>(<span class="str">"api"</span>, logging_flags=<span class="str">"before,after:off"</span>)  <span class="cmt"># Start only, skip timing</span>
+<span class="kw">def</span> <span class="fn">fast_op</span>(self): ...
+
+<span class="cmt"># At runtime:</span>
+router.logging.configure(enabled=<span class="kw">False</span>)                    <span class="cmt"># Silence all</span>
+router.logging.configure(_target=<span class="str">"slow_op"</span>, after=<span class="kw">True</span>)    <span class="cmt"># Re-enable one</span>
+router.logging.configure(print=<span class="kw">True</span>)                       <span class="cmt"># Force print()</span></code></pre>
+
+<h3>Parameters</h3>
+<table>
+  <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+  <tr><td><code class="il">enabled</code></td><td>bool</td><td><code class="il">True</code></td><td>Gate the plugin entirely</td></tr>
+  <tr><td><code class="il">before</code></td><td>bool</td><td><code class="il">True</code></td><td>Log "start" before handler</td></tr>
+  <tr><td><code class="il">after</code></td><td>bool</td><td><code class="il">True</code></td><td>Log "end (X ms)" after handler</td></tr>
+  <tr><td><code class="il">log</code></td><td>bool</td><td><code class="il">True</code></td><td>Use logger.info() when available</td></tr>
+  <tr><td><code class="il">print</code></td><td>bool</td><td><code class="il">False</code></td><td>Always use print() instead</td></tr>
+</table>
+
+<p class="dim"><strong>Flag syntax:</strong> <code class="il">"enabled"</code> &rarr; True. <code class="il">"before:off"</code> &rarr; False. <code class="il">"enabled,after:off"</code> &rarr; enabled=True, after=False.</p>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ COMPOSITION ═══════════════════════ -->
+<div class="tab-panel" id="tab-compose">
+<div class="content">
+
+<h2>Service Composition</h2>
+
+<p>Real applications are built from independent modules. Each module is a <code class="il">RoutingClass</code> with its own router. Connect them with <code class="il">attach_instance</code>.</p>
+
+<div class="diagram">
+<svg viewBox="0 0 680 280" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
+  <rect x="240" y="10" width="200" height="50" rx="10" fill="#232733" stroke="#6c9eff" stroke-width="1.5"/>
+  <text x="340" y="32" text-anchor="middle" fill="#6c9eff" font-size="12" font-weight="600">App</text>
+  <text x="340" y="48" text-anchor="middle" fill="#8b90a0" font-size="9">Router: api (branch) + auth plugin</text>
+  <rect x="40" y="110" width="170" height="50" rx="10" fill="#232733" stroke="#4ade80" stroke-width="1.2"/>
+  <text x="125" y="132" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="600">UsersService</text>
+  <text x="125" y="148" text-anchor="middle" fill="#8b90a0" font-size="9">list_users, create_user</text>
+  <rect x="255" y="110" width="170" height="50" rx="10" fill="#232733" stroke="#a78bfa" stroke-width="1.2"/>
+  <text x="340" y="132" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="600">OrdersService</text>
+  <text x="340" y="148" text-anchor="middle" fill="#8b90a0" font-size="9">list_orders, approve_order</text>
+  <rect x="470" y="110" width="170" height="50" rx="10" fill="#232733" stroke="#fb923c" stroke-width="1.2"/>
+  <text x="555" y="132" text-anchor="middle" fill="#fb923c" font-size="11" font-weight="600">NotifyService</text>
+  <text x="555" y="148" text-anchor="middle" fill="#8b90a0" font-size="9">send_email, send_sms</text>
+  <path d="M 290 60 L 290 85 L 125 85 L 125 110" fill="none" stroke="#8b90a0" stroke-width="1" marker-end="url(#a3)"/>
+  <path d="M 340 60 L 340 110" fill="none" stroke="#8b90a0" stroke-width="1" marker-end="url(#a3)"/>
+  <path d="M 390 60 L 390 85 L 555 85 L 555 110" fill="none" stroke="#8b90a0" stroke-width="1" marker-end="url(#a3)"/>
+  <text x="185" y="80" text-anchor="middle" fill="#8b90a0" font-size="9">"users"</text>
+  <text x="360" y="80" text-anchor="end" fill="#8b90a0" font-size="9">"orders"</text>
+  <text x="500" y="80" text-anchor="middle" fill="#8b90a0" font-size="9">"notify"</text>
+  <rect x="40" y="195" width="600" height="72" rx="10" fill="#1a1d27" stroke="#2d3140" stroke-width="1"/>
+  <text x="60" y="216" fill="#8b90a0" font-size="10">Path resolution:</text>
+  <text x="60" y="235" fill="#4ade80" font-size="10.5" font-family="JetBrains Mono, monospace">app.api.node("users/list_users")()</text>
+  <text x="60" y="252" fill="#a78bfa" font-size="10.5" font-family="JetBrains Mono, monospace">app.api.node("orders/approve_order")(order_id="123")</text>
+  <defs><marker id="a3" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b90a0"/></marker></defs>
+</svg>
+</div>
+
+<pre><code><span class="kw">class</span> <span class="cls">App</span>(<span class="cls">RoutingClass</span>):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>, branch=<span class="kw">True</span>).plug(<span class="str">"auth"</span>)
+
+        self.users = <span class="cls">UsersService</span>()
+        self.orders = <span class="cls">OrdersService</span>()
+        self.notify = <span class="cls">NotifyService</span>()
+
+        self.api.attach_instance(self.users, name=<span class="str">"users"</span>)
+        self.api.attach_instance(self.orders, name=<span class="str">"orders"</span>)
+        self.api.attach_instance(self.notify, name=<span class="str">"notify"</span>)
+
+app = <span class="cls">App</span>()
+app.api.node(<span class="str">"users/list_users"</span>)()
+app.api.node(<span class="str">"orders/approve_order"</span>)(order_id=<span class="str">"123"</span>)
+
+<span class="cmt"># Introspect the entire tree:</span>
+tree = app.api.nodes()
+print(tree[<span class="str">"routers"</span>].keys())  <span class="cmt"># dict_keys(['users', 'orders', 'notify'])</span></code></pre>
+
+<div class="callout">
+<p><strong>Auth plugin was plugged once on App.api.</strong> All three child services inherit it automatically. UsersService, OrdersService, and NotifyService know nothing about auth &mdash; it's managed at the root.</p>
+</div>
+
+<h3>Composition features</h3>
+<ul>
+  <li><code class="il">branch=True</code> &mdash; pure namespace, no handlers at root level</li>
+  <li><code class="il">prefix="handle_"</code> &mdash; strip method prefixes (<code class="il">handle_list</code> &rarr; entry <code class="il">list</code>)</li>
+  <li>Auto-detach on attribute replacement &mdash; swap child services at runtime</li>
+  <li>Dotted path resolution &mdash; <code class="il">"users/list_users"</code> walks the tree</li>
+</ul>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ CHEAT SHEET ═══════════════════════ -->
+<div class="tab-panel" id="tab-cheat">
+<div class="content">
+
+<h2>Cheat Sheet</h2>
+
+<h3>Essentials</h3>
+<table>
+  <tr><th>I want to...</th><th>Code</th></tr>
+  <tr><td>Create a router on my class</td><td><code class="il">self.api = Router(self, name="api")</code></td></tr>
+  <tr><td>Register a handler</td><td><code class="il">@route("api") def my_handler(self): ...</code></td></tr>
+  <tr><td>Call a handler by name</td><td><code class="il">svc.api.node("my_handler")(arg1, arg2)</code></td></tr>
+  <tr><td>See all available handlers</td><td><code class="il">svc.api.nodes()</code></td></tr>
+  <tr><td>Get OpenAPI for the whole router</td><td><code class="il">svc.api.nodes(mode="openapi")</code></td></tr>
+</table>
+
+<h3>Plugins</h3>
+<table>
+  <tr><th>I want to...</th><th>Code</th></tr>
+  <tr><td>Attach a plugin</td><td><code class="il">Router(self, name="api").plug("auth")</code></td></tr>
+  <tr><td>Set auth rule on a handler</td><td><code class="il">@route("api", auth_rule="admin")</code></td></tr>
+  <tr><td>Validate inputs with type hints</td><td><code class="il">.plug("pydantic")</code> + add type annotations</td></tr>
+  <tr><td>Require a system capability</td><td><code class="il">@route("api", env_requires="redis")</code></td></tr>
+  <tr><td>Override HTTP method for OpenAPI</td><td><code class="il">@route("api", openapi_method="delete")</code></td></tr>
+  <tr><td>Configure a plugin globally</td><td><code class="il">svc.api.auth.configure(rule="user")</code></td></tr>
+  <tr><td>Configure for one handler only</td><td><code class="il">svc.api.auth.configure(_target="x", rule="admin")</code></td></tr>
+  <tr><td>Configure with wildcard matching</td><td><code class="il">svc.routing.configure("api:auth/admin_*", ...)</code></td></tr>
+  <tr><td>See current plugin config</td><td><code class="il">svc.routing.configure("?")</code></td></tr>
+</table>
+
+<h3>Composition</h3>
+<table>
+  <tr><th>I want to...</th><th>Code</th></tr>
+  <tr><td>Attach a child service</td><td><code class="il">parent.api.attach_instance(child, name="x")</code></td></tr>
+  <tr><td>Call through hierarchy</td><td><code class="il">parent.api.node("x/handler")()</code></td></tr>
+  <tr><td>Create a pure namespace (no handlers)</td><td><code class="il">Router(self, name="api", branch=True)</code></td></tr>
+  <tr><td>Strip method name prefixes</td><td><code class="il">Router(self, name="api", prefix="handle_")</code></td></tr>
+  <tr><td>Skip writing Router() in __init__</td><td>Use <code class="il">RoutingClassAuto</code> instead of <code class="il">RoutingClass</code></td></tr>
+  <tr><td>Filter by user permissions</td><td><code class="il">svc.api.nodes(auth_tags="admin")</code></td></tr>
+  <tr><td>Filter by system capabilities</td><td><code class="il">svc.api.nodes(env_capabilities="redis")</code></td></tr>
+</table>
+
+<h3>Exceptions</h3>
+<table>
+  <tr><th>Exception</th><th>HTTP equiv.</th><th>Raised when</th></tr>
+  <tr><td><code class="il">NotFound</code></td><td>404</td><td>Path/entry does not exist</td></tr>
+  <tr><td><code class="il">NotAuthenticated</code></td><td>401</td><td>Auth required, no tags provided</td></tr>
+  <tr><td><code class="il">NotAuthorized</code></td><td>403</td><td>Tags don't match the rule</td></tr>
+  <tr><td><code class="il">NotAvailable</code></td><td>501</td><td>Capabilities don't meet requirements</td></tr>
+</table>
+
+<div class="tab-footer">
+  <strong>Genro Routes</strong> &mdash; Transport-agnostic routing for Python<br>
+  <a href="https://github.com/genropy/genro-routes">GitHub</a> &bull;
+  <a href="https://pypi.org/project/genro-routes/">PyPI</a> &bull;
+  <a href="https://genro-routes.readthedocs.io/">Docs</a>
+  <br><br>Apache License 2.0 &mdash; Softwell S.r.l.
+</div>
+
+</div>
+</div>
+
+</div><!-- /tab-panels -->
+
+<script>
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// Copy buttons on code blocks
+document.querySelectorAll('pre').forEach(pre => {
+  const btn = document.createElement('button');
+  btn.className = 'copy-btn';
+  btn.textContent = 'Copy';
+  btn.addEventListener('click', () => {
+    const code = pre.querySelector('code');
+    const text = (code || pre).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    });
+  });
+  pre.appendChild(btn);
+});
+</script>
+
+</body>
+</html>
