@@ -175,7 +175,7 @@ Supported types: `TypedDict`, `dict[str, int]`, `list[...]`, `str`, `int`, `bool
 - **`Router`** - Runtime router bound directly to an object via `Router(self, name="api")`
 - **`@route("name")`** - Decorator that marks bound methods for the router with the matching name
 - **`RoutingClass`** - Mixin that tracks routers per instance and exposes the `routing` proxy
-- **`DbRoutingClass`** - Like `RoutingClass` but adds a `db` property that propagates up the parent chain
+- **`RoutingContext`** - Extensible execution context with parent chain delegation (used via `ContextVar`)
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
 - **`obj.routing`** - Proxy exposed by every RoutingClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
 - **`RouterNode`** - Callable wrapper returned by `node()`, with `path`, `error`, `doc`, `metadata` properties.
@@ -228,10 +228,9 @@ genro-routes/
 │   │   ├── router.py        # Router (with plugin support)
 │   │   ├── router_node.py   # RouterNode (callable wrapper from node())
 │   │   ├── router_interface.py  # RouterInterface (abstract base)
-│   │   ├── context.py       # RoutingContext (abstract execution context)
+│   │   ├── context.py       # RoutingContext (extensible execution context)
 │   │   ├── decorators.py    # @route decorator
-│   │   ├── routing.py       # RoutingClass, ResultWrapper
-│   │   └── db_routing.py    # DbRoutingClass
+│   │   └── routing.py       # RoutingClass, ResultWrapper
 │   └── plugins/             # Built-in plugins
 │       ├── _base_plugin.py  # BasePlugin, MethodEntry
 │       ├── logging.py       # LoggingPlugin

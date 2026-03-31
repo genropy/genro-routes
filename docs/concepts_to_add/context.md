@@ -13,112 +13,62 @@ During method execution, business logic may need access to:
 
 But it **must not know** which adapter (HTTP, WebSocket, bot, CLI) is calling it.
 
-## The Solution: Abstract RoutingContext
+## The Solution: Extensible RoutingContext
 
-`genro-routes` provides an abstract `RoutingContext` class. Each adapter implements
-its own concrete version.
+`genro-routes` provides `RoutingContext`, a simple extensible container with
+parent chain delegation. No ABC, no abstract methods — adapters attach whatever
+attributes they need.
 
-### Base Class (in genro-routes)
+### RoutingContext (in genro-routes)
 
 ```python
-from abc import ABC, abstractmethod
+class RoutingContext:
+    """Extensible execution context with parent chain delegation."""
 
-class RoutingContext(ABC):
-    """Abstract execution context for routing."""
+    def __init__(self, parent=None):
+        self._parent = parent
 
-    @property
-    @abstractmethod
-    def db(self):
-        """Database connection."""
-        ...
-
-    @property
-    @abstractmethod
-    def avatar(self):
-        """Current user identity with metadata (permissions, locale, etc.)."""
-        ...
-
-    @property
-    @abstractmethod
-    def session(self):
-        """Session (macro context)."""
-        ...
-
-    @property
-    @abstractmethod
-    def app(self):
-        """Application instance."""
-        ...
-
-    @property
-    @abstractmethod
-    def server(self):
-        """Server instance."""
+    def __getattr__(self, name):
+        # Walk up _parent chain for missing attributes
         ...
 ```
 
-### Concrete Implementations (in adapter packages)
+### Usage by Adapters
+
+```python
+# Server boot
+server_ctx = RoutingContext()
+server_ctx.server = server
+
+# App mount
+app_ctx = RoutingContext(parent=server_ctx)
+app_ctx.app = app
+
+# Per-request (in dispatcher)
+ctx = RoutingContext(parent=app_ctx)
+ctx.request = request
+ctx.db = request.db
+ctx.session = request.session
+ctx.avatar = request.user
+```
+
+Adapters can also subclass `RoutingContext` if they prefer property-based access:
 
 ```python
 # genro-asgi/context.py
-from genro_routes import RoutingContext
-
 class ASGIContext(RoutingContext):
-    def __init__(self, request, app, server):
+    def __init__(self, request, app, server_ctx):
+        super().__init__(parent=server_ctx)
         self._request = request
         self._app = app
-        self._server = server
 
     @property
     def db(self):
         return self._request.state.db
 
     @property
-    def avatar(self):
-        return self._request.state.avatar
-
-    @property
-    def session(self):
-        return self._request.state.session
-
-    @property
     def app(self):
         return self._app
-
-    @property
-    def server(self):
-        return self._server
-```
-
-```python
-# genro-telegram/context.py (future)
-from genro_routes import RoutingContext
-
-class TelegramContext(RoutingContext):
-    def __init__(self, message, bot, server):
-        self._message = message
-        self._bot = bot
-        self._server = server
-
-    @property
-    def db(self):
-        return self._bot.db
-
-    @property
-    def avatar(self):
-        return self._message.from_user  # with telegram metadata
-
-    @property
-    def session(self):
-        return self._bot.get_chat_session(self._message.chat.id)
-
-    @property
-    def app(self):
-        return self._bot
-
-    @property
-    def server(self):
-        return self._server
 ```
 
 ## Usage in Business Logic
@@ -139,87 +89,49 @@ class OrderService(RoutingClass):
 The business logic doesn't know (and doesn't care) whether it's being called
 via HTTP, a Telegram bot, or a CLI command.
 
-## Context Hierarchy
+## Context Hierarchy via Parent Chain
 
-Contexts are nested (micro → macro → app → server):
+Contexts are nested via the `parent` parameter:
 
 ```
-Server (ASGI server, bot process, etc.)
-└── Application (one of many apps)
-    └── Session (macro context: user session, chat, etc.)
-        └── Request (micro context: single request/message)
+Server context (server_ctx)
+└── App context (app_ctx, parent=server_ctx)
+    └── Request context (ctx, parent=app_ctx)
 ```
 
-Access via `self.context` gives the micro context. From there you can
-navigate up:
+Missing attribute lookups walk up the chain automatically:
 
 ```python
-self.context           # micro (current request)
-self.context.session   # macro (user session)
-self.context.app       # application
-self.context.server    # server (if needed)
+ctx.db       # local attribute
+ctx.server   # not local → walks up to server_ctx.server
 ```
 
-## Sync vs Async
+## ContextVar Integration
 
-| Environment | Mechanism | Reason |
-|-------------|-----------|--------|
-| **Sync** | Instance attribute | Single execution flow |
-| **Async** | `ContextVar` | Concurrent tasks need isolation |
-
-**Important**: Sync/async handling is the responsibility of the **concrete Context class**,
-not RoutingClass. The adapter (ASGI, Telegram, etc.) provides a Context implementation
-that knows how to manage its own state.
-
-## RoutingClass Integration
-
-RoutingClass provides a `context` property (getter/setter) for accessing the execution context.
-
-### Implementation in RoutingClass
+The context is stored in a `ContextVar` at module level in `routing.py`:
 
 ```python
-class RoutingClass:
-    __slots__ = (..., "_context")
+from contextvars import ContextVar
 
-    @property
-    def context(self) -> RoutingContext | None:
-        """Return the execution context, searching up the parent chain."""
-        ctx = getattr(self, "_context", None)
-        if ctx is not None:
-            return ctx
-        # Propagate from parent if not set locally
-        parent = getattr(self, "_routing_parent", None)
-        if parent is not None:
-            return parent.context
-        return None
-
-    @context.setter
-    def context(self, value: RoutingContext | None) -> None:
-        """Set the execution context (must be RoutingContext or None)."""
-        if value is not None and not isinstance(value, RoutingContext):
-            raise TypeError("context must be a RoutingContext instance")
-        object.__setattr__(self, "_context", value)
+_context_var: ContextVar[RoutingContext | None] = ContextVar(
+    "routing_context", default=None
+)
 ```
 
-### Context Propagation
+This means:
 
-Context is set on the **root** RoutingClass and automatically propagates to children:
-
-```python
-# Adapter sets context on root
-app.context = ASGIContext(request, db)
-
-# Children access via parent chain
-app.users.context      # → returns app.context
-app.users.orders.context  # → returns app.context
-```
+- All `RoutingClass` instances in the same task share the same context
+- Each async task gets its own isolated context automatically
+- Works correctly in both sync and async environments
 
 ### Adapter Usage Pattern
 
 ```python
-# In genro-asgi middleware
+# In genro-asgi dispatcher
 async def dispatch(request, service):
-    ctx = ASGIContext(request, app)
+    ctx = RoutingContext(parent=app_ctx)
+    ctx.request = request
+    ctx.db = request.state.db
     service.context = ctx
     try:
         result = await service.api.call("some_method", ...)
@@ -231,52 +143,13 @@ async def dispatch(request, service):
 
 ```text
 genro-routes
-└── RoutingContext (abstract base class)
+└── RoutingContext (extensible container with parent chain)
 
 genro-asgi
 ├── imports RoutingContext from genro-routes
-└── implements ASGIContext(RoutingContext)
+└── uses RoutingContext directly or subclasses it
 
 genro-telegram (future)
 ├── imports RoutingContext from genro-routes
-└── implements TelegramContext(RoutingContext)
-
-genro-cli (future)
-├── imports RoutingContext from genro-routes
-└── implements CLIContext(RoutingContext)
+└── uses RoutingContext with telegram-specific attributes
 ```
-
-Each adapter package imports `RoutingContext` from `genro-routes` and provides its
-own concrete implementation.
-
-## Hypothesis: Context + Filters Integration
-
-**Status**: Idea, not a decision
-
-### Current State
-
-Filters are passed explicitly:
-
-```python
-router.nodes(tags="admin")
-router.get("delete_user", auth_tags=...)
-```
-
-### Possible Evolution
-
-With Context, avatar could carry tags:
-
-```python
-context.avatar.tags = {"admin", "hr"}
-
-@route("api", auth_rule="admin")
-def delete_user(self): ...
-
-# AuthPlugin reads context.avatar.tags automatically
-```
-
-### Open Questions
-
-- Matching logic: subset, intersection, expression?
-- Override mechanism for public entries?
-- Backward compatibility with explicit filters?

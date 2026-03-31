@@ -1,91 +1,57 @@
 # Copyright 2025 Softwell S.r.l.
 # Licensed under the Apache License, Version 2.0
 
-"""RoutingContext - Abstract execution context for routing.
+"""RoutingContext - Extensible execution context with parent chain delegation.
 
-This module provides the abstract base class for execution contexts. Each adapter
-(ASGI, Telegram, CLI, etc.) provides its own concrete implementation.
+Provides a simple, extensible context object for routing. Each adapter (ASGI,
+Telegram, CLI, etc.) creates a ``RoutingContext`` and attaches whatever
+attributes it needs (``db``, ``session``, ``avatar``, etc.).
+
+Missing attribute lookups walk up the ``_parent`` chain via ``__getattr__``,
+so child contexts inherit from parent contexts automatically.
 
 Example::
 
     from genro_routes import RoutingContext
 
-    class ASGIContext(RoutingContext):
-        def __init__(self, request, app, server):
-            self._request = request
-            self._app = app
-            self._server = server
+    # Server boot
+    server_ctx = RoutingContext()
+    server_ctx.server = server
 
-        @property
-        def db(self):
-            return self._request.state.db
+    # App mount
+    app_ctx = RoutingContext(parent=server_ctx)
+    app_ctx.app = app
 
-        @property
-        def avatar(self):
-            return self._request.state.avatar
+    # Per-request
+    ctx = RoutingContext(parent=app_ctx)
+    ctx.request = request
+    ctx.db = request.db
+    ctx.session = request.session
 
-        @property
-        def session(self):
-            return self._request.state.session
-
-        @property
-        def app(self):
-            return self._app
-
-        @property
-        def server(self):
-            return self._server
+    # Handler reads ctx.db (local), ctx.server (walks up parent chain)
 """
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import Any
-
 __all__ = ["RoutingContext"]
 
 
-class RoutingContext(ABC):
-    """Abstract execution context for routing.
+class RoutingContext:
+    """Extensible execution context with parent chain delegation.
 
-    Subclass this to provide adapter-specific context (ASGI, Telegram, CLI, etc.).
-    The concrete implementation is responsible for managing sync/async concerns
-    (e.g., using ContextVar for async environments).
-
-    Properties:
-        db: Database connection or session.
-        avatar: Current user identity with metadata (permissions, locale, etc.).
-        session: Session (macro context) for user state.
-        app: Application instance.
-        server: Server instance.
+    No slots, no ABC. Free ``__dict__`` for the adapter to attach any
+    attribute. Missing attributes walk up ``_parent`` chain via
+    ``__getattr__``.
     """
 
-    @property
-    @abstractmethod
-    def db(self) -> Any:
-        """Database connection or session."""
-        ...
+    def __init__(self, parent: RoutingContext | None = None):
+        self._parent = parent
 
-    @property
-    @abstractmethod
-    def avatar(self) -> Any:
-        """Current user identity with metadata (permissions, locale, etc.)."""
-        ...
-
-    @property
-    @abstractmethod
-    def session(self) -> Any:
-        """Session (macro context) for user state."""
-        ...
-
-    @property
-    @abstractmethod
-    def app(self) -> Any:
-        """Application instance."""
-        ...
-
-    @property
-    @abstractmethod
-    def server(self) -> Any:
-        """Server instance."""
-        ...
+    def __getattr__(self, name: str):
+        try:
+            parent = object.__getattribute__(self, "_parent")
+        except AttributeError:
+            raise AttributeError(name) from None
+        if parent is not None:
+            return getattr(parent, name)
+        raise AttributeError(name)

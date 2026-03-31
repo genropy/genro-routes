@@ -98,38 +98,41 @@ assert t.table.node("add")("x") == "added:x"
 assert t.table.node("remove")(1) == "removed:1"
 ```
 
-## DbRoutingClass: Database Access Across the Hierarchy
+## Database Access via Context
 
-Most real-world services need a database connection. Without `DbRoutingClass`,
-every sub-module would have to manually define a `root` property and access
-`self.root.db`, coupling it to the specific hierarchy structure.
-
-`DbRoutingClass` solves this by providing a `db` property that automatically
-walks up the `_routing_parent` chain — the same mechanism used by `context`:
+Most real-world services need a database connection. Instead of coupling
+sub-modules to the hierarchy structure, set `db` on the execution context
+and let the parent chain propagate it:
 
 ```python
-from genro_routes import DbRoutingClass, Router, route
+from genro_routes import RoutingClass, RoutingContext, Router, route
 
-class MyServer(DbRoutingClass):
-    def __init__(self, db):
+class MyServer(RoutingClass):
+    def __init__(self):
         self.api = Router(self, name="api")
-        self.db = db  # set once at the root
 
-class UsersModule(DbRoutingClass):
+class UsersModule(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
 
     @route("api")
     def list_users(self):
-        return self.db.execute("SELECT * FROM users")  # inherited from parent
+        return self.context.db.execute("SELECT * FROM users")
+
+# At request time:
+server_ctx = RoutingContext()
+server_ctx.db = db_connection
+
+svc = MyServer()
+svc.context = server_ctx
 ```
 
 **Key points**:
 
-- The root sets `self.db = ...` — all children inherit it automatically
-- Any node can override `self.db = other_db` for itself and its subtree
-- Setting `self.db = None` clears the override and falls through to the parent
-- If no `db` is found anywhere in the chain, `AttributeError` is raised
+- Set `ctx.db = ...` on the context — all handlers access it via `self.context.db`
+- Context uses `ContextVar` — safe for concurrent async tasks
+- Child contexts inherit from parent via `RoutingContext(parent=parent_ctx)`
+- Any child context can override an attribute locally without affecting the parent
 
 ### Accessing the Default Router
 
@@ -594,55 +597,40 @@ assert entry_meta["auth_required"] is True
 
 ## Execution Context
 
-`RoutingContext` is an abstract base class that adapters (ASGI, Telegram, CLI, etc.) implement to provide a uniform execution context to handlers.
+`RoutingContext` is an extensible container that adapters (ASGI, Telegram, CLI, etc.) use to provide execution context to handlers. It has no abstract methods — just attach whatever attributes you need.
 
 ```python
 from genro_routes import RoutingContext
 
-class ASGIContext(RoutingContext):
-    def __init__(self, request, app, server):
-        self._request = request
-        self._app = app
-        self._server = server
+# Server boot
+server_ctx = RoutingContext()
+server_ctx.server = server
 
-    @property
-    def db(self):
-        return self._request.state.db
+# App mount
+app_ctx = RoutingContext(parent=server_ctx)
+app_ctx.app = app
 
-    @property
-    def avatar(self):
-        return self._request.state.avatar
-
-    @property
-    def session(self):
-        return self._request.state.session
-
-    @property
-    def app(self):
-        return self._app
-
-    @property
-    def server(self):
-        return self._server
+# Per-request (in dispatcher)
+ctx = RoutingContext(parent=app_ctx)
+ctx.request = request
+ctx.db = request.db
+ctx.session = request.session
+ctx.avatar = request.user
 ```
 
-**Abstract properties** (must be implemented by each adapter):
+Missing attribute lookups walk up the `_parent` chain automatically:
 
-| Property | Purpose |
-|----------|---------|
-| `db` | Database connection or session |
-| `avatar` | Current user identity with metadata (permissions, locale, etc.) |
-| `session` | Session (macro context) for user state |
-| `app` | Application instance |
-| `server` | Server instance |
+```python
+ctx.server  # not set locally → walks up to server_ctx.server
+```
 
 **Setting context on a RoutingClass instance**:
 
 ```python
 svc = MyService()
-svc.context = ASGIContext(request, app, server)
+svc.context = ctx  # stored in a ContextVar (safe for concurrent async tasks)
 
-# Context is accessible from the instance and propagates to children
+# All RoutingClass instances in the same task share the context
 assert svc.context.db is not None
 ```
 

@@ -41,15 +41,19 @@ Example::
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from fnmatch import fnmatchcase
 from typing import TYPE_CHECKING, Any
 
 from genro_toolbox.typeutils import safe_is_instance
 
-from .context import RoutingContext
-
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
+    from .context import RoutingContext
     from .router import Router
+
+_context_var: ContextVar[RoutingContext | None] = ContextVar(
+    "routing_context", default=None
+)
 
 __all__ = ["RoutingClass", "ResultWrapper", "is_routing_class", "is_result_wrapper"]
 
@@ -84,7 +88,6 @@ class RoutingClass:
         _PROXY_ATTR_NAME,
         "__genro_routes_router_registry__",
         "_routing_parent",
-        "_context",
         "_capabilities",
     )
 
@@ -147,36 +150,20 @@ class RoutingClass:
 
     @property
     def context(self) -> RoutingContext | None:
-        """Return the execution context, searching up the parent chain.
+        """Return the execution context from the current task's ContextVar.
 
-        The context is set by the adapter (ASGI, Telegram, etc.) on the root
-        RoutingClass instance and propagates automatically to children.
+        The context is set by the adapter (ASGI, Telegram, etc.) once per
+        task. All RoutingClass instances in the same task share it.
 
         Returns:
             The current RoutingContext or None if not set.
         """
-        ctx: RoutingContext | None = getattr(self, "_context", None)
-        if ctx is not None:
-            return ctx
-        # Propagate from parent if not set locally
-        parent: RoutingClass | None = getattr(self, "_routing_parent", None)
-        if parent is not None:
-            return parent.context
-        return None
+        return _context_var.get()
 
     @context.setter
     def context(self, value: RoutingContext | None) -> None:
-        """Set the execution context.
-
-        Args:
-            value: A RoutingContext instance or None.
-
-        Raises:
-            TypeError: If value is not a RoutingContext or None.
-        """
-        if value is not None and not isinstance(value, RoutingContext):
-            raise TypeError("context must be a RoutingContext instance")
-        object.__setattr__(self, "_context", value)
+        """Set the execution context for the current task."""
+        _context_var.set(value)
 
     @property
     def default_router(self) -> Any:

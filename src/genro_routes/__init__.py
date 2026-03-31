@@ -32,7 +32,6 @@ from importlib.metadata import version as get_version
 __version__ = get_version("genro-routes")
 
 from .core import (
-    DbRoutingClass,
     Router,
     RouterInterface,
     RoutingClass,
@@ -54,7 +53,6 @@ for _plugin in ("logging", "pydantic", "auth", "env", "openapi", "channel"):
 del _plugin
 
 __all__ = [
-    "DbRoutingClass",
     "Router",
     "RouterInterface",
     "RouterNode",

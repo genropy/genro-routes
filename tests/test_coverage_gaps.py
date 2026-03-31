@@ -1220,38 +1220,8 @@ def test_routing_class_result_wrapper_method():
 
 
 def test_routing_class_context_property():
-    """Test RoutingClass.context getter and setter."""
+    """Test RoutingClass.context getter and setter via ContextVar."""
     from genro_routes.core.context import RoutingContext
-
-    class TestContext(RoutingContext):
-        """Concrete context for testing."""
-
-        def __init__(self, user: str):
-            self._user = user
-
-        @property
-        def db(self):
-            return None
-
-        @property
-        def avatar(self):
-            return None
-
-        @property
-        def session(self):
-            return None
-
-        @property
-        def app(self):
-            return None
-
-        @property
-        def server(self):
-            return None
-
-        @property
-        def user(self):
-            return self._user
 
     class Svc(RoutingClass):
         def __init__(self):
@@ -1259,11 +1229,12 @@ def test_routing_class_context_property():
 
     svc = Svc()
 
-    # Initially None
+    # Initially None (ContextVar default)
     assert svc.context is None
 
     # Set context
-    ctx = TestContext(user="test_user")
+    ctx = RoutingContext()
+    ctx.user = "test_user"
     svc.context = ctx
     assert svc.context is ctx
     assert svc.context.user == "test_user"
@@ -1273,62 +1244,27 @@ def test_routing_class_context_property():
     assert svc.context is None
 
 
-def test_routing_class_context_type_error():
-    """Test that setting invalid context raises TypeError."""
+def test_routing_class_context_shared_across_instances():
+    """All RoutingClass instances in the same task see the same ContextVar."""
+    from genro_routes.core.context import RoutingContext
 
     class Svc(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
-    svc = Svc()
+    svc_a = Svc()
+    svc_b = Svc()
 
-    with pytest.raises(TypeError, match="context must be a RoutingContext"):
-        svc.context = "not a context"
+    ctx = RoutingContext()
+    ctx.db = "shared_db"
+    svc_a.context = ctx
 
+    # svc_b sees the same context (same ContextVar, same task)
+    assert svc_b.context is ctx
+    assert svc_b.context.db == "shared_db"
 
-def test_routing_class_context_propagates_from_parent():
-    """Test that context propagates from parent to child."""
-    from genro_routes.core.context import RoutingContext
-
-    class TestContext(RoutingContext):
-        """Concrete context for testing."""
-
-        @property
-        def db(self):
-            return None
-
-        @property
-        def avatar(self):
-            return None
-
-        @property
-        def session(self):
-            return None
-
-        @property
-        def app(self):
-            return None
-
-        @property
-        def server(self):
-            return None
-
-    class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-    class Parent(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-            self.child = Child()
-            self.api.attach_instance(self.child, name="child")
-
-    parent = Parent()
-    ctx = TestContext()
-    parent.context = ctx
-
-    # Child should inherit context from parent
-    assert parent.child.context is ctx
+    # Cleanup
+    svc_a.context = None
 
 
 def test_plugin_on_parent_config_changed_propagates():

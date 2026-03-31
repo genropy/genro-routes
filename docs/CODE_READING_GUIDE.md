@@ -66,12 +66,11 @@ src/genro_routes/
 │   ├── __init__.py          ← re-export aggregator
 │   ├── router_interface.py  ← ABC con 2 metodi: node() e nodes()
 │   ├── decorators.py        ← @route — puro marker, zero side-effect
-│   ├── context.py           ← RoutingContext — ABC per il contesto di esecuzione
+│   ├── context.py           ← RoutingContext — container estensibile con parent chain
 │   ├── base_router.py       ← 977 righe — cuore: binding, risoluzione, introspezione
 │   ├── router_node.py       ← wrapper callable restituito da node()
 │   ├── router.py            ← estende BaseRouter con plugin e middleware
-│   ├── routing.py           ← RoutingClass mixin + _RoutingProxy
-│   └── db_routing.py       ← DbRoutingClass — db property con parent-chain propagation
+│   └── routing.py           ← RoutingClass mixin + _RoutingProxy
 └── plugins/
     ├── __init__.py           ← solo docstring, nessun import
     ├── _base_plugin.py       ← MethodEntry + BasePlugin + _wrap_configure
@@ -436,49 +435,45 @@ svc.routing.configure("api:auth/admin_*", rule="admin")
 
 Il selettore supporta glob pattern (`fnmatchcase`).
 
-### 7.5 `context` property — propagazione automatica
+### 7.5 `context` property — ContextVar per-task
 
 Il context (`RoutingContext`) viene settato dall'adapter (ASGI, ecc.)
-sulla root RoutingClass. I child lo ereditano risalendo la catena
-`_routing_parent`:
+e memorizzato in una `ContextVar` a livello modulo. Tutte le istanze
+RoutingClass nello stesso task condividono lo stesso context:
 
 ```python
+from contextvars import ContextVar
+
+_context_var: ContextVar[RoutingContext | None] = ContextVar(
+    "routing_context", default=None
+)
+
 @property
 def context(self):
-    ctx = getattr(self, "_context", None)
-    if ctx is not None:
-        return ctx
-    parent = getattr(self, "_routing_parent", None)
-    if parent is not None:
-        return parent.context
-    return None
+    return _context_var.get()
+
+@context.setter
+def context(self, value):
+    _context_var.set(value)
 ```
 
-### 7.6 `DbRoutingClass`
-
-**File**: `core/db_routing.py`
-
-Sottoclasse di RoutingClass che aggiunge una property `db` con
-propagazione automatica lungo la catena `_routing_parent`:
+La stratificazione (server → app → request) è gestita dal parent chain
+dentro `RoutingContext`, non da `RoutingClass`:
 
 ```python
-class MyServer(DbRoutingClass):
-    def __init__(self, db):
-        self.api = Router(self, name="api")
-        self.db = db
+server_ctx = RoutingContext()
+server_ctx.server = server
 
-class MyModule(DbRoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
+app_ctx = RoutingContext(parent=server_ctx)
+app_ctx.app = app
 
-    @route("api")
-    def query(self):
-        return self.db.execute("SELECT 1")  # inherited from parent
+ctx = RoutingContext(parent=app_ctx)
+ctx.db = db_connection
+
+svc.context = ctx
+# svc.context.db → locale
+# svc.context.server → risale il parent chain fino a server_ctx
 ```
-
-Il pattern è identico a `context`: risale `_routing_parent` fino a trovare
-un `_db` non-None. A differenza di `context`, se nessuno nella catena ha
-impostato `db`, lancia `AttributeError("No db available")`.
 
 ---
 
@@ -860,7 +855,7 @@ Il `selector` ha formato `"router_name:path"` (es. `"api:admin/create"`).
 Usato per **bypassare** il `__setattr__` custom di RoutingClass quando
 si impostano attributi interni che non devono triggerare l'auto-detach.
 Lo vedrai in: `attach_instance`, `detach_instance`, `_register_router`,
-`capabilities.setter`, `context.setter`, `_RoutingProxy.__init__`.
+`capabilities.setter`, `_RoutingProxy.__init__`.
 
 ### 12.7 `safe_is_instance` con stringa
 

@@ -1,6 +1,6 @@
 # Issue: Add abstract Context class
 
-**Status**: 🔴 DA REVISIONARE
+**Status**: 🟢 COMPLETATO — Superato da issue #24. RoutingContext è ora un container estensibile con parent chain e ContextVar (non più ABC).
 
 ## Summary
 
