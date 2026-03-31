@@ -100,16 +100,13 @@ assert t.table.node("remove")(1) == "removed:1"
 
 ## Database Access via Context
 
-Most real-world services need a database connection. Instead of coupling
-sub-modules to the hierarchy structure, set `db` on the execution context
-and let the parent chain propagate it:
+Handlers access shared state (database, user, session) through `self.context`.
+The adapter creates a `RoutingContext`, attaches what it needs, and sets it
+on any `RoutingClass` instance — all instances in the same task share it
+via `ContextVar`.
 
 ```python
 from genro_routes import RoutingClass, RoutingContext, Router, route
-
-class MyServer(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
 
 class UsersModule(RoutingClass):
     def __init__(self):
@@ -119,20 +116,36 @@ class UsersModule(RoutingClass):
     def list_users(self):
         return self.context.db.execute("SELECT * FROM users")
 
-# At request time:
+# Adapter creates a layered context:
 server_ctx = RoutingContext()
-server_ctx.db = db_connection
+server_ctx.config = global_config
 
-svc = MyServer()
-svc.context = server_ctx
+app_ctx = RoutingContext(parent=server_ctx)
+app_ctx.app = app
+
+request_ctx = RoutingContext(parent=app_ctx)
+request_ctx.db = db_connection
+request_ctx.user = current_user
+
+# Set it — now every handler in this task sees it
+svc = UsersModule()
+svc.context = request_ctx
+
+# Handler reads:
+#   self.context.db      → local (request_ctx)
+#   self.context.config  → walks up to server_ctx
 ```
 
 **Key points**:
 
-- Set `ctx.db = ...` on the context — all handlers access it via `self.context.db`
-- Context uses `ContextVar` — safe for concurrent async tasks
-- Child contexts inherit from parent via `RoutingContext(parent=parent_ctx)`
-- Any child context can override an attribute locally without affecting the parent
+- `RoutingContext` has no required properties — attach any attribute freely
+- `RoutingContext(parent=...)` creates layered contexts; missing attributes walk up the chain
+- `svc.context = ctx` writes to a `ContextVar` — safe for concurrent async tasks
+- All `RoutingClass` instances in the same task share the same context
+- `svc.context = None` clears the context (use in a `finally` block)
+
+See the **[Execution Context Guide](context.md)** for the full explanation
+including adapter patterns, subclassing, and ContextVar internals.
 
 ### Accessing the Default Router
 
@@ -597,42 +610,13 @@ assert entry_meta["auth_required"] is True
 
 ## Execution Context
 
-`RoutingContext` is an extensible container that adapters (ASGI, Telegram, CLI, etc.) use to provide execution context to handlers. It has no abstract methods — just attach whatever attributes you need.
+See the **[Execution Context Guide](context.md)** for the complete reference.
 
-```python
-from genro_routes import RoutingContext
-
-# Server boot
-server_ctx = RoutingContext()
-server_ctx.server = server
-
-# App mount
-app_ctx = RoutingContext(parent=server_ctx)
-app_ctx.app = app
-
-# Per-request (in dispatcher)
-ctx = RoutingContext(parent=app_ctx)
-ctx.request = request
-ctx.db = request.db
-ctx.session = request.session
-ctx.avatar = request.user
-```
-
-Missing attribute lookups walk up the `_parent` chain automatically:
-
-```python
-ctx.server  # not set locally → walks up to server_ctx.server
-```
-
-**Setting context on a RoutingClass instance**:
-
-```python
-svc = MyService()
-svc.context = ctx  # stored in a ContextVar (safe for concurrent async tasks)
-
-# All RoutingClass instances in the same task share the context
-assert svc.context.db is not None
-```
+Quick summary: `RoutingContext` is an extensible container with parent chain
+delegation. Adapters create layered contexts (server → app → request), set
+them via `svc.context = ctx` (stored in a `ContextVar`), and handlers read
+shared state with `self.context.db`, `self.context.user`, etc. Missing
+attributes walk up the parent chain automatically.
 
 ## Wrapping Handler Results
 

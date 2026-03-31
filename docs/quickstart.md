@@ -186,11 +186,43 @@ schema = entry.metadata["pydantic"]["response_schema"]
 
 Supported types: `TypedDict`, `dict[str, T]`, `list[T]`, `str`, `int`, `bool`, and any type Pydantic can serialize. TypedDict requires Python 3.12+.
 
+## Execution Context
+
+Handlers need access to shared state (database, user, session) without
+knowing which adapter provides it. Use `RoutingContext`:
+
+```python
+from genro_routes import RoutingClass, RoutingContext, Router, route
+
+class OrderService(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api")
+
+    @route("api")
+    def list_orders(self):
+        return self.context.db.query("SELECT * FROM orders")
+
+# Create a context and set it
+ctx = RoutingContext()
+ctx.db = my_database
+
+svc = OrderService()
+svc.context = ctx
+svc.api.node("list_orders")()  # handler reads self.context.db
+```
+
+Contexts can be layered with `RoutingContext(parent=parent_ctx)` — missing
+attributes walk up the chain. The context is stored in a `ContextVar`, so
+it's safe for concurrent async tasks.
+
+See the **[Execution Context Guide](guide/context.md)** for the full reference.
+
 ## Next Steps
 
 Now that you've learned the basics:
 
 - **[Basic Usage Guide](guide/basic-usage.md)** - Detailed explanation of core concepts
+- **[Execution Context Guide](guide/context.md)** - RoutingContext, parent chain, ContextVar
 - **[Plugin Guide](guide/plugins.md)** - Learn to create custom plugins
 - **[Hierarchies Guide](guide/hierarchies.md)** - Master nested routers
 - **[Best Practices](guide/best-practices.md)** - Production-ready patterns

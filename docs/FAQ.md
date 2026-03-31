@@ -547,10 +547,64 @@ def test_router_integration():
     assert node({"input": "test"}) == expected
 ```
 
+## Context and Shared State
+
+### How do I access a database connection from my handlers?
+
+**Question**: My handlers need access to a database connection, the current user, or session data. How do I provide this without coupling to a specific adapter?
+
+**Answer**: Use `RoutingContext`. The adapter creates a context, attaches what it needs, and sets it on any `RoutingClass` instance. All handlers read it via `self.context`:
+
+```python
+from genro_routes import RoutingClass, RoutingContext, Router, route
+
+class OrderService(RoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api")
+
+    @route("api")
+    def list_orders(self):
+        return self.context.db.query("SELECT * FROM orders")
+
+# Adapter sets up context
+ctx = RoutingContext()
+ctx.db = db_connection
+ctx.user = current_user
+
+svc = OrderService()
+svc.context = ctx  # stored in ContextVar — all instances in this task see it
+```
+
+For layered contexts (server → app → request), use `RoutingContext(parent=parent_ctx)` — missing attributes walk up the parent chain automatically.
+
+See the **[Execution Context Guide](guide/context.md)** for the full reference.
+
+### What happened to DbRoutingClass?
+
+**Question**: I was using `DbRoutingClass` to propagate `db` through the hierarchy. Where did it go?
+
+**Answer**: `DbRoutingClass` has been removed. Database connections now live in the execution context:
+
+```python
+# Old (removed)
+class MyServer(DbRoutingClass):
+    def __init__(self, db):
+        self.db = db  # propagated via _routing_parent
+
+# New
+ctx = RoutingContext()
+ctx.db = db_connection
+svc.context = ctx
+# Handlers: self.context.db
+```
+
+The parent chain in `RoutingContext` provides the same propagation behavior — set `db` once at the top level, and all handlers read it via `self.context.db`.
+
 ## Useful Links
 
 - **[Quick Start](quickstart.md)** - Get started in 5 minutes
 - **[Basic Usage](guide/basic-usage.md)** - Fundamental concepts
+- **[Execution Context](guide/context.md)** - RoutingContext, parent chain, ContextVar
 - **[Plugin Guide](guide/plugins.md)** - Plugin development
 - **[Hierarchies](guide/hierarchies.md)** - Nested routing
 - **[API Reference](api/reference.md)** - Complete documentation

@@ -263,6 +263,7 @@
   <button class="tab-btn" data-tab="env">Env</button>
   <button class="tab-btn" data-tab="logging">Logging</button>
   <button class="tab-btn" data-tab="compose">Composition</button>
+  <button class="tab-btn" data-tab="context">Context</button>
   <button class="tab-btn" data-tab="cheat">Cheat Sheet</button>
 </nav>
 
@@ -817,6 +818,97 @@ print(tree[<span class="str">"routers"</span>].keys())  <span class="cmt"># dict
 </div>
 </div>
 
+<!-- ═══════════════════════ CONTEXT ═══════════════════════ -->
+<div class="tab-panel" id="tab-context">
+<div class="content">
+
+<h2>Execution Context</h2>
+
+<p>Handlers need <strong>db</strong>, <strong>user</strong>, <strong>session</strong> &mdash; but must not know which adapter (HTTP, bot, CLI) provides them. <code class="il">RoutingContext</code> is a simple container where the adapter stores whatever the handlers need.</p>
+
+<h3>Create and attach attributes freely</h3>
+
+<pre><code><span class="kw">from</span> genro_routes <span class="kw">import</span> <span class="cls">RoutingContext</span>
+
+ctx = <span class="cls">RoutingContext</span>()
+ctx.db = db_connection
+ctx.user = current_user
+ctx.locale = <span class="str">"it"</span></code></pre>
+
+<p>No abstract methods, no required properties. Just set what you need.</p>
+
+<h3>Parent chain &mdash; layered contexts</h3>
+
+<p>Real applications have layers. Each layer adds its own state without copying the parent&rsquo;s:</p>
+
+<div class="diagram">
+<svg viewBox="0 0 680 250" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
+  <rect x="220" y="10" width="240" height="44" rx="10" fill="#232733" stroke="#6c9eff" stroke-width="1.5"/>
+  <text x="340" y="28" text-anchor="middle" fill="#6c9eff" font-size="11" font-weight="600">server_ctx</text>
+  <text x="340" y="42" text-anchor="middle" fill="#8b90a0" font-size="9">.server  .config</text>
+
+  <rect x="220" y="80" width="240" height="44" rx="10" fill="#232733" stroke="#4ade80" stroke-width="1.2"/>
+  <text x="340" y="98" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="600">app_ctx</text>
+  <text x="340" y="112" text-anchor="middle" fill="#8b90a0" font-size="9">parent=server_ctx  .app</text>
+
+  <rect x="220" y="150" width="240" height="44" rx="10" fill="#232733" stroke="#a78bfa" stroke-width="1.2"/>
+  <text x="340" y="168" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="600">request_ctx</text>
+  <text x="340" y="182" text-anchor="middle" fill="#8b90a0" font-size="9">parent=app_ctx  .db  .user  .session</text>
+
+  <path d="M 340 54 L 340 80" fill="none" stroke="#8b90a0" stroke-width="1" marker-end="url(#ctx1)"/>
+  <path d="M 340 124 L 340 150" fill="none" stroke="#8b90a0" stroke-width="1" marker-end="url(#ctx1)"/>
+
+  <rect x="40" y="210" width="600" height="30" rx="8" fill="#1a1d27" stroke="#2d3140" stroke-width="1"/>
+  <text x="340" y="230" text-anchor="middle" fill="#8b90a0" font-size="10">request_ctx.db → local  |  request_ctx.app → walks up to app_ctx  |  request_ctx.config → walks up to server_ctx</text>
+
+  <defs><marker id="ctx1" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b90a0"/></marker></defs>
+</svg>
+</div>
+
+<pre><code><span class="cmt"># Server boot</span>
+server_ctx = <span class="cls">RoutingContext</span>()
+server_ctx.server = server
+server_ctx.config = global_config
+
+<span class="cmt"># App mount</span>
+app_ctx = <span class="cls">RoutingContext</span>(parent=server_ctx)
+app_ctx.app = app
+
+<span class="cmt"># Per-request</span>
+request_ctx = <span class="cls">RoutingContext</span>(parent=app_ctx)
+request_ctx.db = request.state.db
+request_ctx.user = request.state.user</code></pre>
+
+<h3>ContextVar &mdash; shared per task, isolated across tasks</h3>
+
+<p>The context is stored in a <code class="il">ContextVar</code>, not in the instance. This means:</p>
+
+<ul>
+  <li><strong>All RoutingClass instances in the same task</strong> share the same context &mdash; <code class="il">app.context</code>, <code class="il">app.users.context</code>, <code class="il">app.orders.context</code> all return the same object</li>
+  <li><strong>Each async task is isolated</strong> &mdash; two concurrent requests never interfere</li>
+</ul>
+
+<pre><code><span class="cmt"># Adapter sets context once per request</span>
+svc.context = request_ctx
+
+<span class="cmt"># Every handler in this task sees it</span>
+<span class="kw">@route</span>(<span class="str">"api"</span>)
+<span class="kw">def</span> <span class="fn">list_orders</span>(self):
+    db = self.context.db        <span class="cmt"># from request_ctx (local)</span>
+    user = self.context.user    <span class="cmt"># from request_ctx (local)</span>
+    config = self.context.config  <span class="cmt"># walked up to server_ctx</span>
+    <span class="kw">return</span> db.query(<span class="str">"SELECT ..."</span>)
+
+<span class="cmt"># Cleanup</span>
+svc.context = <span class="kw">None</span></code></pre>
+
+<div class="callout">
+<p><strong>No more DbRoutingClass.</strong> Database connections live in the context now: <code class="il">self.context.db</code>. The parent chain handles propagation &mdash; set it once at the top, read it anywhere below.</p>
+</div>
+
+</div>
+</div>
+
 <!-- ═══════════════════════ CHEAT SHEET ═══════════════════════ -->
 <div class="tab-panel" id="tab-cheat">
 <div class="content">
@@ -845,6 +937,17 @@ print(tree[<span class="str">"routers"</span>].keys())  <span class="cmt"># dict
   <tr><td>Configure for one handler only</td><td><code class="il">svc.api.auth.configure(_target="x", rule="admin")</code></td></tr>
   <tr><td>Configure with wildcard matching</td><td><code class="il">svc.routing.configure("api:auth/admin_*", ...)</code></td></tr>
   <tr><td>See current plugin config</td><td><code class="il">svc.routing.configure("?")</code></td></tr>
+</table>
+
+<h3>Context</h3>
+<table>
+  <tr><th>I want to...</th><th>Code</th></tr>
+  <tr><td>Create a context</td><td><code class="il">ctx = RoutingContext()</code></td></tr>
+  <tr><td>Attach state to the context</td><td><code class="il">ctx.db = conn; ctx.user = user</code></td></tr>
+  <tr><td>Create a child context (inherits parent)</td><td><code class="il">child = RoutingContext(parent=ctx)</code></td></tr>
+  <tr><td>Set context for current task</td><td><code class="il">svc.context = ctx</code></td></tr>
+  <tr><td>Read context from a handler</td><td><code class="il">self.context.db</code></td></tr>
+  <tr><td>Clear context after request</td><td><code class="il">svc.context = None</code></td></tr>
 </table>
 
 <h3>Composition</h3>

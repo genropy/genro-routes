@@ -175,7 +175,7 @@ Supported types: `TypedDict`, `dict[str, int]`, `list[...]`, `str`, `int`, `bool
 - **`Router`** - Runtime router bound directly to an object via `Router(self, name="api")`
 - **`@route("name")`** - Decorator that marks bound methods for the router with the matching name
 - **`RoutingClass`** - Mixin that tracks routers per instance and exposes the `routing` proxy
-- **`RoutingContext`** - Extensible execution context with parent chain delegation (used via `ContextVar`)
+- **`RoutingContext`** - Extensible execution context with parent chain delegation. Attach any attribute (`ctx.db`, `ctx.user`, `ctx.session`); missing lookups walk up `RoutingContext(parent=...)`. Stored in a `ContextVar` — all RoutingClass instances in the same task share it, async tasks are isolated. See [Execution Context Guide](docs/guide/context.md).
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
 - **`obj.routing`** - Proxy exposed by every RoutingClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
 - **`RouterNode`** - Callable wrapper returned by `node()`, with `path`, `error`, `doc`, `metadata` properties.
@@ -204,6 +204,7 @@ See [Why One Name Per Operation](docs/guide/why-one-name-per-operation.md) for t
 
 - **[Full Documentation](https://genro-routes.readthedocs.io/)** - Complete guides, tutorials, and API reference
 - **[Quick Start](docs/quickstart.md)** - Get started in 5 minutes
+- **[Execution Context](docs/guide/context.md)** - RoutingContext, parent chain, ContextVar
 - **[FAQ](docs/FAQ.md)** - Common questions and answers
 
 ## Testing
