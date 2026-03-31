@@ -51,7 +51,7 @@ from .context import RoutingContext
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from .router import Router
 
-__all__ = ["RoutingClass", "RoutingClassAuto", "ResultWrapper", "is_routing_class", "is_result_wrapper"]
+__all__ = ["RoutingClass", "ResultWrapper", "is_routing_class", "is_result_wrapper"]
 
 
 class ResultWrapper:
@@ -274,52 +274,6 @@ class RoutingClass:
                 return self.result_wrapper(content, mime_type=mime_type)
         """
         return ResultWrapper(value, metadata)
-
-
-class RoutingClassAuto(RoutingClass):
-    """RoutingClass with automatic main router creation.
-
-    Subclass this instead of RoutingClass when you want a router
-    to be created automatically if none is defined.
-
-    The auto-created router is named "main" and is stored internally
-    in ``_main_router`` to avoid conflicts with user attributes.
-
-    Example::
-
-        from genro_routes import RoutingClassAuto, route
-
-        class SimpleService(RoutingClassAuto):
-            @route()  # Works without explicit Router creation
-            def hello(self):
-                return "Hello!"
-
-        svc = SimpleService()
-        svc.default_router.node("hello")()  # "Hello!"
-    """
-
-    __slots__ = ("_main_router",)
-
-    @property
-    def default_router(self) -> Any:
-        """Return the default router, auto-creating one if none exist.
-
-        If exactly one router is registered, returns it.
-        If no routers exist, creates and returns a "main" router.
-        If multiple routers exist, returns None.
-        """
-        routers = self._routers
-        if len(routers) == 1:
-            return next(iter(routers.values()))
-        if len(routers) == 0:
-            existing = getattr(self, "_main_router", None)
-            if existing is not None:
-                return existing
-            from .router import Router
-            router = Router(self, name="main")
-            object.__setattr__(self, "_main_router", router)
-            return router
-        return None
 
 
 class _RoutingProxy:

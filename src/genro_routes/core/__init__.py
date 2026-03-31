@@ -15,17 +15,18 @@ or instantiate routers.
 
 from .base_router import BaseRouter
 from .context import RoutingContext
+from .db_routing import DbRoutingClass
 from .decorators import route
 from .router import Router
 from .router_interface import RouterInterface
-from .routing import RoutingClass, RoutingClassAuto, is_result_wrapper
+from .routing import RoutingClass, is_result_wrapper
 
 __all__ = [
     "BaseRouter",
+    "DbRoutingClass",
     "Router",
     "RouterInterface",
     "RoutingClass",
-    "RoutingClassAuto",
     "RoutingContext",
     "is_result_wrapper",
     "route",

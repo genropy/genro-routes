@@ -854,7 +854,7 @@ print(tree[<span class="str">"routers"</span>].keys())  <span class="cmt"># dict
   <tr><td>Call through hierarchy</td><td><code class="il">parent.api.node("x/handler")()</code></td></tr>
   <tr><td>Create a pure namespace (no handlers)</td><td><code class="il">Router(self, name="api", branch=True)</code></td></tr>
   <tr><td>Strip method name prefixes</td><td><code class="il">Router(self, name="api", prefix="handle_")</code></td></tr>
-  <tr><td>Skip writing Router() in __init__</td><td>Use <code class="il">RoutingClassAuto</code> instead of <code class="il">RoutingClass</code></td></tr>
+  <tr><td>Auto-propagate db to children</td><td>Use <code class="il">DbRoutingClass</code> instead of <code class="il">RoutingClass</code></td></tr>
   <tr><td>Filter by user permissions</td><td><code class="il">svc.api.nodes(auth_tags="admin")</code></td></tr>
   <tr><td>Filter by system capabilities</td><td><code class="il">svc.api.nodes(env_capabilities="redis")</code></td></tr>
 </table>

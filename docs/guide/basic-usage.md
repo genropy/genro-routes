@@ -98,40 +98,38 @@ assert t.table.node("add")("x") == "added:x"
 assert t.table.node("remove")(1) == "removed:1"
 ```
 
-## RoutingClassAuto: For the Lazy
+## DbRoutingClass: Database Access Across the Hierarchy
 
-<!-- test: test_router_edge_cases.py::test_routing_class_auto_creates_main_router -->
+Most real-world services need a database connection. Without `DbRoutingClass`,
+every sub-module would have to manually define a `root` property and access
+`self.root.db`, coupling it to the specific hierarchy structure.
 
-Don't want to create a router explicitly? Use `RoutingClassAuto` - it creates a "main" router automatically when none exist:
+`DbRoutingClass` solves this by providing a `db` property that automatically
+walks up the `_routing_parent` chain — the same mechanism used by `context`:
 
 ```python
-from genro_routes import RoutingClassAuto, route
+from genro_routes import DbRoutingClass, Router, route
 
-class SimpleAPI(RoutingClassAuto):
-    @route()  # No router name needed, no Router() creation needed!
-    def hello(self):
-        return "Hello, World!"
+class MyServer(DbRoutingClass):
+    def __init__(self, db):
+        self.api = Router(self, name="api")
+        self.db = db  # set once at the root
 
-    @route()
-    def goodbye(self):
-        return "Goodbye!"
+class UsersModule(DbRoutingClass):
+    def __init__(self):
+        self.api = Router(self, name="api")
 
-api = SimpleAPI()
-assert api.default_router.node("hello")() == "Hello, World!"
-assert api.default_router.node("goodbye")() == "Goodbye!"
+    @route("api")
+    def list_users(self):
+        return self.db.execute("SELECT * FROM users")  # inherited from parent
 ```
 
 **Key points**:
 
-- The auto-created router is named "main"
-- Stored internally in `_main_router` to avoid conflicts with your attributes
-- If you define an explicit router, `RoutingClassAuto` uses it instead
-- If you define multiple routers, `default_router` returns `None` (same as `RoutingClass`)
-
-**Rules**:
-
-- If the class has exactly one router: `@route()` works without arguments
-- If the class has multiple routers: `@route()` requires an explicit router name
+- The root sets `self.db = ...` — all children inherit it automatically
+- Any node can override `self.db = other_db` for itself and its subtree
+- Setting `self.db = None` clears the override and falls through to the parent
+- If no `db` is found anywhere in the chain, `AttributeError` is raised
 
 ### Accessing the Default Router
 

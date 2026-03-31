@@ -1823,29 +1823,6 @@ def test_describe_entry_extra_with_plugin_data():
     assert "metadata" not in plugin_info or plugin_info.get("metadata") == {}
 
 
-# --- routing.py:317 - RoutingClassAuto.default_router with existing _main_router ---
-
-
-def test_routing_class_auto_existing_main_router():
-    """Test RoutingClassAuto returns existing _main_router on second call."""
-    from genro_routes import RoutingClassAuto
-
-    class Svc(RoutingClassAuto):
-        @route()
-        def handler(self):
-            return "ok"
-
-    svc = Svc()
-
-    # First access creates _main_router
-    router1 = svc.default_router
-    assert router1 is not None
-
-    # Second access should return same router
-    router2 = svc.default_router
-    assert router2 is router1
-
-
 # --- router_node.py:70->73 - ValidationError is None ---
 
 
