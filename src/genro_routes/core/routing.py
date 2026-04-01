@@ -41,7 +41,6 @@ Example::
 
 from __future__ import annotations
 
-from contextvars import ContextVar
 from fnmatch import fnmatchcase
 from typing import TYPE_CHECKING, Any
 
@@ -50,10 +49,6 @@ from genro_toolbox.typeutils import safe_is_instance
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from .context import RoutingContext
     from .router import Router
-
-_context_var: ContextVar[RoutingContext | None] = ContextVar(
-    "routing_context", default=None
-)
 
 __all__ = ["RoutingClass", "ResultWrapper", "is_routing_class", "is_result_wrapper"]
 
@@ -88,6 +83,7 @@ class RoutingClass:
         _PROXY_ATTR_NAME,
         "__genro_routes_router_registry__",
         "_routing_parent",
+        "_ctx",
         "_capabilities",
     )
 
@@ -149,21 +145,20 @@ class RoutingClass:
         return proxy
 
     @property
-    def context(self) -> RoutingContext | None:
-        """Return the execution context from the current task's ContextVar.
+    def ctx(self) -> RoutingContext | None:
+        """Return the execution context, walking up the parent chain."""
+        result: RoutingContext | None = getattr(self, "_ctx", None)
+        if result is not None:
+            return result
+        parent: RoutingClass | None = getattr(self, "_routing_parent", None)
+        if parent is not None:
+            return parent.ctx
+        return None
 
-        The context is set by the adapter (ASGI, Telegram, etc.) once per
-        task. All RoutingClass instances in the same task share it.
-
-        Returns:
-            The current RoutingContext or None if not set.
-        """
-        return _context_var.get()
-
-    @context.setter
-    def context(self, value: RoutingContext | None) -> None:
-        """Set the execution context for the current task."""
-        _context_var.set(value)
+    @ctx.setter
+    def ctx(self, value: RoutingContext | None) -> None:
+        """Set the execution context on this instance."""
+        object.__setattr__(self, "_ctx", value)
 
     @property
     def default_router(self) -> Any:
