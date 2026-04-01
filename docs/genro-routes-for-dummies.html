@@ -264,6 +264,7 @@
   <button class="tab-btn" data-tab="logging">Logging</button>
   <button class="tab-btn" data-tab="compose">Composition</button>
   <button class="tab-btn" data-tab="context">Context</button>
+  <button class="tab-btn" data-tab="cli">CLI</button>
   <button class="tab-btn" data-tab="cheat">Cheat Sheet</button>
 </nav>
 
@@ -879,32 +880,157 @@ request_ctx = <span class="cls">RoutingContext</span>(parent=app_ctx)
 request_ctx.db = request.state.db
 request_ctx.user = request.state.user</code></pre>
 
-<h3>ContextVar &mdash; shared per task, isolated across tasks</h3>
+<h3>Slot + parent chain &mdash; set once, inherit everywhere</h3>
 
-<p>The context is stored in a <code class="il">ContextVar</code>, not in the instance. This means:</p>
+<p>The context is stored in a <code class="il">_ctx</code> slot on each instance. Reading <code class="il">self.ctx</code> walks up the <code class="il">_routing_parent</code> chain:</p>
 
 <ul>
-  <li><strong>All RoutingClass instances in the same task</strong> share the same context &mdash; <code class="il">app.context</code>, <code class="il">app.users.context</code>, <code class="il">app.orders.context</code> all return the same object</li>
-  <li><strong>Each async task is isolated</strong> &mdash; two concurrent requests never interfere</li>
+  <li><strong>Set it on the root</strong> &mdash; children inherit it automatically via the parent chain</li>
+  <li><strong>Override locally</strong> &mdash; a child can set its own <code class="il">ctx</code> to shadow the parent's</li>
+  <li><strong>Concurrency isolation</strong> is the adapter's job (ContextVar, threading.local, etc.)</li>
 </ul>
 
 <pre><code><span class="cmt"># Adapter sets context once per request</span>
-svc.context = request_ctx
+svc.ctx = request_ctx
 
-<span class="cmt"># Every handler in this task sees it</span>
+<span class="cmt"># Every handler reads it (walks parent chain)</span>
 <span class="kw">@route</span>(<span class="str">"api"</span>)
 <span class="kw">def</span> <span class="fn">list_orders</span>(self):
-    db = self.context.db        <span class="cmt"># from request_ctx (local)</span>
-    user = self.context.user    <span class="cmt"># from request_ctx (local)</span>
-    config = self.context.config  <span class="cmt"># walked up to server_ctx</span>
+    db = self.ctx.db        <span class="cmt"># from request_ctx (local)</span>
+    user = self.ctx.user    <span class="cmt"># from request_ctx (local)</span>
+    config = self.ctx.config  <span class="cmt"># walked up to server_ctx</span>
     <span class="kw">return</span> db.query(<span class="str">"SELECT ..."</span>)
 
 <span class="cmt"># Cleanup</span>
-svc.context = <span class="kw">None</span></code></pre>
+svc.ctx = <span class="kw">None</span></code></pre>
 
 <div class="callout">
-<p><strong>No more DbRoutingClass.</strong> Database connections live in the context now: <code class="il">self.context.db</code>. The parent chain handles propagation &mdash; set it once at the top, read it anywhere below.</p>
+<p><strong>No more DbRoutingClass.</strong> Database connections live in the context now: <code class="il">self.ctx.db</code>. The parent chain handles propagation &mdash; set it once at the top, read it anywhere below.</p>
 </div>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ CLI ═══════════════════════ -->
+<div class="tab-panel" id="tab-cli">
+<div class="content">
+
+<h2>CLI Adapter</h2>
+
+<p>Genro Routes includes a built-in CLI transport adapter. Given any <code class="il">RoutingClass</code>, it generates a full command-line interface with tab completion, help, and typed parameters &mdash; automatically.</p>
+
+<div class="callout">
+<p><strong>Install:</strong> <code class="il">pip install genro-routes[cli]</code></p>
+</div>
+
+<h3>Minimal Script</h3>
+
+<pre><code class="language-python">#!/usr/bin/env python
+from genro_routes import RoutingClass, Router, route
+from genro_routes.cli import RoutingCli
+
+class OrdersAPI(RoutingClass):
+    def __init__(self, label: str):
+        self.label = label
+        self.api = Router(self, name="orders")
+
+    @route("orders")
+    def list(self):
+        """List all orders."""
+        return ["order-1", "order-2"]
+
+    @route("orders")
+    def retrieve(self, ident: str):
+        """Retrieve a single order."""
+        return f"{self.label}:{ident}"
+
+cli = RoutingCli(OrdersAPI("acme"))
+cli.run()</code></pre>
+
+<h3>What You Get</h3>
+
+<pre><code class="language-bash">$ orders --help
+Usage: ordersapi [OPTIONS] COMMAND [ARGS]...
+
+Commands:
+  list      List all orders.
+  retrieve  Retrieve a single order.
+
+$ orders list
+["order-1", "order-2"]
+
+$ orders retrieve 42
+acme:42
+
+$ orders retrieve --help
+Usage: ordersapi retrieve [OPTIONS] IDENT
+...</code></pre>
+
+<h3>How It Maps</h3>
+
+<table>
+  <tr><th>genro-routes concept</th><th>CLI equivalent</th></tr>
+  <tr><td>Router</td><td>Command group (subcommand namespace)</td></tr>
+  <tr><td>Handler (entry)</td><td>Command</td></tr>
+  <tr><td>Parameter without default</td><td>Positional argument</td></tr>
+  <tr><td>Parameter with default</td><td><code class="il">--option</code></td></tr>
+  <tr><td><code class="il">bool</code> parameter</td><td><code class="il">--flag/--no-flag</code></td></tr>
+  <tr><td><code class="il">Literal["a","b"]</code></td><td><code class="il">--choice {a,b}</code></td></tr>
+  <tr><td><code class="il">Enum</code></td><td><code class="il">--choice {NAME,...}</code></td></tr>
+  <tr><td><code class="il">list[str]</code></td><td><code class="il">--items a --items b</code> (multiple)</td></tr>
+  <tr><td>Child router (attach_instance)</td><td>Nested sub-group</td></tr>
+  <tr><td>Handler docstring</td><td>Command help text</td></tr>
+</table>
+
+<h3>Multiple Routers</h3>
+
+<p>With a single router, entries are commands at root level. With multiple routers, each becomes a sub-group:</p>
+
+<pre><code class="language-bash"># Single router:
+$ myapp list
+$ myapp retrieve 42
+
+# Multiple routers:
+$ myapp api list
+$ myapp admin reset</code></pre>
+
+<h3>Tab Completion</h3>
+
+<p>Click provides native shell completion. Activate it once:</p>
+
+<pre><code class="language-bash"># bash
+eval "$(_MYAPP_COMPLETE=bash_source myapp)"
+
+# zsh
+eval "$(_MYAPP_COMPLETE=zsh_source myapp)"
+
+# fish
+_MYAPP_COMPLETE=fish_source myapp | source</code></pre>
+
+<p>Then <kbd>TAB</kbd> works for commands, sub-commands, options, and choices.</p>
+
+<h3>Output Formats</h3>
+
+<pre><code class="language-python"># Default: auto (strings direct, dicts/lists as JSON)
+cli = RoutingCli(MyService)
+
+# Force JSON for everything
+cli = RoutingCli(MyService, output_format="json")
+
+# Table format (uses rich if installed, otherwise JSON)
+cli = RoutingCli(MyService, output_format="table")
+
+# Raw repr()
+cli = RoutingCli(MyService, output_format="raw")</code></pre>
+
+<h3>Class vs Instance</h3>
+
+<pre><code class="language-python"># Pass a class — instantiated without arguments
+cli = RoutingCli(MyService)
+
+# Pass an instance — full control over initialization
+svc = MyService(db=connect(), config=load_config())
+cli = RoutingCli(svc)</code></pre>
 
 </div>
 </div>
@@ -945,9 +1071,9 @@ svc.context = <span class="kw">None</span></code></pre>
   <tr><td>Create a context</td><td><code class="il">ctx = RoutingContext()</code></td></tr>
   <tr><td>Attach state to the context</td><td><code class="il">ctx.db = conn; ctx.user = user</code></td></tr>
   <tr><td>Create a child context (inherits parent)</td><td><code class="il">child = RoutingContext(parent=ctx)</code></td></tr>
-  <tr><td>Set context for current task</td><td><code class="il">svc.context = ctx</code></td></tr>
-  <tr><td>Read context from a handler</td><td><code class="il">self.context.db</code></td></tr>
-  <tr><td>Clear context after request</td><td><code class="il">svc.context = None</code></td></tr>
+  <tr><td>Set context on root instance</td><td><code class="il">svc.ctx = ctx</code></td></tr>
+  <tr><td>Read context from a handler</td><td><code class="il">self.ctx.db</code></td></tr>
+  <tr><td>Clear context (fall through to parent)</td><td><code class="il">svc.ctx = None</code></td></tr>
 </table>
 
 <h3>Composition</h3>
@@ -960,6 +1086,16 @@ svc.context = <span class="kw">None</span></code></pre>
   <tr><td>Auto-propagate db to children</td><td>Set <code class="il">ctx.db = conn</code> on <code class="il">RoutingContext</code> — parent chain handles propagation</td></tr>
   <tr><td>Filter by user permissions</td><td><code class="il">svc.api.nodes(auth_tags="admin")</code></td></tr>
   <tr><td>Filter by system capabilities</td><td><code class="il">svc.api.nodes(env_capabilities="redis")</code></td></tr>
+</table>
+
+<h3>CLI</h3>
+<table>
+  <tr><th>I want to...</th><th>Code</th></tr>
+  <tr><td>Create a CLI from my RoutingClass</td><td><code class="il">RoutingCli(MyService).run()</code></td></tr>
+  <tr><td>Pass a pre-configured instance</td><td><code class="il">RoutingCli(MyService(config=cfg)).run()</code></td></tr>
+  <tr><td>Force JSON output</td><td><code class="il">RoutingCli(MyService, output_format="json")</code></td></tr>
+  <tr><td>Enable bash tab completion</td><td><code class="il">eval "$(_MYAPP_COMPLETE=bash_source myapp)"</code></td></tr>
+  <tr><td>Get the click Group for testing</td><td><code class="il">cli.click_group</code></td></tr>
 </table>
 
 <h3>Exceptions</h3>

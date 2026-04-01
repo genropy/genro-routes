@@ -100,10 +100,10 @@ assert t.table.node("remove")(1) == "removed:1"
 
 ## Database Access via Context
 
-Handlers access shared state (database, user, session) through `self.context`.
+Handlers access shared state (database, user, session) through `self.ctx`.
 The adapter creates a `RoutingContext`, attaches what it needs, and sets it
 on any `RoutingClass` instance — all instances in the same task share it
-via `ContextVar`.
+via the `_routing_parent` chain.
 
 ```python
 from genro_routes import RoutingClass, RoutingContext, Router, route
@@ -114,7 +114,7 @@ class UsersModule(RoutingClass):
 
     @route("api")
     def list_users(self):
-        return self.context.db.execute("SELECT * FROM users")
+        return self.ctx.db.execute("SELECT * FROM users")
 
 # Adapter creates a layered context:
 server_ctx = RoutingContext()
@@ -129,23 +129,23 @@ request_ctx.user = current_user
 
 # Set it — now every handler in this task sees it
 svc = UsersModule()
-svc.context = request_ctx
+svc.ctx = request_ctx
 
 # Handler reads:
-#   self.context.db      → local (request_ctx)
-#   self.context.config  → walks up to server_ctx
+#   self.ctx.db      → local (request_ctx)
+#   self.ctx.config  → walks up to server_ctx
 ```
 
 **Key points**:
 
 - `RoutingContext` has no required properties — attach any attribute freely
 - `RoutingContext(parent=...)` creates layered contexts; missing attributes walk up the chain
-- `svc.context = ctx` writes to a `ContextVar` — safe for concurrent async tasks
-- All `RoutingClass` instances in the same task share the same context
-- `svc.context = None` clears the context (use in a `finally` block)
+- `svc.ctx = ctx` stores the context on the instance slot
+- Child instances walk up the `_routing_parent` chain to find the context
+- `svc.ctx = None` clears the local slot (children fall through to parent)
 
 See the **[Execution Context Guide](context.md)** for the full explanation
-including adapter patterns, subclassing, and ContextVar internals.
+including adapter patterns and subclassing.
 
 ### Accessing the Default Router
 
@@ -614,8 +614,8 @@ See the **[Execution Context Guide](context.md)** for the complete reference.
 
 Quick summary: `RoutingContext` is an extensible container with parent chain
 delegation. Adapters create layered contexts (server → app → request), set
-them via `svc.context = ctx` (stored in a `ContextVar`), and handlers read
-shared state with `self.context.db`, `self.context.user`, etc. Missing
+them via `svc.ctx = ctx` (stored in a the `_routing_parent` chain), and handlers read
+shared state with `self.ctx.db`, `self.ctx.user`, etc. Missing
 attributes walk up the parent chain automatically.
 
 ## Wrapping Handler Results

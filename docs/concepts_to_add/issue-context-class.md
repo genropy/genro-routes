@@ -85,8 +85,8 @@ class Context(ABC):
 class OrderService(RoutingClass):
     @route("api")
     def create_order(self, items):
-        db = self.context.db
-        user = self.context.user
+        db = self.ctx.db
+        user = self.ctx.user
         # ...
 ```
 
@@ -97,7 +97,7 @@ class OrderService(RoutingClass):
 | Sync | Instance attribute `_context` | Set by adapter before call |
 | Async | `ContextVar` | Set by adapter, isolated per task |
 
-The `self.context` property handles this transparently.
+The `self.ctx` property handles this transparently.
 
 ## Execution Plan
 

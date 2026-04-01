@@ -1219,8 +1219,8 @@ def test_routing_class_result_wrapper_method():
     assert result.metadata == {"mime_type": "application/json"}
 
 
-def test_routing_class_context_property():
-    """Test RoutingClass.context getter and setter via ContextVar."""
+def test_routing_class_ctx_property():
+    """Test RoutingClass.ctx getter and setter via slot + parent chain."""
     from genro_routes.core.context import RoutingContext
 
     class Svc(RoutingClass):
@@ -1229,42 +1229,44 @@ def test_routing_class_context_property():
 
     svc = Svc()
 
-    # Initially None (ContextVar default)
-    assert svc.context is None
+    # Initially None (slot not set)
+    assert svc.ctx is None
 
-    # Set context
+    # Set ctx
     ctx = RoutingContext()
     ctx.user = "test_user"
-    svc.context = ctx
-    assert svc.context is ctx
-    assert svc.context.user == "test_user"
+    svc.ctx = ctx
+    assert svc.ctx is ctx
+    assert svc.ctx.user == "test_user"
 
-    # Clear context
-    svc.context = None
-    assert svc.context is None
+    # Clear ctx
+    svc.ctx = None
+    assert svc.ctx is None
 
 
-def test_routing_class_context_shared_across_instances():
-    """All RoutingClass instances in the same task see the same ContextVar."""
+def test_routing_class_ctx_parent_chain():
+    """Child walks up _routing_parent chain for ctx."""
     from genro_routes.core.context import RoutingContext
 
-    class Svc(RoutingClass):
+    class Parent(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
 
-    svc_a = Svc()
-    svc_b = Svc()
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    parent = Parent()
+    child = Child()
+    parent.api.attach_instance(child, name="child")
 
     ctx = RoutingContext()
     ctx.db = "shared_db"
-    svc_a.context = ctx
+    parent.ctx = ctx
 
-    # svc_b sees the same context (same ContextVar, same task)
-    assert svc_b.context is ctx
-    assert svc_b.context.db == "shared_db"
-
-    # Cleanup
-    svc_a.context = None
+    # Child walks up to parent's ctx
+    assert child.ctx is ctx
+    assert child.ctx.db == "shared_db"
 
 
 def test_plugin_on_parent_config_changed_propagates():

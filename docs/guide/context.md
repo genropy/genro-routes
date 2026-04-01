@@ -60,43 +60,40 @@ request_ctx.config = override   # only this request sees the override
 server_ctx.config               # unchanged
 ```
 
-## ContextVar — one context per task
+## Slot + parent chain — instance-scoped context
 
-The context is stored in a `ContextVar`, not in the `RoutingClass` instance.
-This means:
+The context is stored in a `_ctx` slot on each `RoutingClass` instance.
+Reading `self.ctx` walks up the `_routing_parent` chain until it finds a
+non-None value — the same pattern used by `_routing_parent` itself.
 
-- **All `RoutingClass` instances in the same task share the same context.**
-  Whether you read `self.context` from `app`, `app.users`, or
-  `app.users.orders` — you get the same object.
-
-- **Each async task is isolated.**  Two concurrent requests each get their
-  own `ContextVar` value, so `request_A.context` and `request_B.context`
-  never interfere.
-
-- **Works in sync too.**  In a synchronous (single-threaded) application,
-  there is one task, one context — everything just works.
+- **Set it on the root** — children inherit it automatically via the parent chain.
+- **Override locally** — a child can set its own `ctx` to shadow the parent's.
+- **Clear locally** — setting `child.ctx = None` makes it fall through to the parent again.
 
 ### How it works under the hood
 
 ```python
 # In routing.py (simplified)
-from contextvars import ContextVar
-
-_context_var: ContextVar[RoutingContext | None] = ContextVar(
-    "routing_context", default=None
-)
-
 class RoutingClass:
-    @property
-    def context(self):
-        return _context_var.get()
+    __slots__ = (..., "_ctx", ...)
 
-    @context.setter
-    def context(self, value):
-        _context_var.set(value)
+    @property
+    def ctx(self):
+        result = getattr(self, "_ctx", None)
+        if result is not None:
+            return result
+        parent = getattr(self, "_routing_parent", None)
+        if parent is not None:
+            return parent.ctx
+        return None
+
+    @ctx.setter
+    def ctx(self, value):
+        object.__setattr__(self, "_ctx", value)
 ```
 
-The setter accepts any value — there is no type check.
+Concurrency isolation (ContextVar for async, threading.local for threads) is
+the adapter's responsibility, not genro-routes'.
 
 ## Adapter usage pattern
 
@@ -113,21 +110,21 @@ async def dispatch(request, service):
     ctx.session = request.state.session
 
     # Set it — now every RoutingClass in this task sees it
-    service.context = ctx
+    service.ctx = ctx
     try:
         result = await service.api.call("some_handler", ...)
     finally:
-        service.context = None   # cleanup for this task
+        service.ctx = None   # cleanup for this task
 ```
 
-After `service.context = ctx`, any handler can do:
+After `service.ctx = ctx`, any handler can do:
 
 ```python
 @route("api")
 def list_orders(self):
-    db = self.context.db          # from request_ctx (local)
-    user = self.context.user      # from request_ctx (local)
-    config = self.context.config  # from server_ctx (walked up)
+    db = self.ctx.db          # from request_ctx (local)
+    user = self.ctx.user      # from request_ctx (local)
+    config = self.ctx.config  # from server_ctx (walked up)
     return db.query(...)
 ```
 
@@ -145,12 +142,12 @@ class MyServer(DbRoutingClass):
 # New pattern
 server_ctx = RoutingContext()
 server_ctx.db = db_connection
-svc.context = server_ctx
+svc.ctx = server_ctx
 
 # Handler access — same as before
 @route("api")
 def query(self):
-    return self.context.db.execute("SELECT 1")
+    return self.ctx.db.execute("SELECT 1")
 ```
 
 If the adapter creates layered contexts, child contexts inherit `db` from
@@ -186,8 +183,8 @@ coexist.
 |---------|-------------|
 | **RoutingContext** | Simple object with free `__dict__` — attach any attribute |
 | **Parent chain** | `RoutingContext(parent=...)` — missing attributes walk up |
-| **ContextVar** | One context per async task — all RoutingClass instances share it |
-| **Setting context** | `svc.context = ctx` writes to the ContextVar |
-| **Reading context** | `self.context.db` reads from the ContextVar, then walks parent chain |
-| **Cleanup** | `svc.context = None` in a `finally` block |
-| **Database access** | `self.context.db` — no more DbRoutingClass |
+| **Slot + parent chain** | `ctx` walks up `_routing_parent` until it finds a non-None value |
+| **Setting context** | `svc.ctx = ctx` stores on the instance slot |
+| **Reading context** | `self.ctx.db` reads from local slot or walks parent chain |
+| **Cleanup** | `svc.ctx = None` clears local, falls through to parent |
+| **Database access** | `self.ctx.db` — no more DbRoutingClass |

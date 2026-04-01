@@ -26,7 +26,8 @@ Per ogni modulo spiega **cosa fa**, **come funziona** e soprattutto
 10. [I plugin built-in](#10-i-plugin-built-in)
 11. [Eccezioni](#11-eccezioni)
 12. [Pattern non standard — riepilogo ragionato](#12-pattern-non-standard--riepilogo-ragionato)
-13. [Glossario rapido](#13-glossario-rapido)
+13. [Il CLI adapter](#13-il-cli-adapter)
+14. [Glossario rapido](#14-glossario-rapido)
 
 ---
 
@@ -71,6 +72,11 @@ src/genro_routes/
 │   ├── router_node.py       ← wrapper callable restituito da node()
 │   ├── router.py            ← estende BaseRouter con plugin e middleware
 │   └── routing.py           ← RoutingClass mixin + _RoutingProxy
+├── cli/
+│   ├── __init__.py          ← RoutingCli — API pubblica del CLI adapter
+│   ├── _builder.py          ← CliBuilder — genera albero click da nodes()
+│   ├── _type_map.py         ← ParamConverter — tipi Python → click
+│   └── _formatters.py       ← OutputFormatter — JSON / table / raw
 └── plugins/
     ├── __init__.py           ← solo docstring, nessun import
     ├── _base_plugin.py       ← MethodEntry + BasePlugin + _wrap_configure
@@ -435,26 +441,26 @@ svc.routing.configure("api:auth/admin_*", rule="admin")
 
 Il selettore supporta glob pattern (`fnmatchcase`).
 
-### 7.5 `context` property — ContextVar per-task
+### 7.5 `ctx` property — slot + parent chain
 
 Il context (`RoutingContext`) viene settato dall'adapter (ASGI, ecc.)
-e memorizzato in una `ContextVar` a livello modulo. Tutte le istanze
-RoutingClass nello stesso task condividono lo stesso context:
+nello slot `_ctx` dell'istanza. La lettura risale la catena
+`_routing_parent` — lo stesso pattern usato da `_routing_parent` stesso:
 
 ```python
-from contextvars import ContextVar
-
-_context_var: ContextVar[RoutingContext | None] = ContextVar(
-    "routing_context", default=None
-)
-
 @property
-def context(self):
-    return _context_var.get()
+def ctx(self):
+    result = getattr(self, "_ctx", None)
+    if result is not None:
+        return result
+    parent = getattr(self, "_routing_parent", None)
+    if parent is not None:
+        return parent.ctx
+    return None
 
-@context.setter
-def context(self, value):
-    _context_var.set(value)
+@ctx.setter
+def ctx(self, value):
+    object.__setattr__(self, "_ctx", value)
 ```
 
 La stratificazione (server → app → request) è gestita dal parent chain
@@ -470,10 +476,13 @@ app_ctx.app = app
 ctx = RoutingContext(parent=app_ctx)
 ctx.db = db_connection
 
-svc.context = ctx
-# svc.context.db → locale
-# svc.context.server → risale il parent chain fino a server_ctx
+svc.ctx = ctx
+# svc.ctx.db → locale
+# svc.ctx.server → risale il parent chain fino a server_ctx
 ```
+
+L'isolamento per concorrenza (ContextVar per async, threading.local per
+thread) è responsabilità dell'adapter, non di genro-routes.
 
 ---
 
@@ -889,7 +898,63 @@ una feature viene attivata, ecc.).
 
 ---
 
-## 13. Glossario rapido
+## 13. Il CLI adapter
+
+**Package**: `cli/` (4 file, ~250 righe)
+
+Il CLI adapter è un **transport adapter** come genro-asgi, ma per la riga
+di comando. Data una RoutingClass, genera automaticamente un'interfaccia
+click completa con tab-completion, help e parametri tipizzati.
+
+```python
+from genro_routes.cli import RoutingCli
+
+cli = RoutingCli(MyService)
+cli.run()
+```
+
+### Architettura interna
+
+Il flusso è: **RoutingCli → CliBuilder → click.Group tree**.
+
+1. `RoutingCli` (`__init__.py`) — accetta una classe o un'istanza. Se
+   riceve una classe la istanzia senza argomenti. Delega a `CliBuilder`.
+
+2. `CliBuilder` (`_builder.py`) — chiama `router.nodes()` e percorre
+   ricorsivamente l'output:
+   - Un solo router → le entry diventano comandi diretti sul group root
+   - Più router → ogni router diventa un sotto-gruppo
+   - I child router (`routers` in nodes) diventano sotto-gruppi annidati
+   - I nomi vengono convertiti da `snake_case` a `kebab-case` (convenzione CLI)
+
+3. `ParamConverter` (`_type_map.py`) — mappa `inspect.Parameter` + type
+   hint a parametri click:
+   - Nessun default → `click.Argument` (posizionale)
+   - Con default → `click.Option` (`--nome`)
+   - `bool` → flag (`--verbose/--no-verbose`)
+   - `Literal` / `Enum` → `click.Choice`
+   - `list[X]` → `multiple=True`
+   - `dict` / tipi complessi → stringa JSON
+
+4. `OutputFormatter` (`_formatters.py`) — formatta il valore di ritorno
+   dell'handler: `auto` (str diretto, JSON per dict/list), `json`,
+   `table` (rich se disponibile), `raw`.
+
+### Scelte progettuali del CLI
+
+- **Non è un plugin**: il CLI non aggiunge comportamento agli handler,
+  li invoca. È un adapter esterno come genro-asgi.
+- **click come dipendenza opzionale**: `pip install genro-routes[cli]`.
+  L'import di `genro_routes.cli` fallisce con `ImportError` se click
+  non è installato.
+- **Enum roundtrip**: click `Choice` restituisce stringhe. Il callback
+  riconverte le stringhe in membri Enum prima di invocare l'handler.
+- **Handler async**: rilevati con `inspect.iscoroutinefunction`,
+  invocati con `asyncio.run()`.
+
+---
+
+## 14. Glossario rapido
 
 | Termine | Significato |
 |---------|-------------|
@@ -905,6 +970,7 @@ una feature viene attivata, ecc.).
 | **Plugin store** | `Router._plugin_info` — configurazione per-plugin per-entry |
 | **CapabilitiesSet** | Set di feature flags dinamici valutati a runtime |
 | **Transport adapter** | Pacchetto esterno che mappa un protocollo a `node()` |
+| **RoutingCli** | CLI adapter built-in che genera comandi click da `nodes()` |
 
 ---
 
@@ -918,9 +984,12 @@ una feature viene attivata, ecc.).
 6. `core/routing.py` — 572 righe, il mixin e il proxy
 7. `core/router.py` — 549 righe, plugin pipeline
 8. I plugin in qualsiasi ordine
+9. `cli/__init__.py` → `cli/_builder.py` — il CLI adapter
 
 **Per i test**, inizia da:
+
 - `test_router_basic.py` — uso base
 - `test_node_resolution.py` — come funziona la risoluzione dei path
 - `test_auth_plugin.py` — il sistema di autorizzazione
 - `test_env_plugin.py` — le capabilities dinamiche
+- `test_cli.py` — il CLI adapter

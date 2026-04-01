@@ -200,20 +200,20 @@ class OrderService(RoutingClass):
 
     @route("api")
     def list_orders(self):
-        return self.context.db.query("SELECT * FROM orders")
+        return self.ctx.db.query("SELECT * FROM orders")
 
 # Create a context and set it
 ctx = RoutingContext()
 ctx.db = my_database
 
 svc = OrderService()
-svc.context = ctx
-svc.api.node("list_orders")()  # handler reads self.context.db
+svc.ctx = ctx
+svc.api.node("list_orders")()  # handler reads self.ctx.db
 ```
 
 Contexts can be layered with `RoutingContext(parent=parent_ctx)` — missing
-attributes walk up the chain. The context is stored in a `ContextVar`, so
-it's safe for concurrent async tasks.
+attributes walk up the chain. The context is stored in a `_ctx` slot and
+walks up the `_routing_parent` chain — children inherit it automatically.
 
 See the **[Execution Context Guide](guide/context.md)** for the full reference.
 

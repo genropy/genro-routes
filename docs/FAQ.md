@@ -553,7 +553,7 @@ def test_router_integration():
 
 **Question**: My handlers need access to a database connection, the current user, or session data. How do I provide this without coupling to a specific adapter?
 
-**Answer**: Use `RoutingContext`. The adapter creates a context, attaches what it needs, and sets it on any `RoutingClass` instance. All handlers read it via `self.context`:
+**Answer**: Use `RoutingContext`. The adapter creates a context, attaches what it needs, and sets it on any `RoutingClass` instance. All handlers read it via `self.ctx`:
 
 ```python
 from genro_routes import RoutingClass, RoutingContext, Router, route
@@ -564,7 +564,7 @@ class OrderService(RoutingClass):
 
     @route("api")
     def list_orders(self):
-        return self.context.db.query("SELECT * FROM orders")
+        return self.ctx.db.query("SELECT * FROM orders")
 
 # Adapter sets up context
 ctx = RoutingContext()
@@ -572,7 +572,7 @@ ctx.db = db_connection
 ctx.user = current_user
 
 svc = OrderService()
-svc.context = ctx  # stored in ContextVar — all instances in this task see it
+svc.ctx = ctx  # stored in _ctx slot — children inherit via parent chain
 ```
 
 For layered contexts (server → app → request), use `RoutingContext(parent=parent_ctx)` — missing attributes walk up the parent chain automatically.
@@ -594,17 +594,17 @@ class MyServer(DbRoutingClass):
 # New
 ctx = RoutingContext()
 ctx.db = db_connection
-svc.context = ctx
-# Handlers: self.context.db
+svc.ctx = ctx
+# Handlers: self.ctx.db
 ```
 
-The parent chain in `RoutingContext` provides the same propagation behavior — set `db` once at the top level, and all handlers read it via `self.context.db`.
+The parent chain in `RoutingContext` provides the same propagation behavior — set `db` once at the top level, and all handlers read it via `self.ctx.db`.
 
 ## Useful Links
 
 - **[Quick Start](quickstart.md)** - Get started in 5 minutes
 - **[Basic Usage](guide/basic-usage.md)** - Fundamental concepts
-- **[Execution Context](guide/context.md)** - RoutingContext, parent chain, ContextVar
+- **[Execution Context](guide/context.md)** - RoutingContext, parent chain, slot-based ctx
 - **[Plugin Guide](guide/plugins.md)** - Plugin development
 - **[Hierarchies](guide/hierarchies.md)** - Nested routing
 - **[API Reference](api/reference.md)** - Complete documentation

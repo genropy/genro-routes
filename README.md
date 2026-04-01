@@ -35,8 +35,8 @@ This separation enables:
 ## Use Cases
 
 - **HTTP APIs** - Via [genro-asgi](https://github.com/genropy/genro-asgi) adapter
+- **CLI tools** - Via the built-in `RoutingCli` adapter (see below)
 - **Internal services** - Direct method invocation with plugin pipeline
-- **CLI tools** - Map commands to router entries
 - **Admin dashboards** - Runtime introspection for dynamic UIs
 
 ## Key Features
@@ -121,10 +121,63 @@ We provide a comprehensive gallery of examples in the [examples/](https://github
 
 Read our guide on **[Why wrap a library with Genro-Routes?](https://github.com/genropy/genro-routes/blob/main/examples/WHY_GENRO_ROUTES.md)** for more specialized insights.
 
+## CLI Adapter
+
+Expose any RoutingClass as a full-featured command-line tool with tab completion, help, and typed parameters — automatically generated from router introspection.
+
+```bash
+pip install genro-routes[cli]
+```
+
+```python
+#!/usr/bin/env python
+from genro_routes.cli import RoutingCli
+from myapp import OrdersAPI
+
+cli = RoutingCli(OrdersAPI("acme"))
+cli.run()
+```
+
+```bash
+$ myapp list                        # call handler directly
+["order-1", "order-2"]
+
+$ myapp retrieve 42                 # positional arguments
+acme:42
+
+$ myapp --help                      # auto-generated help
+Usage: myapp [OPTIONS] COMMAND [ARGS]...
+
+Commands:
+  create    Create a new order.
+  list      List all orders.
+  retrieve  Retrieve a single order.
+
+$ myapp retrieve --help             # per-command help with types
+Usage: myapp retrieve [OPTIONS] IDENT
+
+Arguments:
+  IDENT  (str)
+```
+
+Features:
+
+- **Routers become command groups** - Multiple routers create nested subcommands
+- **Parameters from signatures** - Type hints map to click types (int, bool flags, Choice for Literal/Enum, multiple for list)
+- **Tab completion** - Native bash/zsh/fish via click (`eval "$(_MYAPP_COMPLETE=bash_source myapp)"`)
+- **Output formatting** - Auto (JSON for dicts, plain for strings), or force `json`/`table`/`raw`
+- **Accepts class or instance** - `RoutingCli(MyClass)` or `RoutingCli(MyClass(config=cfg))`
+
 ## Installation
 
 ```bash
 pip install genro-routes
+```
+
+With CLI support:
+
+```bash
+pip install genro-routes[cli]
 ```
 
 For development:
@@ -175,7 +228,7 @@ Supported types: `TypedDict`, `dict[str, int]`, `list[...]`, `str`, `int`, `bool
 - **`Router`** - Runtime router bound directly to an object via `Router(self, name="api")`
 - **`@route("name")`** - Decorator that marks bound methods for the router with the matching name
 - **`RoutingClass`** - Mixin that tracks routers per instance and exposes the `routing` proxy
-- **`RoutingContext`** - Extensible execution context with parent chain delegation. Attach any attribute (`ctx.db`, `ctx.user`, `ctx.session`); missing lookups walk up `RoutingContext(parent=...)`. Stored in a `ContextVar` — all RoutingClass instances in the same task share it, async tasks are isolated. See [Execution Context Guide](docs/guide/context.md).
+- **`RoutingContext`** - Extensible execution context with parent chain delegation. Attach any attribute (`ctx.db`, `ctx.user`, `ctx.session`); missing lookups walk up `RoutingContext(parent=...)`. Stored in a `_ctx` slot on each instance — children inherit via `_routing_parent` chain. See [Execution Context Guide](docs/guide/context.md).
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
 - **`obj.routing`** - Proxy exposed by every RoutingClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
 - **`RouterNode`** - Callable wrapper returned by `node()`, with `path`, `error`, `doc`, `metadata` properties.
@@ -204,7 +257,7 @@ See [Why One Name Per Operation](docs/guide/why-one-name-per-operation.md) for t
 
 - **[Full Documentation](https://genro-routes.readthedocs.io/)** - Complete guides, tutorials, and API reference
 - **[Quick Start](docs/quickstart.md)** - Get started in 5 minutes
-- **[Execution Context](docs/guide/context.md)** - RoutingContext, parent chain, ContextVar
+- **[Execution Context](docs/guide/context.md)** - RoutingContext, parent chain, slot-based ctx
 - **[FAQ](docs/FAQ.md)** - Common questions and answers
 
 ## Testing
@@ -232,6 +285,11 @@ genro-routes/
 │   │   ├── context.py       # RoutingContext (extensible execution context)
 │   │   ├── decorators.py    # @route decorator
 │   │   └── routing.py       # RoutingClass, ResultWrapper
+│   ├── cli/                 # CLI transport adapter
+│   │   ├── __init__.py      # RoutingCli (public API)
+│   │   ├── _builder.py      # CliBuilder (click tree from nodes())
+│   │   ├── _type_map.py     # ParamConverter (Python → click types)
+│   │   └── _formatters.py   # OutputFormatter (JSON/table/raw)
 │   └── plugins/             # Built-in plugins
 │       ├── _base_plugin.py  # BasePlugin, MethodEntry
 │       ├── logging.py       # LoggingPlugin
@@ -261,7 +319,6 @@ Genro Routes is currently in **beta**. The core API is stable with complete docu
 
 - **[genro-asgi](https://github.com/genropy/genro-asgi)** - ASGI adapter for HTTP exposure (in development)
 - Additional plugins (async, storage, audit trail, metrics)
-- CLI adapter for command-line exposure
 - Example applications and use cases
 
 ## Contributing

@@ -1,6 +1,18 @@
-"""Tests for RoutingContext and ContextVar-based context in RoutingClass."""
+# Copyright 2025 Softwell S.r.l.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-import contextvars
+"""Tests for RoutingContext and slot-based ctx property on RoutingClass."""
 
 import pytest
 
@@ -71,20 +83,20 @@ class TestRoutingContextAttributes:
             _ = ctx.anything
 
 
-class TestContextVar:
-    """Test ContextVar-based context on RoutingClass."""
+class TestCtxSlot:
+    """Test slot-based ctx property on RoutingClass."""
 
     def test_default_none(self):
-        """Context is None when not set."""
+        """ctx returns None when not set."""
         class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
         svc = Svc()
-        assert svc.context is None
+        assert svc.ctx is None
 
     def test_set_and_get(self):
-        """Set and get context via property."""
+        """Set and get ctx via property."""
         class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
@@ -92,64 +104,119 @@ class TestContextVar:
         svc = Svc()
         ctx = RoutingContext()
         ctx.db = "test_db"
-        svc.context = ctx
-        assert svc.context is ctx
-        assert svc.context.db == "test_db"
-        svc.context = None
+        svc.ctx = ctx
+        assert svc.ctx is ctx
+        assert svc.ctx.db == "test_db"
 
-    def test_shared_across_instances(self):
-        """Two RoutingClass instances in same task share the ContextVar."""
-        class SvcA(RoutingClass):
+    def test_clear_ctx(self):
+        """Setting ctx to None clears the local slot."""
+        class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
-        class SvcB(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-        a = SvcA()
-        b = SvcB()
+        svc = Svc()
         ctx = RoutingContext()
-        a.context = ctx
-        assert b.context is ctx
-        a.context = None
+        svc.ctx = ctx
+        assert svc.ctx is ctx
+        svc.ctx = None
+        assert svc.ctx is None
 
-    def test_isolation_via_copy_context(self):
-        """ContextVar isolates across contextvars.copy_context() runs."""
+    def test_parent_chain_lookup(self):
+        """ctx walks up _routing_parent chain."""
+        class Parent(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        class Child(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        parent = Parent()
+        child = Child()
+        parent.api.attach_instance(child, name="child")
+
+        ctx = RoutingContext()
+        ctx.db = "shared_db"
+        parent.ctx = ctx
+
+        # Child walks up to parent's ctx
+        assert child.ctx is ctx
+        assert child.ctx.db == "shared_db"
+
+    def test_child_override(self):
+        """Child can set its own ctx, overriding parent's."""
+        class Parent(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        class Child(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        parent = Parent()
+        child = Child()
+        parent.api.attach_instance(child, name="child")
+
+        parent_ctx = RoutingContext()
+        parent_ctx.label = "parent"
+        parent.ctx = parent_ctx
+
+        child_ctx = RoutingContext()
+        child_ctx.label = "child"
+        child.ctx = child_ctx
+
+        assert parent.ctx.label == "parent"
+        assert child.ctx.label == "child"
+
+    def test_clear_child_falls_through_to_parent(self):
+        """Clearing child's ctx makes it fall through to parent."""
+        class Parent(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        class Child(RoutingClass):
+            def __init__(self):
+                self.api = Router(self, name="api")
+
+        parent = Parent()
+        child = Child()
+        parent.api.attach_instance(child, name="child")
+
+        parent_ctx = RoutingContext()
+        parent_ctx.label = "parent"
+        parent.ctx = parent_ctx
+
+        child_ctx = RoutingContext()
+        child_ctx.label = "child"
+        child.ctx = child_ctx
+        assert child.ctx.label == "child"
+
+        # Clear child's local ctx
+        child.ctx = None
+        # Falls through to parent
+        assert child.ctx is parent_ctx
+        assert child.ctx.label == "parent"
+
+    def test_instances_are_independent(self):
+        """Two unrelated instances have independent ctx slots."""
         class Svc(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api")
 
-        svc = Svc()
-        outer_ctx = RoutingContext()
-        outer_ctx.label = "outer"
-        svc.context = outer_ctx
+        a = Svc()
+        b = Svc()
 
-        inner_seen = []
+        ctx_a = RoutingContext()
+        ctx_a.label = "a"
+        a.ctx = ctx_a
 
-        def run_in_copy():
-            inner_ctx = RoutingContext()
-            inner_ctx.label = "inner"
-            svc.context = inner_ctx
-            inner_seen.append(svc.context.label)
+        # b does not see a's ctx (no parent chain between them)
+        assert b.ctx is None
+        assert a.ctx.label == "a"
 
-        ctx_copy = contextvars.copy_context()
-        ctx_copy.run(run_in_copy)
-
-        # Inner saw its own context
-        assert inner_seen == ["inner"]
-        # Outer context unchanged
-        assert svc.context is outer_ctx
-        assert svc.context.label == "outer"
-        svc.context = None
-
-    def test_accepts_any_value(self):
-        """Setter accepts any value, no type check."""
-        class Svc(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-        svc = Svc()
-        svc.context = "not a RoutingContext"
-        assert svc.context == "not a RoutingContext"
-        svc.context = None
+    def test_no_contextvar_import(self):
+        """Verify ContextVar is not imported in routing.py."""
+        import genro_routes.core.routing as mod
+        source = open(mod.__file__).read()
+        assert "from contextvars" not in source
+        assert "ContextVar" not in source

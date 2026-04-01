@@ -85,7 +85,7 @@ When `RoutingContext` is set, `AuthPlugin` can automatically read `avatar.tags`:
 
 ```python
 # Adapter sets context
-app.context = ASGIContext(request, app, server)
+app.ctx = ASGIContext(request, app, server)
 
 # avatar.tags comes from authentication middleware
 # context.avatar.tags = {"admin", "hr"}

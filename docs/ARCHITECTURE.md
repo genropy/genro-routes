@@ -172,6 +172,42 @@ graph LR
 - `plugin_info` is included for routers; entries can mirror plugin info if desired, but the authoritative store is on the router.
 
 ## Admin/CLI/UI implications
+
 - You can render a full tree (routers → children → handlers) with plugin config shown from `plugin_info`.
 - Updates can target router-level or per-entry config and take effect immediately if plugins read config live.
 - Locals are for plugin-owned runtime data; treat them as non-config state.
+
+## CLI transport adapter
+
+The `cli/` package is a built-in transport adapter that generates a click command tree from router introspection.
+
+```mermaid
+graph TD
+  RC[RoutingCli] --> CB[CliBuilder]
+  CB -->|nodes| R[Router.nodes]
+  CB --> G[click.Group root]
+  G --> C1[click.Command handler_a]
+  G --> C2[click.Command handler_b]
+  G --> SG[click.Group child_router]
+  SG --> C3[click.Command nested_handler]
+  CB --> PC[ParamConverter]
+  PC -->|signature + hints| CP[click.Option / click.Argument]
+  CB --> OF[OutputFormatter]
+```
+
+### Data flow
+
+1. `RoutingCli(target)` — accepts class or instance.
+2. `CliBuilder.build()` — iterates `instance._iter_registered_routers()`:
+   - Single router → entries become root commands.
+   - Multiple routers → each router becomes a `click.Group`.
+3. For each entry, `ParamConverter.to_click_params(handler)` maps `inspect.signature` + `get_type_hints` to click parameters.
+4. The command callback invokes the handler and pipes the result through `OutputFormatter`.
+
+### Key design decisions
+
+- **Not a plugin** — the CLI invokes handlers; it does not alter their behavior.
+- **Optional dependency** — `click` is required only when `genro_routes.cli` is imported (`pip install genro-routes[cli]`).
+- **Name normalization** — Python `snake_case` names are converted to `kebab-case` for CLI convention.
+- **Enum roundtrip** — `click.Choice` returns strings; the callback converts them back to enum members before invoking the handler.
+- **Async support** — coroutine handlers are detected via `inspect.iscoroutinefunction` and invoked with `asyncio.run()`.

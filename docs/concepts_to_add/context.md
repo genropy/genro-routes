@@ -78,8 +78,8 @@ class OrderService(RoutingClass):
     @route("api")
     def create_order(self, items):
         # Works the same with ASGI, Telegram, CLI...
-        db = self.context.db
-        avatar = self.context.avatar
+        db = self.ctx.db
+        avatar = self.ctx.avatar
 
         order = Order(user=avatar.user_id, items=items)
         db.add(order)
@@ -106,23 +106,32 @@ ctx.db       # local attribute
 ctx.server   # not local → walks up to server_ctx.server
 ```
 
-## ContextVar Integration
+## Slot + Parent Chain
 
-The context is stored in a `ContextVar` at module level in `routing.py`:
+The context is stored in a `_ctx` slot on each `RoutingClass` instance.
+Reading `self.ctx` walks up the `_routing_parent` chain until it finds a
+non-None value:
 
 ```python
-from contextvars import ContextVar
+class RoutingClass:
+    __slots__ = (..., "_ctx", ...)
 
-_context_var: ContextVar[RoutingContext | None] = ContextVar(
-    "routing_context", default=None
-)
+    @property
+    def ctx(self):
+        result = getattr(self, "_ctx", None)
+        if result is not None:
+            return result
+        parent = getattr(self, "_routing_parent", None)
+        if parent is not None:
+            return parent.ctx
+        return None
 ```
 
 This means:
 
-- All `RoutingClass` instances in the same task share the same context
-- Each async task gets its own isolated context automatically
-- Works correctly in both sync and async environments
+- Set on root — children inherit automatically
+- Override locally — a child can shadow the parent's context
+- Concurrency isolation (ContextVar, threading.local) is the adapter's job
 
 ### Adapter Usage Pattern
 
@@ -132,11 +141,11 @@ async def dispatch(request, service):
     ctx = RoutingContext(parent=app_ctx)
     ctx.request = request
     ctx.db = request.state.db
-    service.context = ctx
+    service.ctx = ctx
     try:
         result = await service.api.call("some_method", ...)
     finally:
-        service.context = None
+        service.ctx = None
 ```
 
 ## Package Structure
