@@ -99,8 +99,8 @@ class RootAPI(RoutingClass):
         self.users = SubService("users")
         self.products = SubService("products")
 
-        self.api.attach_instance(self.users, name="users")
-        self.api.attach_instance(self.products, name="products")
+        self.attach_instance(self.users, name="users")
+        self.attach_instance(self.products, name="products")
 
 root = RootAPI()
 

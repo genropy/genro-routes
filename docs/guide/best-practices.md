@@ -115,8 +115,8 @@ class Application(RoutingClass):
         self.api = Router(self, name="api", branch=True)
 
         # Attach actual services
-        self.api.attach_instance(self.users, name="users")
-        self.api.attach_instance(self.orders, name="orders")
+        self.attach_instance(self.users, name="users")
+        self.attach_instance(self.orders, name="orders")
 ```
 
 ### Attaching Child Instances
@@ -128,7 +128,7 @@ class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         # Both approaches work — the router tree keeps a strong reference
-        self.api.attach_instance(ChildService(), name="child")
+        self.attach_instance(ChildService(), name="child")
 
 # Retrieve the child instance later if needed
 child = parent.routing.instance("api/child")
@@ -149,8 +149,8 @@ class Application(RoutingClass):
         self.public = PublicAPI()  # No validation needed
         self.admin = AdminAPI()    # Has its own pydantic plugin
 
-        self.api.attach_instance(self.public, name="public")
-        self.api.attach_instance(self.admin, name="admin")
+        self.attach_instance(self.public, name="public")
+        self.attach_instance(self.admin, name="admin")
 
 
 class AdminAPI(RoutingClass):
@@ -351,13 +351,13 @@ class A(RoutingClass):
     def __init__(self, b):
         self.api = Router(self, name="api")
         self.b = b
-        self.api.attach_instance(b, name="b")
+        self.attach_instance(b, name="b")
 
 class B(RoutingClass):
     def __init__(self, a):
         self.api = Router(self, name="api")
         self.a = a
-        self.api.attach_instance(a, name="a")  # Circular!
+        self.attach_instance(a, name="a")  # Circular!
 ```
 
 ### Over-Configuration

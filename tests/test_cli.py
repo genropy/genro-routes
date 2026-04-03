@@ -119,7 +119,7 @@ class ParentService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.child = ChildService()
-        self.api.attach_instance(self.child, name="items")
+        self.attach_instance(self.child, name="items")
 
     @route("api")
     def index(self):

@@ -40,7 +40,7 @@ orders.api.node("create")({"name": "order-3"})  # Calls create()
 **Answer**: Genro Routes offers:
 
 - **Plugin system**: add logging, validation, audit without touching handlers
-- **Hierarchies**: organize routers in trees with `attach_instance()`
+- **Hierarchies**: organize routers in trees with `attach_instance()` (method on `RoutingClass`)
 - **Metadata**: each handler can have tags, channels, configurations
 - **Introspection**: `router.nodes()` to explore structure
 - **Isolation**: each instance has its own router with independent plugins
@@ -129,7 +129,7 @@ def handle_create(self): ...  # Registered as "create" (strips prefix)
 
 **Question**: I have an application with modules (sales, finance, admin) that I want to organize hierarchically. How?
 
-**Answer**: Use `attach_instance()` to connect child instances:
+**Answer**: Use `attach_instance()` (a method on `RoutingClass`) to connect child instances:
 
 ```python
 class Dashboard(RoutingClass):
@@ -138,9 +138,9 @@ class Dashboard(RoutingClass):
         self.sales = SalesModule()
         self.finance = FinanceModule()
 
-        # Attach child instances
-        self.api.attach_instance(self.sales, name="sales")
-        self.api.attach_instance(self.finance, name="finance")
+        # Attach child instances (1:1 shortcut — each child has a single router)
+        self.attach_instance(self.sales, name="sales")
+        self.attach_instance(self.finance, name="finance")
 
 dashboard = Dashboard()
 # Access with path separator
@@ -182,7 +182,7 @@ class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api").plug("logging", level="debug")
         self.child_obj = Child()
-        self.api.attach_instance(self.child_obj, name="child")
+        self.attach_instance(self.child_obj, name="child")
 
 # Child automatically inherits logging plugin
 parent = Parent()
@@ -480,15 +480,15 @@ def handle_create_order(self): ...
 
 **Problem**: Children don't see parent plugins.
 
-**Solution**: Make sure to connect children **after** attaching plugins:
+**Solution**: Make sure to attach plugins to the parent router **before** connecting children:
 ```python
 # CORRECT
-router.plug("logging")
-router.attach_instance(child, name="child")  # Child inherits logging
+self.api = Router(self, name="api").plug("logging")
+self.attach_instance(child, name="child")  # Child inherits logging
 
 # WRONG
-router.attach_instance(child, name="child")
-router.plug("logging")  # Child does NOT inherit
+self.attach_instance(child, name="child")
+self.api.plug("logging")  # Child does NOT inherit
 ```
 
 ### ValidationError with Pydantic

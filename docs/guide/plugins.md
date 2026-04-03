@@ -368,7 +368,7 @@ The router automatically collects capabilities from the instance and its entire 
 parent.capabilities = ParentCapabilities()   # has "redis"
 child.capabilities = ChildCapabilities()     # has "email"
 
-parent.api.attach_instance(child, name="child")
+parent.attach_instance(child, name="child")
 
 # child.api.current_capabilities returns {"redis", "email"}
 # (accumulated from parent + child)
@@ -1157,7 +1157,7 @@ class Child(RoutingClass):
     def admin_only(self): ...
 
 parent = Parent()
-parent.api.attach_instance(parent.child, name="child")
+parent.attach_instance(parent.child, name="child")
 
 # Result:
 # - child._all_ tags: "corporate,internal" (union from parent + child)

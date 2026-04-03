@@ -26,7 +26,7 @@ class RootService(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api", default_entry="index")
         self.admin = AdminService()
-        self.api.attach_instance(self.admin, name="admin")
+        self.attach_instance(self.admin, name="admin")
 
     @route("api")
     def index(self):

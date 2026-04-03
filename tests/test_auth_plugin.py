@@ -172,7 +172,7 @@ class TestAuthPluginIntegration:
 
         child = Child()
         # Attach child - plugin is inherited from parent
-        parent.api.attach_instance(child, name="child")
+        parent.attach_instance(child, name="child")
 
         # Filter should apply to both parent and child
         result = parent.api.nodes(auth_tags="admin")
@@ -204,7 +204,7 @@ class TestAuthPluginIntegration:
         parent.api.add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
 
         child = Child()
-        parent.api.attach_instance(child, name="child")
+        parent.attach_instance(child, name="child")
 
         # Filter for admin - child has no admin entries
         result = parent.api.nodes(auth_tags="admin")

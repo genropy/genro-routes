@@ -208,7 +208,7 @@ def test_dotted_path_and_nodes_with_attached_child():
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
-            self.api.attach_instance(self.child, name="child")
+            self.attach_instance(self.child, name="child")
 
     parent = Parent()
     assert parent.api.node("child/ping")() == "pong"
@@ -434,7 +434,7 @@ class TestDefaultEntry:
             def __init__(self):
                 self.api = Router(self, name="api")
                 self.child = Child()
-                self.api.attach_instance(self.child, name="child")
+                self.attach_instance(self.child, name="child")
 
         root = Root()
 

@@ -303,7 +303,7 @@ BaseRouter definisce 4 hook no-op che Router sovrascrive:
 |------|-------------------|----------------|
 | `_wrap_handler(entry, call_next)` | Rebuild dei handler | Costruisce la pipeline middleware |
 | `_after_entry_registered(entry)` | Dopo la registrazione | Applica plugin config e `on_decore` |
-| `_on_attached_to_parent(parent)` | Dopo attach_instance | Eredita i plugin dal parent |
+| `_on_attached_to_parent(parent)` | Dopo `attach_instance` (su RoutingClass) | Eredita i plugin dal parent |
 | `_describe_entry_extra(entry, desc)` | Durante nodes() | Aggiunge info plugin per introspezione |
 
 ---
@@ -429,8 +429,10 @@ operazioni di management senza inquinare il namespace della classe:
 |------------------|-------|
 | `get_router(name)` | Lookup di un router per nome |
 | `configure(target, **opts)` | Configurazione plugin via target syntax |
-| `attach_instance(child)` | Collega un child RoutingClass |
 | `configure("?")` | Introspezione: descrive tutti i router |
+
+**Nota**: `attach_instance` non è sul proxy ma direttamente su
+RoutingClass. Vedi sezione 7.5 sotto.
 
 **Target syntax per configure**: `"router:plugin/selector"`
 
@@ -441,7 +443,29 @@ svc.routing.configure("api:auth/admin_*", rule="admin")
 
 Il selettore supporta glob pattern (`fnmatchcase`).
 
-### 7.5 `ctx` property — slot + parent chain
+### 7.5 `attach_instance` — composizione gerarchica
+
+`attach_instance` è un metodo di **RoutingClass** (non di Router o del proxy).
+Collega un child RoutingClass a uno o piu router del parent:
+
+```python
+# Shortcut 1:1 — funziona solo se il child ha un singolo router
+self.attach_instance(child, name="sales")
+
+# Cross-mapping esplicito — usa kwargs router_<nome_router_parent>
+self.attach_instance(child,
+    router_api="orders:sales,billing:invoices",
+    router_admin="mgmt:management",
+)
+```
+
+Ogni kwarg `router_<parent_router>` specifica una lista di mapping
+`child_router:alias` separati da virgola. Non esiste piu l'auto-mapping
+(senza parametri): il collegamento e sempre esplicito.
+
+`detach_instance` resta invece su **Router** (invariato).
+
+### 7.6 `ctx` property — slot + parent chain
 
 Il context (`RoutingContext`) viene settato dall'adapter (ASGI, ecc.)
 nello slot `_ctx` dell'istanza. La lettura risale la catena
@@ -623,7 +647,7 @@ plugin_default_param = "rule"   # parametro shorthand (opzionale)
 | `wrap_handler(router, entry, call_next)` | Build middleware | Restituire wrapper callable |
 | `deny_reason(entry, **filters)` | `node()` / `nodes()` | Decidere l'accessibilità |
 | `entry_metadata(router, entry)` | `nodes()` | Fornire metadati per introspezione |
-| `on_attached_to_parent(parent_plugin)` | `attach_instance` | Gestire ereditarietà config |
+| `on_attached_to_parent(parent_plugin)` | `attach_instance` (su RoutingClass) | Gestire ereditarietà config |
 | `on_parent_config_changed(old, new)` | Parent modifica config | Decidere se seguire o ignorare |
 
 ### 9.3 `__init_subclass__` — il pattern più elegante ⚠️

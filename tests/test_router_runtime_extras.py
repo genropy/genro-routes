@@ -285,8 +285,8 @@ def test_router_nodes_with_basepath():
             self.api = Router(self, name="api")
             self.child = Child()
             self.child.grandchild = Grandchild()
-            self.api.attach_instance(self.child, name="child")
-            self.child.api.attach_instance(self.child.grandchild, name="grandchild")
+            self.attach_instance(self.child, name="child")
+            self.child.attach_instance(self.child.grandchild, name="grandchild")
 
         @route("api")
         def root_action(self):
@@ -336,7 +336,7 @@ def test_nodes_lazy_returns_router_references():
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
-            self.api.attach_instance(self.child, name="child")
+            self.attach_instance(self.child, name="child")
 
         @route("api")
         def root_action(self):
@@ -380,7 +380,7 @@ def test_openapi_returns_schema():
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
-            self.api.attach_instance(self.child, name="users")
+            self.attach_instance(self.child, name="users")
 
         @route("api")
         def health(self) -> str:
@@ -421,7 +421,7 @@ def test_openapi_lazy_returns_router_references():
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
-            self.api.attach_instance(self.child, name="child")
+            self.attach_instance(self.child, name="child")
 
         @route("api")
         def root_action(self):
@@ -455,7 +455,7 @@ def test_openapi_with_basepath():
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
-            self.api.attach_instance(self.child, name="child")
+            self.attach_instance(self.child, name="child")
 
         @route("api")
         def root_action(self):
@@ -495,7 +495,7 @@ def test_openapi_basepath_absolute_paths_issue_16():
         def __init__(self):
             self.api = Router(self, name="api")
             self.purchase = PurchaseService()
-            self.api.attach_instance(self.purchase, name="purchase")
+            self.attach_instance(self.purchase, name="purchase")
 
         @route("api")
         def info(self) -> dict:
@@ -872,7 +872,7 @@ def test_h_openapi_returns_hierarchical_schema():
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
-            self.api.attach_instance(self.child, name="users")
+            self.attach_instance(self.child, name="users")
 
         @route("api")
         def health(self) -> str:
@@ -915,7 +915,7 @@ def test_h_openapi_vs_openapi_comparison():
         def __init__(self):
             self.api = Router(self, name="api")
             self.grandchild = GrandChild()
-            self.api.attach_instance(self.grandchild, name="grand")
+            self.attach_instance(self.grandchild, name="grand")
 
         @route("api")
         def child_action(self):
@@ -925,7 +925,7 @@ def test_h_openapi_vs_openapi_comparison():
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
-            self.api.attach_instance(self.child, name="child")
+            self.attach_instance(self.child, name="child")
 
         @route("api")
         def root_action(self):
@@ -971,7 +971,7 @@ def test_h_openapi_lazy_returns_router_references():
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
-            self.api.attach_instance(self.child, name="child")
+            self.attach_instance(self.child, name="child")
 
         @route("api")
         def root_action(self):
@@ -1091,7 +1091,7 @@ def test_h_openapi_includes_description_and_owner_doc():
         def __init__(self):
             self.api = Router(self, name="api", description="Main API")
             self.users = ChildService()
-            self.api.attach_instance(self.users, name="users")
+            self.attach_instance(self.users, name="users")
 
         @route("api")
         def health(self):

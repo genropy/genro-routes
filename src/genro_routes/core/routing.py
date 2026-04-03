@@ -9,7 +9,29 @@ A mixin class providing:
     - ``_register_router(router)``: Lazily creates a registry dict on the instance
       and stores the router under ``router.name`` if truthy.
     - ``_iter_registered_routers``: Yields ``(name, router)`` for registry entries.
+    - ``attach_instance(child, ...)``: Attaches a child RoutingClass instance,
+      sets ``_routing_parent``, and links child routers into parent routers.
     - ``routing`` property: Returns cached ``_RoutingProxy`` bound to the owner.
+
+Instance attachment
+-------------------
+``attach_instance`` lives on RoutingClass (not on Router) because it manages
+the parent-child relationship at the instance level:
+
+    - Sets ``child._routing_parent = self``
+    - Links child routers into parent routers via ``_children`` dict
+    - Triggers plugin inheritance via ``_on_attached_to_parent``
+
+Two calling styles::
+
+    # 1:1 shortcut (child has single router, parent has single router)
+    self.attach_instance(child, name="sales")
+
+    # Explicit cross-mapping (any number of routers)
+    self.attach_instance(child,
+        router_api="orders:sales,billing:invoices",
+        router_admin="mgmt:management",
+    )
 
 _RoutingProxy
 -------------
@@ -134,6 +156,119 @@ class RoutingClass:
     def _iter_registered_routers(self):
         """Yield (name, router) pairs for all registered routers."""
         yield from self._routers.items()
+
+    def attach_instance(self, child: RoutingClass, *, name: str | None = None, **router_specs: str) -> None:
+        """Attach a child RoutingClass instance and optionally link its routers.
+
+        Sets ``child._routing_parent = self`` and links child routers to
+        parent routers according to the provided mapping.
+
+        Args:
+            child: The RoutingClass instance to attach.
+            name: Shortcut for the 1:1 case (child has a single router).
+                The child's default router is linked to this instance's
+                default router under the given alias.
+            **router_specs: Explicit mapping with ``router_<parent_router>``
+                keys. Values are comma-separated ``"child_router:alias"``
+                pairs.
+
+        Raises:
+            TypeError: If child is not a RoutingClass instance.
+            ValueError: If name and router_* specs are both provided.
+            ValueError: If name is used but child or parent has multiple routers.
+            ValueError: If a referenced router does not exist.
+            ValueError: If there is an alias collision in _children.
+
+        Examples::
+
+            # 1:1 shortcut
+            self.attach_instance(child, name="sales")
+
+            # Explicit cross-mapping
+            self.attach_instance(child,
+                router_api="orders:sales,billing:invoices",
+                router_admin="mgmt:management",
+            )
+        """
+        if not safe_is_instance(child, "genro_routes.core.routing.RoutingClass"):
+            raise TypeError("attach_instance() requires a RoutingClass instance")
+        existing_parent = getattr(child, "_routing_parent", None)
+        if existing_parent is not None and existing_parent is not self:
+            raise ValueError("attach_instance() rejected: child already bound to another parent")
+
+        # Parse router_* kwargs
+        router_mappings = {
+            k[len("router_"):]: v
+            for k, v in router_specs.items()
+            if k.startswith("router_")
+        }
+        unknown = set(router_specs) - {f"router_{k}" for k in router_mappings}
+        if unknown:
+            raise ValueError(f"Unknown keyword arguments: {', '.join(sorted(unknown))}")
+
+        if name is not None and router_mappings:
+            raise ValueError("Cannot use 'name' together with router_* specs")
+
+        if name is not None:
+            child_default = child.default_router
+            if child_default is None:
+                raise ValueError(
+                    f"name= shortcut requires child to have exactly one router; "
+                    f"{type(child).__name__} has {len(child._routers)}"
+                )
+            parent_default = self.default_router
+            if parent_default is None:
+                raise ValueError(
+                    f"name= shortcut requires parent to have exactly one router; "
+                    f"{type(self).__name__} has {len(self._routers)}"
+                )
+            self._link_router(parent_default, child, child_default.name, name)
+
+        for parent_router_name, spec_string in router_mappings.items():
+            parent_router = self._routers.get(parent_router_name)
+            if parent_router is None:
+                raise ValueError(
+                    f"No router named '{parent_router_name}' on {type(self).__name__}"
+                )
+            pairs = self._parse_router_spec(spec_string)
+            for child_router_name, alias in pairs:
+                self._link_router(parent_router, child, child_router_name, alias)
+
+        if getattr(child, "_routing_parent", None) is not self:
+            object.__setattr__(child, "_routing_parent", self)
+
+    def _link_router(self, parent_router: Any, child: RoutingClass, child_router_name: str, alias: str) -> None:
+        """Link a single child router into a parent router's _children."""
+        child_router = child._routers.get(child_router_name)
+        if child_router is None:
+            raise ValueError(
+                f"No router named '{child_router_name}' on {type(child).__name__}"
+            )
+        if alias in parent_router._children and parent_router._children[alias] is not child_router:
+            raise ValueError(f"Child name collision: {alias}")
+        parent_router._children[alias] = child_router
+        child_router._on_attached_to_parent(parent_router)
+
+    def _parse_router_spec(self, spec: str) -> list[tuple[str, str]]:
+        """Parse 'child_router:alias,child_router2:alias2' into pairs."""
+        pairs: list[tuple[str, str]] = []
+        for token in spec.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if ":" not in token:
+                raise ValueError(
+                    f"Invalid router spec '{token}': expected 'child_router:alias'"
+                )
+            child_router_name, alias = token.split(":", 1)
+            child_router_name = child_router_name.strip()
+            alias = alias.strip()
+            if not child_router_name or not alias:
+                raise ValueError(
+                    f"Invalid router spec '{token}': both router name and alias are required"
+                )
+            pairs.append((child_router_name, alias))
+        return pairs
 
     @property
     def routing(self) -> _RoutingProxy:
@@ -267,7 +402,7 @@ class _RoutingProxy:
     Main operations:
         - ``get_router(name)``: Look up a router by name
         - ``configure(target, **options)``: Configure plugin settings
-        - ``attach_instance(child)``: Attach child RoutingClass instances
+        - ``attach_instance(child, ...)``: Delegates to owner's attach_instance
 
     Target syntax for configure():
         - ``"router:plugin"`` - Global plugin config
@@ -425,45 +560,23 @@ class _RoutingProxy:
 
     def attach_instance(
         self,
-        instance: RoutingClass,
+        child: RoutingClass,
+        *,
         name: str | None = None,
-        mapping: str | None = None,
-        router_name: str | None = None,
-    ):
-        """Attach a child instance to a router.
-
-        Convenience method that delegates to a router's attach_instance.
-        Uses the default router unless router_name is specified.
+        **router_specs: str,
+    ) -> None:
+        """Attach a child instance. Delegates to owner's attach_instance.
 
         Args:
-            instance: The RoutingClass instance to attach.
-            name: Alias for the child's router.
-            mapping: Explicit mapping for children with multiple routers.
-            router_name: Optional router name to attach to. If not provided, uses
-                the default router (only works if exactly one router exists).
+            child: The RoutingClass instance to attach.
+            name: Shortcut for 1:1 case (child with single router).
+            **router_specs: Explicit mapping with ``router_<parent_router>`` keys.
 
-        Returns:
-            The result of router.attach_instance().
-
-        Raises:
-            RuntimeError: If no default router exists and router_name not specified.
-            AttributeError: If router_name doesn't match any registered router.
+        Example:
+            >>> svc.routing.attach_instance(child, name="sales")
+            >>> svc.routing.attach_instance(child, router_api="orders:sales")
         """
-        if router_name is not None:
-            router = self._lookup_router(self._owner, router_name)
-            if router is None:
-                raise AttributeError(
-                    f"No router named '{router_name}' on {type(self._owner).__name__}"
-                )
-        else:
-            router = self._owner.default_router
-            if router is None:
-                count = len(self._owner._routers)
-                raise RuntimeError(
-                    f"attach_instance requires exactly one router; "
-                    f"{type(self._owner).__name__} has {count}"
-                )
-        return router.attach_instance(instance, name=name, mapping=mapping)
+        self._owner.attach_instance(child, name=name, **router_specs)
 
     def configure(self, target: Any, **options: Any):
         """Configure router plugins.

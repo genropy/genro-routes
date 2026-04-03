@@ -235,8 +235,7 @@ def test_attach_and_detach_instance_single_router_with_alias():
             self.child = Child()
 
     parent = Parent()
-    attached = parent.api.attach_instance(parent.child, name="sales")
-    assert attached is parent.child.api
+    parent.attach_instance(parent.child, name="sales")
     # Verify child is accessible via nodes()
     info = parent.api.nodes()
     assert "sales" in info.get("routers", {})
@@ -261,8 +260,8 @@ def test_attach_instance_multiple_routers_requires_mapping():
             self.child = Child()
 
     parent = Parent()
-    # Auto-mapping when parent has a single router attaches both routers
-    parent.api.attach_instance(parent.child)
+    # Auto-mapping when child has multiple routers requires explicit mapping
+    parent.attach_instance(parent.child, router_api="api:api,admin:admin")
     # Verify both children are accessible via node()
     assert parent.api.node("api")
     assert parent.api.node("admin")
@@ -280,9 +279,9 @@ def test_attach_instance_name_collision():
             self.child2 = Child()
 
     parent = Parent()
-    parent.api.attach_instance(parent.child1, name="sales")
+    parent.attach_instance(parent.child1, name="sales")
     with pytest.raises(ValueError):
-        parent.api.attach_instance(parent.child2, name="sales")
+        parent.attach_instance(parent.child2, name="sales")
 
 
 def test_detach_instance_missing_alias():
@@ -293,7 +292,7 @@ def test_detach_instance_missing_alias():
 
     parent = Child()
     parent.self_ref = parent
-    parent.api.attach_instance(parent, name="api:self_api, admin:self_admin")
+    parent.attach_instance(parent, router_api="api:self_api,admin:self_admin")
     # detach without explicit mapping removes both
     parent.api.detach_instance(parent)
     info = parent.api.nodes()
@@ -307,7 +306,7 @@ def test_attach_instance_requires_routing_class():
 
     parent = Parent()
     with pytest.raises(TypeError):
-        parent.api.attach_instance(object(), name="x")
+        parent.attach_instance(object(), name="x")
     with pytest.raises(TypeError):
         parent.api.detach_instance(object())
 
@@ -325,7 +324,7 @@ def test_auto_detach_on_attribute_replacement():
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
-            self.api.attach_instance(self.child, name="child")
+            self.attach_instance(self.child, name="child")
 
     parent = Parent()
     # Verify child is attached via nodes()
@@ -355,13 +354,13 @@ def test_attach_instance_rejects_other_parent_when_already_bound():
     second = Parent("second")
 
     # Bind to first parent
-    first.api.attach_instance(first.child, name="child")
+    first.attach_instance(first.child, name="child")
     # Verify child is attached via node()
     assert first.api.node("child")
 
     # Attempt to bind same child to another parent should fail
     with pytest.raises(ValueError):
-        second.api.attach_instance(first.child, name="child")
+        second.attach_instance(first.child, name="child")
 
 
 def test_routing_proxy_attach_instance_with_single_router():
@@ -381,7 +380,7 @@ def test_routing_proxy_attach_instance_with_single_router():
             self.child = Child()
 
     parent = Parent()
-    # Use routing.attach_instance instead of parent.api.attach_instance
+    # Use routing.attach_instance proxy (delegates to default router)
     parent.routing.attach_instance(parent.child, name="child")
 
     # Verify child is accessible
@@ -402,7 +401,7 @@ def test_routing_proxy_attach_instance_fails_with_multiple_routers():
             self.child = Child()
 
     parent = Parent()
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(ValueError) as exc_info:
         parent.routing.attach_instance(parent.child, name="child")
     assert "exactly one router" in str(exc_info.value)
     assert "has 2" in str(exc_info.value)
@@ -426,8 +425,8 @@ def test_routing_proxy_attach_instance_with_router_name():
             self.child = Child()
 
     parent = Parent()
-    # With multiple routers, use router_name to specify which one
-    parent.routing.attach_instance(parent.child, name="child", router_name="admin")
+    # With multiple routers, use router_<name> kwarg to specify target
+    parent.routing.attach_instance(parent.child, router_admin="api:child")
 
     # Verify child is accessible on the specified router
     assert parent.admin.node("child/hello")() == "hello from child"
@@ -446,8 +445,8 @@ def test_routing_proxy_attach_instance_invalid_router_name():
             self.child = Child()
 
     parent = Parent()
-    with pytest.raises(AttributeError) as exc_info:
-        parent.routing.attach_instance(parent.child, name="child", router_name="nonexistent")
+    with pytest.raises(ValueError) as exc_info:
+        parent.routing.attach_instance(parent.child, router_nonexistent="api:child")
     assert "No router named 'nonexistent'" in str(exc_info.value)
 
 
@@ -473,8 +472,8 @@ def test_routing_proxy_instance():
     class App(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
-            self.api.attach_instance(UsersModule(), name="users")
-            self.api.attach_instance(OrdersModule(), name="orders")
+            self.attach_instance(UsersModule(), name="users")
+            self.attach_instance(OrdersModule(), name="orders")
 
     app = App()
 
@@ -546,7 +545,7 @@ def test_endpoint_id_in_child_router():
     class App(RoutingClass):
         def __init__(self):
             self.api = Router(self, name="api")
-            self.api.attach_instance(UsersModule(), name="users")
+            self.attach_instance(UsersModule(), name="users")
 
     app = App()
 

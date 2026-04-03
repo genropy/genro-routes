@@ -465,8 +465,8 @@ class RootAPI(RoutingClass):
         self.users = SubService("users")
         self.products = SubService("products")
 
-        self.api.attach_instance(self.users, name="users")
-        self.api.attach_instance(self.products, name="products")
+        self.attach_instance(self.users, name="users")
+        self.attach_instance(self.products, name="products")
 
 root = RootAPI()
 
@@ -474,6 +474,12 @@ root = RootAPI()
 assert root.api.node("users/list")() == "users:list"
 assert root.api.node("products/detail")(5) == "products:detail:5"
 ```
+
+**Key points**:
+
+- `attach_instance` is a method on `RoutingClass`, not on `Router`
+- `name="alias"` is a shortcut when the child has a single router
+- For multi-router children, use `router_<parent>=...` kwargs (see [Hierarchies Guide](hierarchies.md))
 
 **Hierarchies enable**:
 
@@ -492,7 +498,7 @@ class Inspectable(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.child_service = SubService("child")
-        self.api.attach_instance(self.child_service, name="sub")
+        self.attach_instance(self.child_service, name="sub")
 
     @route("api")
     def action(self):

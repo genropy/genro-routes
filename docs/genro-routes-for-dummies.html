@@ -754,7 +754,7 @@ router.logging.configure(print=<span class="kw">True</span>)                    
 
 <h2>Service Composition</h2>
 
-<p>Real applications are built from independent modules. Each module is a <code class="il">RoutingClass</code> with its own router. Connect them with <code class="il">attach_instance</code>.</p>
+<p>Real applications are built from independent modules. Each module is a <code class="il">RoutingClass</code> with its own router. Connect them with <code class="il">self.attach_instance(child, ...)</code> on the parent RoutingClass.</p>
 
 <div class="diagram">
 <svg viewBox="0 0 680 280" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
@@ -792,9 +792,9 @@ router.logging.configure(print=<span class="kw">True</span>)                    
         self.orders = <span class="cls">OrdersService</span>()
         self.notify = <span class="cls">NotifyService</span>()
 
-        self.api.attach_instance(self.users, name=<span class="str">"users"</span>)
-        self.api.attach_instance(self.orders, name=<span class="str">"orders"</span>)
-        self.api.attach_instance(self.notify, name=<span class="str">"notify"</span>)
+        self.attach_instance(self.users, name=<span class="str">"users"</span>)
+        self.attach_instance(self.orders, name=<span class="str">"orders"</span>)
+        self.attach_instance(self.notify, name=<span class="str">"notify"</span>)
 
 app = <span class="cls">App</span>()
 app.api.node(<span class="str">"users/list_users"</span>)()
@@ -979,7 +979,7 @@ Usage: ordersapi retrieve [OPTIONS] IDENT
   <tr><td><code class="il">Literal["a","b"]</code></td><td><code class="il">--choice {a,b}</code></td></tr>
   <tr><td><code class="il">Enum</code></td><td><code class="il">--choice {NAME,...}</code></td></tr>
   <tr><td><code class="il">list[str]</code></td><td><code class="il">--items a --items b</code> (multiple)</td></tr>
-  <tr><td>Child router (attach_instance)</td><td>Nested sub-group</td></tr>
+  <tr><td>Child router (self.attach_instance)</td><td>Nested sub-group</td></tr>
   <tr><td>Handler docstring</td><td>Command help text</td></tr>
 </table>
 
@@ -1080,7 +1080,8 @@ cli = RoutingCli(svc)</code></pre>
 <h3>Composition</h3>
 <table>
   <tr><th>I want to...</th><th>Code</th></tr>
-  <tr><td>Attach a child service</td><td><code class="il">parent.api.attach_instance(child, name="x")</code></td></tr>
+  <tr><td>Attach a child service (single router)</td><td><code class="il">parent.attach_instance(child, name="x")</code></td></tr>
+  <tr><td>Attach with explicit cross-mapping</td><td><code class="il">parent.attach_instance(child, router_api="orders:sales")</code></td></tr>
   <tr><td>Retrieve attached child instance</td><td><code class="il">parent.routing.instance("api/x")</code></td></tr>
   <tr><td>Call through hierarchy</td><td><code class="il">parent.api.node("x/handler")()</code></td></tr>
   <tr><td>Resolve by endpoint_id</td><td><code class="il">parent.api.node("@MY-EP")()</code></td></tr>

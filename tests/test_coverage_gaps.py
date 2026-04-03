@@ -129,7 +129,7 @@ def test_inherited_plugin_config_lookup():
     parent.api.logging.configure(before=False, after=True)
 
     # Attach child to parent
-    parent.api.attach_instance(parent.child, name="child")
+    parent.attach_instance(parent.child, name="child")
 
     # Child should inherit the plugin and config
     assert "logging" in parent.child.api._plugins_by_name
@@ -400,7 +400,7 @@ def test_inherited_plugin_is_separate_instance():
             return "parent"
 
     parent = ParentSvc()
-    parent.api.attach_instance(parent.child, name="child")
+    parent.attach_instance(parent.child, name="child")
 
     # Plugin instances should be DIFFERENT objects
     parent_plugin = parent.api._plugins_by_name["logging"]
@@ -437,7 +437,7 @@ def test_inherited_plugin_copies_parent_config():
     parent.api.logging.configure(before=False, after=True)
 
     # Attach child - should copy config
-    parent.api.attach_instance(parent.child, name="child")
+    parent.attach_instance(parent.child, name="child")
 
     # Child should have same config values
     child_cfg = parent.child.api.logging.configuration()
@@ -467,7 +467,7 @@ def test_child_config_independent_from_parent():
 
     parent = ParentSvc()
     parent.api.logging.configure(before=True, after=False)
-    parent.api.attach_instance(parent.child, name="child")
+    parent.attach_instance(parent.child, name="child")
 
     # Child modifies its own config
     parent.child.api.logging.configure(before=False, after=True)
@@ -519,7 +519,7 @@ def test_parent_config_change_notifies_children():
             return "parent"
 
     parent = ParentSvc()
-    parent.api.attach_instance(parent.child, name="child")
+    parent.attach_instance(parent.child, name="child")
 
     # Clear any notifications from __init__
     notifications.clear()
@@ -578,8 +578,8 @@ def test_cascading_notifications():
             return "parent"
 
     parent = ParentSvc()
-    parent.api.attach_instance(parent.child, name="child")
-    parent.child.api.attach_instance(parent.child.grandchild, name="grandchild")
+    parent.attach_instance(parent.child, name="child")
+    parent.child.attach_instance(parent.child.grandchild, name="grandchild")
 
     # Clear notifications
     notifications.clear()
@@ -638,8 +638,8 @@ def test_child_ignores_parent_config_no_cascade():
             return "parent"
 
     parent = ParentSvc()
-    parent.api.attach_instance(parent.child, name="child")
-    parent.child.api.attach_instance(parent.child.grandchild, name="grandchild")
+    parent.attach_instance(parent.child, name="child")
+    parent.child.attach_instance(parent.child.grandchild, name="grandchild")
 
     # Clear notifications
     notifications.clear()
@@ -719,7 +719,7 @@ def test_auth_deny_reason_with_router_interface():
             return "parent"
 
     parent = ParentSvc()
-    parent.api.attach_instance(parent.child, name="child")
+    parent.attach_instance(parent.child, name="child")
 
     # Get child router via parent
     child_router = parent.api._children["child"]
@@ -754,7 +754,7 @@ def test_auth_deny_reason_router_empty():
             return "parent"
 
     parent = ParentSvc()
-    parent.api.attach_instance(parent.child, name="child")
+    parent.attach_instance(parent.child, name="child")
 
     child_router = parent.api._children["child"]
     auth_plugin = parent.api._plugins_by_name["auth"]
@@ -1175,7 +1175,7 @@ def test_auth_deny_reason_router_with_accessible_child():
         def __init__(self):
             self.api = Router(self, name="api").plug("auth")
             self.child = Child()
-            self.api.attach_instance(self.child, name="child")
+            self.attach_instance(self.child, name="child")
 
     parent = Parent()
     auth_plugin = parent.api._plugins_by_name["auth"]
@@ -1258,7 +1258,7 @@ def test_routing_class_ctx_parent_chain():
 
     parent = Parent()
     child = Child()
-    parent.api.attach_instance(child, name="child")
+    parent.attach_instance(child, name="child")
 
     ctx = RoutingContext()
     ctx.db = "shared_db"
@@ -1284,7 +1284,7 @@ def test_plugin_on_parent_config_changed_propagates():
         def __init__(self):
             self.api = Router(self, name="api").plug("logging")
             self.child = Child()
-            self.api.attach_instance(self.child, name="child")
+            self.attach_instance(self.child, name="child")
 
         @route("api")
         def parent_handler(self):
@@ -1402,11 +1402,11 @@ def test_require_bound_when_already_bound():
     assert svc.api._bound is True
 
 
-# --- base_router.py:588-589 - attach_instance mapping without colon ---
+# --- base_router.py:588-589 - attach_instance router_api mapping ---
 
 
-def test_attach_instance_mapping_without_colon():
-    """Test attach_instance with mapping that has no colon (uses router name as alias)."""
+def test_attach_instance_router_api_mapping():
+    """Test attach_instance with explicit router_api mapping (child_router:alias)."""
 
     class Child(RoutingClass):
         def __init__(self):
@@ -1427,18 +1427,18 @@ def test_attach_instance_mapping_without_colon():
             self.child = Child()
 
     parent = Parent()
-    # Mapping without colon - should use router name as alias
-    parent.api.attach_instance(parent.child, mapping="child_api")
+    # Explicit router_api mapping: child_router:alias
+    parent.attach_instance(parent.child, router_api="child_api:child_api")
 
     # Should be attached under original name
     assert "child_api" in parent.api._children
 
 
-# --- base_router.py:603 - attach_instance unknown router in mapping ---
+# --- base_router.py:603 - attach_instance unknown router in router_api ---
 
 
-def test_attach_instance_mapping_unknown_router():
-    """Test attach_instance raises ValueError for unknown router in mapping."""
+def test_attach_instance_router_api_unknown_router():
+    """Test attach_instance raises ValueError for unknown router in router_api."""
 
     class Child(RoutingClass):
         def __init__(self):
@@ -1460,8 +1460,8 @@ def test_attach_instance_mapping_unknown_router():
             self.child = Child()
 
     parent = Parent()
-    with pytest.raises(ValueError, match="Unknown router"):
-        parent.api.attach_instance(parent.child, mapping="nonexistent:alias")
+    with pytest.raises(ValueError, match="No router named"):
+        parent.attach_instance(parent.child, router_api="nonexistent:alias")
 
 
 # --- base_router.py:611->613 - attach_instance _routing_parent already set correctly ---
@@ -1488,7 +1488,7 @@ def test_attach_instance_routing_parent_already_correct():
     object.__setattr__(parent.child, "_routing_parent", parent)
 
     # attach_instance should not try to set it again
-    parent.api.attach_instance(parent.child, name="child")
+    parent.attach_instance(parent.child, name="child")
     assert parent.child._routing_parent is parent
 
 
@@ -1510,7 +1510,7 @@ def test_detach_instance_cleans_plugin_children():
         def __init__(self):
             self.api = Router(self, name="api").plug("logging")
             self.child = Child()
-            self.api.attach_instance(self.child, name="child")
+            self.attach_instance(self.child, name="child")
 
         @route("api")
         def parent_handler(self):
@@ -1547,7 +1547,7 @@ def test_nodes_basepath_with_unknown_mode_raises():
         def __init__(self):
             self.api = Router(self, name="api")
             self.child = Child()
-            self.api.attach_instance(self.child, name="child")
+            self.attach_instance(self.child, name="child")
 
     parent = Parent()
     with pytest.raises(ValueError, match="Unknown mode"):
@@ -1714,7 +1714,7 @@ def test_on_attached_to_parent_child_has_same_plugin():
             self.child = Child()
 
     parent = Parent()
-    parent.api.attach_instance(parent.child, name="child")
+    parent.attach_instance(parent.child, name="child")
 
     # Child should still have exactly one logging plugin
     assert len([p for p in parent.child.api._plugins if p.name == "logging"]) == 1

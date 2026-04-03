@@ -14,11 +14,11 @@ graph TD
   RC -->|attribute| Router
   RC -->|attribute| ChildRC
   ChildRC -->|attribute| ChildRouter
-  Router -->|attach_instance(name/mapping)| ChildRouter
+  RC -->|attach_instance(name/mapping)| ChildRouter
   Router -->|nodes| M[Nodes tree]
 ```
 
-- Hierarchies are only via `attach_instance`/`detach_instance` (instance-to-instance).
+- Hierarchies are built via `attach_instance` (method on `RoutingClass`) and torn down via `detach_instance` (method on `Router`).
 - Branch routers (`branch=True`) exist but do not auto-discover handlers.
 - `default_entry` (default: `"index"`) specifies which handler to use for catch-all routing (best-match resolution).
 - Introspection: `nodes()` is the sole API; it returns router/instance, handlers (with metadata, doc, signature, plugins, params), children, and `plugin_info`.
@@ -67,7 +67,7 @@ plugin_info
 
 ## Plugin Inheritance
 
-When a child router is attached to a parent via `attach_instance()`, plugins may be inherited.
+When a child instance is attached to a parent via `attach_instance()` (on `RoutingClass`), plugins may be inherited.
 The inheritance behavior is **delegated to the plugin** via hooks, allowing each plugin to
 decide how to handle parent-child relationships.
 

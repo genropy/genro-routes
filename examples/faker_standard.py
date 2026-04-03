@@ -48,9 +48,9 @@ class FakerService(RoutingClass):
         self.person = PersonService(self.fake)
         self.address = AddressService(self.fake)
         
-        # Different instances are mounted under the same logical router
-        self.api.attach_instance(self.person)
-        self.api.attach_instance(self.address)
+        # Different instances are mounted under the main router
+        self.attach_instance(self.person, name="person")
+        self.attach_instance(self.address, name="address")
 
 # -----------------------------------------------------------------------------
 # 3. Usage Example (Developer Experience)

@@ -23,7 +23,7 @@ class RootApp(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.math = MathService()
-        self.api.attach_instance(self.math)
+        self.attach_instance(self.math, name="math")
 
 # 2. Run the Demo
 if __name__ == "__main__":

@@ -133,7 +133,7 @@ class TestCtxSlot:
 
         parent = Parent()
         child = Child()
-        parent.api.attach_instance(child, name="child")
+        parent.attach_instance(child, name="child")
 
         ctx = RoutingContext()
         ctx.db = "shared_db"
@@ -155,7 +155,7 @@ class TestCtxSlot:
 
         parent = Parent()
         child = Child()
-        parent.api.attach_instance(child, name="child")
+        parent.attach_instance(child, name="child")
 
         parent_ctx = RoutingContext()
         parent_ctx.label = "parent"
@@ -180,7 +180,7 @@ class TestCtxSlot:
 
         parent = Parent()
         child = Child()
-        parent.api.attach_instance(child, name="child")
+        parent.attach_instance(child, name="child")
 
         parent_ctx = RoutingContext()
         parent_ctx.label = "parent"

@@ -52,11 +52,11 @@ Lookup and execution
 
 Children (instance hierarchies)
 -------------------------------
-``attach_instance(child, name=None)`` / ``detach_instance(child)``
+``detach_instance(child)`` removes all routers belonging to a child instance.
 
-- ``attach_instance`` connects routers exposed on a ``RoutingClass`` child.
-  The router tree keeps a strong reference to the child instance.
-- Attached child routers inherit plugins via ``_on_attached_to_parent``.
+Instance attachment is handled by ``RoutingClass.attach_instance()``, which
+sets ``_routing_parent`` and links child routers into parent routers.
+Attached child routers inherit plugins via ``_on_attached_to_parent``.
 
 Introspection
 -------------
@@ -75,7 +75,7 @@ Hooks for subclasses
 --------------------
 - ``_wrap_handler``: override to wrap callables (middleware stack).
 - ``_after_entry_registered``: invoked after registering a handler.
-- ``_on_attached_to_parent``: invoked when attached via ``attach_instance``.
+- ``_on_attached_to_parent``: invoked when a child router is linked into this router.
 - ``_describe_entry_extra``: allow subclasses to extend per-entry description.
 """
 
@@ -543,103 +543,8 @@ class BaseRouter(RouterInterface):
             entry.handler = self._wrap_handler(entry, entry.func)
 
     # ------------------------------------------------------------------
-    # Children management (via attach_instance/detach_instance)
+    # Children management
     # ------------------------------------------------------------------
-    def attach_instance(
-        self,
-        routing_child: Any,
-        *,
-        name: str | None = None,
-        mapping: str | None = None,
-    ) -> BaseRouter:
-        """Attach a RoutingClass instance as a child of this router.
-
-        After attachment, the child's routers are reachable via path navigation:
-        ``parent_router.node("alias/handler")``
-
-        Args:
-            routing_child: The RoutingClass instance to attach.
-            name: Alias for the child's router (like ``as`` in Python imports).
-                  Used when the child has a single router.
-                  If None, uses the router's original name.
-            mapping: Explicit mapping for children with multiple routers.
-                  Format: ``"router_name:alias, router_name2:alias2"``
-                  Routers not mentioned are not attached.
-
-        Returns:
-            The last attached router.
-
-        Raises:
-            TypeError: If routing_child is not a RoutingClass.
-            ValueError: If the child is already attached to a different parent.
-            ValueError: If there's a name collision in _children.
-            ValueError: If both name and mapping are provided.
-
-        Examples:
-            Child with single router::
-
-                parent.api.attach_instance(child, name="users")
-                parent.api.node("users/handler")()
-
-            Child with multiple routers (auto-mapping)::
-
-                parent.api.attach_instance(child)  # child has "api" and "admin"
-                parent.api.node("api/handler")()
-                parent.api.node("admin/action")()
-
-            Child with multiple routers (explicit mapping)::
-
-                parent.api.attach_instance(child, mapping="api:public, admin:mgmt")
-                parent.api.node("public/handler")()
-                parent.api.node("mgmt/action")()
-        """
-        if not safe_is_instance(routing_child, "genro_routes.core.routing.RoutingClass"):
-            raise TypeError("attach_instance() requires a RoutingClass instance")
-        existing_parent = getattr(routing_child, "_routing_parent", None)
-        if existing_parent is not None and existing_parent is not self.instance:
-            raise ValueError("attach_instance() rejected: child already bound to another parent")
-
-        default_router = routing_child.default_router
-        if not routing_child._routers:
-            raise TypeError(
-                f"Object {routing_child!r} does not expose Router instances"
-            )  # pragma: no cover
-
-        # Build pairs: list of (router_name, alias)
-        pairs: list[tuple[str, str | None]]
-        if default_router:
-            # Child with single router
-            pairs = [(default_router.name, name)]
-        elif mapping:
-            # Child with multiple routers, explicit mapping "api:users, admin:mgmt"
-            tokens = [token.strip() for token in mapping.split(",") if token.strip()]
-            pairs = [
-                (parts[0], parts[1]) if len(parts) == 2 else (token, None)
-                for token in tokens
-                for parts in [token.split(":", 1)]
-            ]
-        else:
-            # Auto-mapping: each router keeps its name
-            pairs = [(rname, None) for rname in routing_child._routers]
-
-        # Attach routers
-        attached: BaseRouter | None = None
-        for router_name, alias in pairs:
-            router = routing_child._routers.get(router_name)
-            if not router:
-                raise ValueError(f"Unknown router: {router_name}")
-            final_alias = alias or router.name
-            if final_alias in self._children and self._children[final_alias] is not router:
-                raise ValueError(f"Child name collision: {final_alias}")
-            self._children[final_alias] = router
-            router._on_attached_to_parent(self)
-            attached = router
-
-        if getattr(routing_child, "_routing_parent", None) is not self.instance:
-            object.__setattr__(routing_child, "_routing_parent", self.instance)
-        assert attached is not None
-        return attached
-
     def detach_instance(self, routing_child: Any) -> BaseRouter:
         """Detach all routers belonging to a RoutingClass instance."""
         if not safe_is_instance(routing_child, "genro_routes.core.routing.RoutingClass"):

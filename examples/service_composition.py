@@ -27,8 +27,8 @@ class EnterpriseApp(RoutingClass):
         self.inventory = InventoryModule()
         
         # COMPOSITION: attach their routers to our main API
-        self.api.attach_instance(self.billing)
-        self.api.attach_instance(self.inventory)
+        self.attach_instance(self.billing, name="billing")
+        self.attach_instance(self.inventory, name="inventory")
 
 if __name__ == "__main__":
     app = EnterpriseApp()

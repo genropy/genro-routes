@@ -43,7 +43,7 @@ This separation enables:
 
 1. **Instance-scoped routers** - Each object instantiates its own routers (`Router(self, ...)`) with isolated state.
 2. **Friendly registration** - `@route(...)` accepts explicit names, auto-strips prefixes, and supports custom metadata.
-3. **Simple hierarchies** - `attach_instance(child, name="alias")` connects RoutingClass instances with path access (`parent.api.node("child/method")`).
+3. **Simple hierarchies** - `attach_instance(child, name="alias")` (method on `RoutingClass`) connects instances with path access (`parent.api.node("child/method")`).
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
 5. **Runtime configuration** - `routing.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
 6. **Built-in plugins** - `logging`, `pydantic`, `auth`, `env`, `openapi`, and `channel` plugins are included out of the box.
@@ -99,7 +99,7 @@ class Application(RoutingClass):
         self.users = UsersAPI()
 
         # Attach child service
-        self.api.attach_instance(self.users, name="users")
+        self.attach_instance(self.users, name="users")
 
 app = Application()
 print(app.api.node("users/list")())  # ["alice", "bob"]
@@ -245,7 +245,7 @@ See [Why One Name Per Operation](docs/guide/why-one-name-per-operation.md) for t
 ## Pattern Highlights
 
 - **Explicit naming + prefixes** - `@route("api", name="detail")` and `Router(self, prefix="handle_")` separate method names from public route names.
-- **Explicit instance hierarchies** - `self.api.attach_instance(child, name="alias")` connects RoutingClass instances. Retrieve children later with `routing.instance("api/alias")`.
+- **Explicit instance hierarchies** - `self.attach_instance(child, name="alias")` connects RoutingClass instances. Retrieve children later with `routing.instance("api/alias")`.
 - **Endpoint ID** - `@route("api", endpoint_id="USR-001")` assigns a stable identifier for reverse lookup via `router.node("@USR-001")`.
 - **Branch routers** - `Router(self, branch=True)` creates pure organizational nodes without handlers.
 - **Built-in and custom plugins** - `Router(self, ...).plug("logging")`, `Router(self, ...).plug("pydantic")`, or custom plugins.

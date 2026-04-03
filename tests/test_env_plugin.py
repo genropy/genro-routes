@@ -321,7 +321,7 @@ class TestEnvPluginHierarchyAccumulation:
                 self.api = Router(self, name="api").plug("env")
                 self.capabilities = RedisCapabilities()
                 self.child = ChildService()
-                self.api.attach_instance(self.child, name="child")
+                self.attach_instance(self.child, name="child")
 
         parent = ParentService()
 
@@ -348,14 +348,14 @@ class TestEnvPluginHierarchyAccumulation:
                 self.api = Router(self, name="api")
                 self.capabilities = Level2Capabilities()
                 self.level3 = Level3()
-                self.api.attach_instance(self.level3, name="level3")
+                self.attach_instance(self.level3, name="level3")
 
         class Level1(RoutingClass):
             def __init__(self):
                 self.api = Router(self, name="api").plug("env")
                 self.capabilities = Level1Capabilities()
                 self.level2 = Level2()
-                self.api.attach_instance(self.level2, name="level2")
+                self.attach_instance(self.level2, name="level2")
 
         root = Level1()
 
@@ -381,7 +381,7 @@ class TestEnvPluginHierarchyAccumulation:
                 self.api = Router(self, name="api").plug("env")
                 self.capabilities = ParentCapCapabilities()
                 self.child = Child()
-                self.api.attach_instance(self.child, name="child")
+                self.attach_instance(self.child, name="child")
 
         root = Parent()
 
@@ -501,7 +501,7 @@ class TestEnvPluginSubRouterFiltering:
             def __init__(self):
                 self.api = Router(self, name="api").plug("env")
                 self.child = Child()
-                self.api.attach_instance(self.child, name="child")
+                self.attach_instance(self.child, name="child")
 
         parent = Parent()
 
@@ -525,7 +525,7 @@ class TestEnvPluginSubRouterFiltering:
             def __init__(self):
                 self.api = Router(self, name="api").plug("env")
                 self.child = Child()
-                self.api.attach_instance(self.child, name="child")
+                self.attach_instance(self.child, name="child")
 
         parent = Parent()
 
@@ -686,7 +686,7 @@ class TestNodesForbiddenParameter:
             def __init__(self):
                 self.api = Router(self, name="api").plug("env")
                 self.child = Child()
-                self.api.attach_instance(self.child, name="child")
+                self.attach_instance(self.child, name="child")
 
         parent = Parent()
 

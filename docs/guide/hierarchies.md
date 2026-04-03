@@ -17,10 +17,12 @@ Genro Routes supports hierarchical router composition where:
 
 Genro Routes provides explicit methods for managing RoutingClass hierarchies:
 
-- **`attach_instance(child, name=...)`** - Attach a RoutingClass instance to create parent-child relationship
-- **`detach_instance(child)`** - Remove a RoutingClass instance from the hierarchy
+- **`attach_instance(child, name=...)`** - Attach a RoutingClass instance to create parent-child relationship (method on `RoutingClass`)
+- **`detach_instance(child)`** - Remove a RoutingClass instance from the hierarchy (method on `Router`)
 - **Parent tracking** - Children track their parent via `_routing_parent` attribute
 - **Auto-detachment** - Replacing a child attribute automatically detaches the old instance
+
+**Important**: `attach_instance` is a method on `RoutingClass` (the owner), not on `Router`. `detach_instance` remains on `Router`.
 
 ## Basic Instance Attachment
 
@@ -43,7 +45,7 @@ class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         # Attach child directly — no need to store as attribute
-        self.api.attach_instance(Child(), name="sales")
+        self.attach_instance(Child(), name="sales")
 
 parent = Parent()
 
@@ -62,7 +64,7 @@ assert child._routing_parent is parent
 
 **Key points**:
 
-- The `name` parameter provides the alias for accessing the child's router
+- The `name` parameter provides the alias for accessing the child's router (works as a shortcut when the child has a single router)
 - Storing the child as an attribute is **optional** — the router tree keeps a strong reference to the child instance via `router.instance`
 - Use `routing.instance("router/child")` to retrieve a child instance at any time
 - Parent tracking is handled automatically
@@ -73,11 +75,11 @@ assert child._routing_parent is parent
 - If the path points to a child router, uses that router's `default_entry`
 - Check `node.error` to see if resolution succeeded
 
-## Multiple Routers: Auto-Mapping
+## Multiple Routers: Cross-Mapping
 
 <!-- test: test_router_edge_cases.py::test_attach_instance_multiple_routers_requires_mapping -->
 
-When a child has multiple routers, they can be auto-mapped:
+When a child has multiple routers, use explicit cross-mapping via `router_<parent_router>=...` kwargs:
 
 ```python
 class MultiRouterChild(RoutingClass):
@@ -96,72 +98,49 @@ class MultiRouterChild(RoutingClass):
 class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
+        self.admin = Router(self, name="admin")
         self.child = MultiRouterChild()
 
 parent = Parent()
 
-# Auto-map both routers (when parent has single router)
-parent.api.attach_instance(parent.child)
+# Cross-map child routers to parent routers
+parent.attach_instance(parent.child,
+    router_api="api:sales",
+    router_admin="admin:admin_panel",
+)
 
-# Both child routers are accessible
-assert parent.api.node("api/get_data")() == "data"
-assert parent.api.node("admin/manage")() == "manage"
-```
-
-**Auto-mapping rules**:
-
-- Works when parent has a **single router**
-- Child router names become the hierarchy keys
-- All child routers are attached automatically
-- No explicit mapping needed
-
-## Multiple Routers: Explicit Mapping
-
-Use explicit mapping to control which routers attach and with what aliases:
-
-```python
-parent = Parent()
-parent.child = MultiRouterChild()
-
-# Attach only the api router with custom alias
-parent.api.attach_instance(parent.child, name="api:sales_api")
-assert "sales_api" in parent.api._children
-assert "admin" not in parent.api._children  # not attached
-
-# Attach both with custom aliases
-parent.api.attach_instance(parent.child, name="api:sales, admin:admin_panel")
 assert parent.api.node("sales/get_data")() == "data"
-assert parent.api.node("admin_panel/manage")() == "manage"
+assert parent.admin.node("admin_panel/manage")() == "manage"
 ```
 
-**Mapping syntax**:
+**Cross-mapping syntax**:
 
-- Format: `"child_router:parent_alias"`
-- Comma-separated for multiple routers
+- Each kwarg is named `router_<parent_router_name>`
+- Value format: `"child_router:alias"` — comma-separated for multiple child routers on the same parent
 - Unmapped routers are not attached
-- Useful for selective exposure
+- Useful for selective exposure and renaming
 
 ## Parent with Multiple Routers
 
 <!-- test: test_router_edge_cases.py::test_attach_instance_single_child_requires_alias_when_parent_multi -->
 
-When parent has multiple routers, explicit alias is required:
+When child has a single router, use `name=` to specify the alias. The child's router is attached to the parent router that matches by name, or to the single parent router if there is only one:
 
 ```python
 class MultiRouterParent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.admin = Router(self, name="admin")
-        self.child = Child()
+        self.child = Child()  # Child has single router named "api"
 
 parent = MultiRouterParent()
 
-# Must provide alias when parent has multiple routers
-parent.api.attach_instance(parent.child, name="child_alias")
+# name= shortcut: child's "api" router attaches to parent's "api" router
+parent.attach_instance(parent.child, name="child_alias")
 assert "child_alias" in parent.api._children
 ```
 
-**Reason**: Prevents ambiguity about which router the child belongs to.
+When both parent and child have multiple routers, use cross-mapping kwargs instead of `name=` (see previous section).
 
 ## Branch Routers
 
@@ -177,8 +156,8 @@ class OrganizedService(RoutingClass):
         self.users = UserService()
         self.products = ProductService()
 
-        self.api.attach_instance(self.users, name="users")
-        self.api.attach_instance(self.products, name="products")
+        self.attach_instance(self.users, name="users")
+        self.attach_instance(self.products, name="products")
 
 service = OrganizedService()
 
@@ -198,8 +177,8 @@ service.api.node("products/create")()
 ```python
 # Good: Organize related services under /api namespace
 self.api = Router(self, name="api", branch=True)
-self.api.attach_instance(self.auth, name="auth")
-self.api.attach_instance(self.users, name="users")
+self.attach_instance(self.auth, name="auth")
+self.attach_instance(self.users, name="users")
 # Routes: api/auth/login, api/users/list
 
 # Not needed: Single level with handlers
@@ -214,13 +193,13 @@ Branch routers add a level to your URL hierarchy. Use them only when you need pu
 # DON'T: Branch with single child (unnecessary nesting)
 self.api = Router(self, name="api", branch=True)
 self.users = UserService()
-self.api.attach_instance(self.users, name="users")
+self.attach_instance(self.users, name="users")
 # Result: api/users/list - the "api" level adds nothing
 
 # DO: Regular router with handlers + attached children
 self.api = Router(self, name="api")  # Has its own handlers
 self.users = UserService()
-self.api.attach_instance(self.users, name="users")
+self.attach_instance(self.users, name="users")
 
 @route("api")
 def health(self):  # api/health - root level handler
@@ -281,8 +260,8 @@ assert svc.api.node("orders/list_orders")() == ["order1", "order2"]
 | Use Case | Method |
 |----------|--------|
 | Same instance, multiple routers | `parent_router` |
-| Different `RoutingClass` instances | `attach_instance` |
-| Dynamic attachment/detachment | `attach_instance` |
+| Different `RoutingClass` instances | `self.attach_instance(child, ...)` |
+| Dynamic attachment/detachment | `self.attach_instance(child, ...)` / `router.detach_instance(child)` |
 | Static hierarchy at init time | `parent_router` |
 
 **Example: Mixed hierarchy**:
@@ -299,7 +278,7 @@ class Application(RoutingClass):
 
         # External service via attach_instance
         self.auth_service = AuthService()
-        self.api.attach_instance(self.auth_service, name="auth")
+        self.attach_instance(self.auth_service, name="auth")
 
     @route("users")
     def list_users(self):
@@ -328,7 +307,7 @@ class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.child = Child()
-        self.api.attach_instance(self.child, name="child")
+        self.attach_instance(self.child, name="child")
 
 parent = Parent()
 assert parent.child._routing_parent is parent
@@ -354,11 +333,11 @@ assert "child" not in parent.api._children
 ```python
 # Replacing a service implementation
 parent.auth_service = OldAuthService()
-parent.api.attach_instance(parent.auth_service, name="auth")
+parent.attach_instance(parent.auth_service, name="auth")
 
 # Later: automatic cleanup
 parent.auth_service = NewAuthService()  # Old service auto-detached
-parent.api.attach_instance(parent.auth_service, name="auth")
+parent.attach_instance(parent.auth_service, name="auth")
 ```
 
 ## Parent Tracking
@@ -380,7 +359,7 @@ assert child._routing_parent is None  # Not attached
 
 parent = Parent()
 parent.child = child
-parent.api.attach_instance(parent.child, name="child")
+parent.attach_instance(parent.child, name="child")
 assert child._routing_parent is parent  # Parent tracked
 
 parent.api.detach_instance(child)
@@ -419,7 +398,7 @@ class Application(RoutingClass):
 app = Application()
 
 # Attach child - plugins inherit automatically
-app.api.attach_instance(app.service, name="service")
+app.attach_instance(app.service, name="service")
 
 # Child router has the logging plugin
 assert hasattr(app.service.api, "logging")
@@ -451,7 +430,7 @@ class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.child = Child()
-        self.api.attach_instance(self.child, name="child")
+        self.attach_instance(self.child, name="child")
 
 parent = Parent()
 
@@ -496,7 +475,7 @@ class Inspectable(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.service = Service("child")
-        self.api.attach_instance(self.service, name="sub")
+        self.attach_instance(self.service, name="sub")
 
     @route("api")
     def action(self):
@@ -561,7 +540,7 @@ class Application(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.files = FileService()
-        self.api.attach_instance(self.files, name="files")
+        self.attach_instance(self.files, name="files")
 
 app = Application()
 
@@ -673,8 +652,8 @@ class Application(RoutingClass):
         self.users = UserService()
 
         # Attach to hierarchy
-        self.api.attach_instance(self.auth, name="auth")
-        self.api.attach_instance(self.users, name="users")
+        self.attach_instance(self.auth, name="auth")
+        self.attach_instance(self.users, name="users")
 
 app = Application()
 
@@ -708,8 +687,8 @@ class AdminAPI(RoutingClass):
         self.users = UserService()
         self.reports = ReportsAPI()
 
-        self.api.attach_instance(self.users, name="users")
-        self.api.attach_instance(self.reports, name="reports")
+        self.attach_instance(self.users, name="users")
+        self.attach_instance(self.reports, name="reports")
 
 class Application(RoutingClass):
     def __init__(self):
@@ -721,8 +700,8 @@ class Application(RoutingClass):
         # Admin API (protected, more capabilities)
         self.admin = AdminAPI()
 
-        self.api.attach_instance(self.public, name="public")
-        self.api.attach_instance(self.admin, name="admin")
+        self.attach_instance(self.public, name="public")
+        self.attach_instance(self.admin, name="admin")
 
 app = Application()
 
@@ -755,12 +734,12 @@ class Application(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
         self.service = ServiceV1()
-        self.api.attach_instance(self.service, name="processor")
+        self.attach_instance(self.service, name="processor")
 
     def upgrade_service(self):
         # Auto-detachment happens here
         self.service = ServiceV2()
-        self.api.attach_instance(self.service, name="processor")
+        self.attach_instance(self.service, name="processor")
 
 app = Application()
 assert app.api.node("processor/process")("test") == "v1:test"
@@ -784,9 +763,9 @@ class API(RoutingClass):
         self.users = UserService()
         self.orders = OrderService()
 
-        self.root.attach_instance(self.auth, name="auth")
-        self.root.attach_instance(self.users, name="users")
-        self.root.attach_instance(self.orders, name="orders")
+        self.attach_instance(self.auth, name="auth")
+        self.attach_instance(self.users, name="users")
+        self.attach_instance(self.orders, name="orders")
 ```
 
 ### Shared Plugins at Root
@@ -798,17 +777,17 @@ self.api = Router(self, name="api")\
     .plug("pydantic")
 
 # All children inherit both plugins
-self.api.attach_instance(self.auth, name="auth")
-self.api.attach_instance(self.users, name="users")
+self.attach_instance(self.auth, name="auth")
+self.attach_instance(self.users, name="users")
 ```
 
 ### Deep Hierarchies
 
 ```python
 # Organize by domain and subdomain
-app.api.attach_instance(self.admin, name="admin")
-admin.api.attach_instance(self.user_admin, name="users")
-admin.api.attach_instance(self.report_admin, name="reports")
+app.attach_instance(self.admin, name="admin")
+admin.attach_instance(self.user_admin, name="users")
+admin.attach_instance(self.report_admin, name="reports")
 
 # Access: app.api.node("admin/users/create_user")()
 #         app.api.node("admin/reports/sales_report")()
@@ -834,8 +813,8 @@ if should_remove_service:
 
 ```python
 # Use descriptive aliases
-self.api.attach_instance(self.auth, name="auth_v1")
-self.api.attach_instance(self.new_auth, name="auth_v2")
+self.attach_instance(self.auth, name="auth_v1")
+self.attach_instance(self.new_auth, name="auth_v2")
 
 # Access both versions
 self.api.node("auth_v1/login")()
@@ -869,11 +848,11 @@ class Application(RoutingClass):
         # Attach based on configuration
         if config.get("enable_auth"):
             self.auth = AuthService()
-            self.api.attach_instance(self.auth, name="auth")
+            self.attach_instance(self.auth, name="auth")
 
         if config.get("enable_admin"):
             self.admin = AdminService()
-            self.api.attach_instance(self.admin, name="admin")
+            self.attach_instance(self.admin, name="admin")
 ```
 
 ### Multi-Router Services
@@ -892,12 +871,16 @@ class DualInterfaceService(RoutingClass):
     def admin_endpoint(self):
         return "admin data"
 
-# Attach with mapping
-parent.api.attach_instance(service, name="public:api, admin:admin_api")
+# Cross-map child routers to parent routers
+parent.attach_instance(service,
+    router_api="public:api",
+    router_admin="admin:admin_api",
+)
 ```
 
 ## Next Steps
 
+- **[Visual Guide](attach-instance-visual-guide.md)** - Mermaid diagrams for all connection scenarios
 - **[Plugin Configuration](plugin-configuration.md)** - Configure plugins across hierarchies
 - **[Best Practices](best-practices.md)** - Production-ready patterns
 - **[API Reference](../api/reference.md)** - Complete API documentation
