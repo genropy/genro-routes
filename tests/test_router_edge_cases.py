@@ -754,6 +754,265 @@ def test_include_rejects_invalid_type():
         parent.api.include(object(), name="x")
 
 
+def test_include_router_secondary_link_no_plugin_inheritance():
+    """Secondary include() of a Router already attached elsewhere
+    must NOT trigger plugin inheritance or change _routing_parent."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def action(self):
+            return "child"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.main = Router(self, name="main").plug("logging")
+            self.alt = Router(self, name="alt")
+
+    parent = Parent()
+    child = Child()
+
+    # Primary include — sets _routing_parent, inherits plugins
+    parent.main.include(child.api, name="primary")
+    assert child._routing_parent is parent
+    original_plugins = list(child.api._plugins) if hasattr(child.api, "_plugins") else []
+
+    # Secondary include — just a navigation link
+    parent.alt.include(child.api, name="secondary")
+
+    # _routing_parent unchanged
+    assert child._routing_parent is parent
+
+    # Both paths work
+    assert parent.main.node("primary/action")() == "child"
+    assert parent.alt.node("secondary/action")() == "child"
+
+    # Plugins not duplicated on child
+    if hasattr(child.api, "_plugins"):
+        assert len(child.api._plugins) == len(original_plugins)
+
+
+def test_include_entry_alias_not_affected_by_dest_plugins():
+    """An aliased entry must use the source router's plugins, not destination's."""
+
+    call_log = []
+
+    class Svc(RoutingClass):
+        def __init__(self, label):
+            self.label = label
+            self.api = Router(self, name="api").plug("logging")
+
+        @route("api")
+        def action(self):
+            return f"{self.label}:action"
+
+    source = Svc("source")
+    dest = Svc("dest")
+
+    # Include source's entry as alias in dest
+    dest.api.include(source.api.node("action"), name="alias_action")
+
+    # Alias executes the source's handler (bound to source instance)
+    assert dest.api.node("alias_action")() == "source:action"
+
+    # Dest's own entry still works
+    assert dest.api.node("action")() == "dest:action"
+
+
+def test_include_entry_alias_survives_rebuild_handlers():
+    """Alias entry's handler must not be overwritten by dest router's _rebuild_handlers."""
+
+    class Source(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def compute(self):
+            return "computed"
+
+    class Dest(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def local(self):
+            return "local"
+
+    source = Source()
+    dest = Dest()
+
+    dest.api.include(source.api.node("compute"), name="remote_compute")
+
+    # Force rebuild
+    dest.api._rebuild_handlers()
+
+    # Alias still works with source's handler
+    assert dest.api.node("remote_compute")() == "computed"
+    # Local still works
+    assert dest.api.node("local")() == "local"
+
+
+def test_include_entry_alias_with_plugins_on_dest():
+    """Adding a plugin to dest after including an alias must not wrap the alias."""
+
+    class Source(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self):
+            return "source"
+
+    class Dest(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def local(self):
+            return "local"
+
+    source = Source()
+    dest = Dest()
+
+    # Include alias first
+    dest.api.include(source.api.node("handler"), name="remote")
+
+    # Add plugin to dest after alias
+    dest.api.plug("logging")
+
+    # Alias entry should not have been decorated by dest's logging plugin
+    alias_entry = dest.api._entries["remote"]
+    assert alias_entry.router is source.api  # still owned by source
+
+    # Both still work
+    assert dest.api.node("remote")() == "source"
+    assert dest.api.node("local")() == "local"
+
+
+def test_include_router_collision():
+    """include() of a Router with existing alias raises ValueError."""
+
+    class Child1(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    class Child2(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    parent = Parent()
+    parent.api.include(Child1().api, name="slot")
+    with pytest.raises(ValueError, match="Child name collision"):
+        parent.api.include(Child2().api, name="slot")
+
+
+def test_include_entry_collision():
+    """include() of a RouterNode with existing entry name raises ValueError."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def action(self):
+            return "svc"
+
+    class Other(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def action(self):
+            return "other"
+
+    svc = Svc()
+    other = Other()
+    with pytest.raises(ValueError, match="Entry name collision"):
+        svc.api.include(other.api.node("action"), name="action")
+
+
+def test_include_same_router_twice_is_idempotent():
+    """Including the same Router with the same alias twice is a no-op."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def action(self):
+            return "ok"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    parent = Parent()
+    child = Child()
+    parent.api.include(child.api, name="child")
+    parent.api.include(child.api, name="child")  # no error
+    assert parent.api.node("child/action")() == "ok"
+
+
+def test_include_entry_from_deep_path():
+    """include() with a node resolved from a deep hierarchy path."""
+
+    class Deep(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def deep_action(self):
+            return "deep"
+
+    class Mid(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.deep = Deep()
+            self.attach_instance(self.deep, name="deep")
+
+    class Root(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.mid = Mid()
+            self.attach_instance(self.mid, name="mid")
+
+    class Other(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def local(self):
+            return "local"
+
+    root = Root()
+    other = Other()
+
+    # Include a deep entry as alias
+    other.api.include(root.api.node("mid/deep/deep_action"), name="shortcut")
+
+    assert other.api.node("shortcut")() == "deep"
+    assert other.api.node("local")() == "local"
+
+
+def test_include_node_with_error_raises():
+    """include() with a RouterNode that has an error raises ValueError."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    svc = Svc()
+    node = svc.api.node("nonexistent")  # error node
+    with pytest.raises(ValueError, match="no entry resolved"):
+        svc.api.include(node, name="alias")
+
+
 def test_parent_router_child_not_in_owner_routers():
     """Test that a router with parent_router is NOT registered in owner._routers.
 

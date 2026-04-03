@@ -426,6 +426,8 @@ class Router(BaseRouter):
         """
         # Access raw dict to avoid triggering lazy binding
         for entry in self._BaseRouter__entries_raw.values():  # type: ignore[attr-defined]
+            if entry.router is not self:
+                continue  # alias — belongs to source router
             if plugin.name not in entry.plugins:
                 entry.plugins.append(plugin.name)
             plugin.on_decore(self, entry.func, entry)

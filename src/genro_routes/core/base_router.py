@@ -542,8 +542,10 @@ class BaseRouter(RouterInterface):
     # Handler rebuilding
     # ------------------------------------------------------------------
     def _rebuild_handlers(self) -> None:
-        """Rebuild wrapped handlers for all entries."""
+        """Rebuild wrapped handlers for all entries owned by this router."""
         for entry in self.__entries_raw.values():
+            if entry.router is not self:
+                continue  # alias — handler belongs to the source router
             entry.handler = self._wrap_handler(entry, entry.func)
 
     # ------------------------------------------------------------------
@@ -594,16 +596,26 @@ class BaseRouter(RouterInterface):
             )
 
     def _include_router(self, source: BaseRouter, name: str | None) -> None:
-        """Link a Router as a child of this router."""
+        """Link a Router as a child of this router.
+
+        If the source router has no parent yet (first include), this is a
+        primary attachment: plugin inheritance is triggered and _routing_parent
+        is set on the owner.
+
+        If the source already has a parent (subsequent include), this creates
+        a secondary link — a navigational shortcut only. No plugin inheritance,
+        no _routing_parent change.
+        """
         alias = name or source.name
         if not alias:
             raise ValueError("include() requires a name (source router has no name)")
         if alias in self._children and self._children[alias] is not source:
             raise ValueError(f"Child name collision: {alias}")
         self._children[alias] = source
-        source._on_attached_to_parent(self)
         owner = source.instance
-        if owner is not None and getattr(owner, "_routing_parent", None) is None:
+        is_primary = owner is not None and getattr(owner, "_routing_parent", None) is None
+        if is_primary:
+            source._on_attached_to_parent(self)
             object.__setattr__(owner, "_routing_parent", self.instance)
 
     def _include_node(self, source: Any, name: str | None) -> None:
@@ -615,11 +627,11 @@ class BaseRouter(RouterInterface):
             raise ValueError(
                 f"Cannot include RouterNode: no entry resolved (error={source.error})"
             )
-        if name in self.__entries_raw and self.__entries_raw[name] is not entry:
+        # Use _entries (triggers lazy binding) so collision check works
+        # even before the router has been accessed
+        if name in self._entries and self._entries[name] is not entry:
             raise ValueError(f"Entry name collision: {name}")
-        self.__entries_raw[name] = entry
-        if self._bound:
-            self._rebuild_handlers()
+        self._BaseRouter__entries_raw[name] = entry  # type: ignore[attr-defined]
 
     def detach_instance(self, routing_child: Any) -> BaseRouter:
         """Detach all routers belonging to a RoutingClass instance."""
