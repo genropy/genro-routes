@@ -314,6 +314,26 @@ class _RoutingProxy:
             return router
         return self._navigate_router(router, extra_path)
 
+    def instance(self, path: str) -> RoutingClass:
+        """Return the RoutingClass instance that owns the child router at path.
+
+        Args:
+            path: Router path in "router/child" or "router/child/grandchild" notation.
+
+        Returns:
+            The RoutingClass instance owning the resolved child router.
+
+        Raises:
+            AttributeError: If the base router is not found.
+            KeyError: If child path navigation fails.
+
+        Example:
+            >>> svc.routing.instance("api/users")  # → UsersModule instance
+            >>> svc.routing.instance("api/users/detail")  # → nested child instance
+        """
+        router = self.get_router(path)
+        return router.instance  # type: ignore[no-any-return]
+
     def _lookup_router(self, owner: RoutingClass, name: str) -> Router | None:
         """Find a router by name in the owner's registry or as attribute."""
         router = owner._routers.get(name)

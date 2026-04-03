@@ -119,24 +119,19 @@ class Application(RoutingClass):
         self.api.attach_instance(self.orders, name="orders")
 ```
 
-### Store Before Attach
+### Attaching Child Instances
 
-Always store child instances as attributes before attaching:
+Child instances can be attached directly — storing as an attribute is optional:
 
 ```python
-# Good: Store then attach
 class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
-        self.child = ChildService()  # Store first
-        self.api.attach_instance(self.child, name="child")  # Then attach
+        # Both approaches work — the router tree keeps a strong reference
+        self.api.attach_instance(ChildService(), name="child")
 
-
-# Bad: Attach without storing
-class Parent(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-        self.api.attach_instance(ChildService(), name="child")  # Will fail!
+# Retrieve the child instance later if needed
+child = parent.routing.instance("api/child")
 ```
 
 ## Plugin Usage
@@ -387,7 +382,7 @@ svc.routing.configure("api:logging/debug_*", level="debug")
 |----|-------|
 | Keep routers focused | Mix unrelated handlers |
 | Use meaningful names | Use vague names |
-| Store before attach | Attach anonymous instances |
+| Use `routing.instance()` to retrieve children | Rely on global variables for child access |
 | Apply plugins at right level | Over-apply plugins |
 | Let errors propagate | Swallow exceptions |
 | Test handlers in isolation | Only test via HTTP |

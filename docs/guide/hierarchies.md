@@ -42,13 +42,10 @@ class Child(RoutingClass):
 class Parent(RoutingClass):
     def __init__(self):
         self.api = Router(self, name="api")
-        # Store child as attribute first
-        self.child = Child()
+        # Attach child directly — no need to store as attribute
+        self.api.attach_instance(Child(), name="sales")
 
 parent = Parent()
-
-# Attach child's router with custom alias
-parent.api.attach_instance(parent.child, name="sales")
 
 # Access through hierarchy
 assert parent.api.node("sales/list")() == "child:list"
@@ -58,20 +55,17 @@ child_node = parent.api.node("sales")
 assert child_node.error is None
 assert child_node.path == "sales"
 
-# Parent tracking is automatic
-assert parent.child._routing_parent is parent
-
-# Detach when needed
-parent.api.detach_instance(parent.child)
-assert parent.child._routing_parent is None
+# Retrieve the child instance later via routing.instance()
+child = parent.routing.instance("api/sales")
+assert child._routing_parent is parent
 ```
 
-**Key requirements**:
+**Key points**:
 
-- Child must be stored as a parent attribute **before** calling `attach_instance()`
 - The `name` parameter provides the alias for accessing the child's router
+- Storing the child as an attribute is **optional** — the router tree keeps a strong reference to the child instance via `router.instance`
+- Use `routing.instance("router/child")` to retrieve a child instance at any time
 - Parent tracking is handled automatically
-- Detachment clears the parent reference
 
 **`node()` return values**:
 
@@ -820,15 +814,11 @@ admin.api.attach_instance(self.report_admin, name="reports")
 #         app.api.node("admin/reports/sales_report")()
 ```
 
-### Store Before Attach
+### Retrieve Child Instances
 
 ```python
-# REQUIRED: Always store child as attribute first
-class Parent(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-        self.child = Child()  # Store first
-        self.api.attach_instance(self.child, name="child")  # Then attach
+# Retrieve attached child instances via routing.instance()
+child = parent.routing.instance("api/child")  # returns the RoutingClass instance
 ```
 
 ### Explicit Detachment
