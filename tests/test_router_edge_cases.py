@@ -451,6 +451,152 @@ def test_routing_proxy_attach_instance_invalid_router_name():
     assert "No router named 'nonexistent'" in str(exc_info.value)
 
 
+def test_routing_proxy_instance():
+    """Test routing.instance() returns child RoutingClass instance."""
+
+    class UsersModule(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def list(self):
+            return "users:list"
+
+    class OrdersModule(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def list(self):
+            return "orders:list"
+
+    class App(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.api.attach_instance(UsersModule(), name="users")
+            self.api.attach_instance(OrdersModule(), name="orders")
+
+    app = App()
+
+    # Retrieve child instances via routing.instance()
+    users = app.routing.instance("api/users")
+    orders = app.routing.instance("api/orders")
+
+    assert isinstance(users, UsersModule)
+    assert isinstance(orders, OrdersModule)
+
+    # Routing still works
+    assert app.api.node("users/list")() == "users:list"
+    assert app.api.node("orders/list")() == "orders:list"
+
+
+def test_routing_proxy_instance_not_found():
+    """Test routing.instance() raises KeyError for non-existent child."""
+
+    class App(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    app = App()
+    with pytest.raises(KeyError):
+        app.routing.instance("api/nonexistent")
+
+
+def test_endpoint_id_basic_lookup():
+    """Test @endpoint_id resolution via node()."""
+
+    class Service(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api", endpoint_id="USR-001/1")
+        def list_users(self):
+            return "users"
+
+        @route("api", endpoint_id="USR-002/1")
+        def get_user(self, user_id):
+            return f"user:{user_id}"
+
+    svc = Service()
+
+    # Resolve by endpoint_id
+    node = svc.api.node("@USR-001/1")
+    assert node() == "users"
+    assert node.endpoint_id == "USR-001/1"
+
+    # Resolve by path still works
+    assert svc.api.node("list_users")() == "users"
+
+    # endpoint_id with positional args via call
+    node2 = svc.api.node("@USR-002/1")
+    assert node2(42) == "user:42"
+
+
+def test_endpoint_id_in_child_router():
+    """Test @endpoint_id lookup across child routers."""
+
+    class UsersModule(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api", endpoint_id="USR-LIST")
+        def list(self):
+            return "users:list"
+
+    class App(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.api.attach_instance(UsersModule(), name="users")
+
+    app = App()
+
+    # Endpoint_id found in child
+    node = app.api.node("@USR-LIST")
+    assert node() == "users:list"
+    assert node.path == "users/list"
+    assert node.endpoint_id == "USR-LIST"
+
+
+def test_endpoint_id_not_found():
+    """Test @endpoint_id returns not_found for unknown id."""
+
+    class Service(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def hello(self):
+            return "hello"
+
+    svc = Service()
+    node = svc.api.node("@NONEXISTENT")
+    assert node.error == "not_found"
+
+
+def test_endpoint_id_accessible_from_path_node():
+    """Test endpoint_id is accessible on nodes resolved by path."""
+
+    class Service(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api", endpoint_id="MY-EP")
+        def handler(self):
+            return "ok"
+
+        @route("api")
+        def no_id(self):
+            return "no id"
+
+    svc = Service()
+
+    # Has endpoint_id
+    assert svc.api.node("handler").endpoint_id == "MY-EP"
+
+    # No endpoint_id
+    assert svc.api.node("no_id").endpoint_id is None
+
+
 def test_branch_router_blocks_entries():
     """Branch routers cannot register handlers directly."""
 

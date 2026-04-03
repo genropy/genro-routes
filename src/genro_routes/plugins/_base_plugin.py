@@ -75,6 +75,7 @@ class MethodEntry:
         router: Router instance that owns this handler.
         plugins: List of plugin names applied to this handler.
         metadata: Mutable dict for plugins to store annotations.
+        endpoint_id: Optional globally unique identifier for reverse lookup.
     """
 
     name: str
@@ -83,6 +84,7 @@ class MethodEntry:
     plugins: list[str]
     metadata: dict[str, Any] = field(default_factory=dict)
     handler: Callable = field(default=None)  # type: ignore[assignment]
+    endpoint_id: str | None = field(default=None)
 
     def __post_init__(self) -> None:
         """Set handler to func if not provided."""

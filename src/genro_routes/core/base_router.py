@@ -54,8 +54,8 @@ Children (instance hierarchies)
 -------------------------------
 ``attach_instance(child, name=None)`` / ``detach_instance(child)``
 
-- ``attach_instance`` connects routers exposed on a ``RoutingClass`` child that
-  is already stored as an attribute on the parent instance.
+- ``attach_instance`` connects routers exposed on a ``RoutingClass`` child.
+  The router tree keeps a strong reference to the child instance.
 - Attached child routers inherit plugins via ``_on_attached_to_parent``.
 
 Introspection
@@ -342,6 +342,7 @@ class BaseRouter(RouterInterface):
         metadata: dict[str, Any] | None = None,
         replace: bool = False,
         plugin_options: dict[str, dict[str, Any]] | None = None,
+        endpoint_id: str | None = None,
     ) -> None:
         """Create a MethodEntry and store it in the entries table.
 
@@ -351,6 +352,7 @@ class BaseRouter(RouterInterface):
             metadata: Extra metadata to attach to the entry.
             replace: If True, allow overwriting existing entry.
             plugin_options: Per-plugin configuration from decorator kwargs.
+            endpoint_id: Optional globally unique identifier for reverse lookup.
         """
         logical_name = self._resolve_name(bound.__name__, name_override=name)
         if logical_name in self._entries and not replace:
@@ -361,6 +363,7 @@ class BaseRouter(RouterInterface):
             router=self,
             plugins=[],
             metadata=dict(metadata or {}),
+            endpoint_id=endpoint_id,
         )
         # Attach plugin-scoped config to metadata for later consumption by plugin-enabled routers.
         if plugin_options:
@@ -385,6 +388,7 @@ class BaseRouter(RouterInterface):
         """
         for func, marker in self._iter_marked_methods():
             entry_override = marker.pop("entry_name", None)
+            marker_endpoint_id = marker.pop("endpoint_id", None)
             entry_name = name if name is not None else entry_override
             entry_meta = dict(metadata or {})
             entry_meta.update(marker)
@@ -422,6 +426,7 @@ class BaseRouter(RouterInterface):
                 metadata=entry_meta,
                 replace=replace,
                 plugin_options=merged_plugin_opts or None,
+                endpoint_id=marker_endpoint_id,
             )
 
     def _iter_marked_methods(self) -> Iterator[tuple[Callable, dict[str, Any]]]:
@@ -668,17 +673,25 @@ class BaseRouter(RouterInterface):
         Pure path resolution: walks through children, finds entry or falls back
         to default_entry. No auth checks applied.
 
+        Supports endpoint_id lookup with ``@`` prefix: ``"@my-endpoint-id"``
+        resolves via recursive search instead of path traversal.
+
         Args:
-            path: Path to resolve (e.g., "entry" or "child/entry/arg1/arg2").
+            path: Path to resolve (e.g., "entry", "child/entry/arg1/arg2",
+                  or "@endpoint_id" for reverse lookup).
 
         Returns:
             RouterNode with entry reference. If path not found, node.error
             will be set to "not_found" when permission checks are applied.
         """
-        if not path.strip("/"):
+        stripped = path.strip("/")
+        if not stripped:
             return RouterNode(self, path="")
 
-        parts = path.strip("/").split("/")
+        if stripped.startswith("@"):
+            return self._find_by_endpoint_id(stripped[1:])
+
+        parts = stripped.split("/")
         router: BaseRouter | None = self
         pathlist: list[str] = []
 
@@ -694,6 +707,47 @@ class BaseRouter(RouterInterface):
             return RouterNode(router, path="/".join(pathlist))
 
         return RouterNode(last_router, partial=[head] + parts, path="/".join(pathlist[:-1]))
+
+    def _find_by_endpoint_id(self, endpoint_id: str) -> RouterNode:
+        """Resolve an endpoint_id to a RouterNode by recursive search.
+
+        Walks the entire router tree looking for a MethodEntry whose
+        endpoint_id matches the given value.
+
+        Args:
+            endpoint_id: The endpoint identifier to search for.
+
+        Returns:
+            RouterNode pointing to the matched entry, or a not-found node.
+        """
+        result = self._search_endpoint_id(endpoint_id, [])
+        if result is not None:
+            router, entry_name, path_parts = result
+            return RouterNode(router, entry_name=entry_name, path="/".join(path_parts))
+        return RouterNode(self, path=f"@{endpoint_id}")
+
+    def _search_endpoint_id(
+        self, endpoint_id: str, path_parts: list[str]
+    ) -> tuple[BaseRouter, str, list[str]] | None:
+        """Recursively search for endpoint_id in entries and children.
+
+        Args:
+            endpoint_id: The endpoint identifier to find.
+            path_parts: Accumulated path segments for building the full path.
+
+        Returns:
+            Tuple of (router, entry_name, full_path_parts) or None.
+        """
+        for entry_name, entry in self._entries.items():
+            if entry.endpoint_id == endpoint_id:
+                return self, entry_name, [*path_parts, entry_name]
+        for child_alias, child_router in self._children.items():
+            result = child_router._search_endpoint_id(
+                endpoint_id, [*path_parts, child_alias]
+            )
+            if result is not None:
+                return result
+        return None
 
     # ------------------------------------------------------------------
     # Introspection helpers

@@ -814,6 +814,7 @@ print(tree[<span class="str">"routers"</span>].keys())  <span class="cmt"># dict
   <li><code class="il">prefix="handle_"</code> &mdash; strip method prefixes (<code class="il">handle_list</code> &rarr; entry <code class="il">list</code>)</li>
   <li>Auto-detach on attribute replacement &mdash; swap child services at runtime</li>
   <li>Dotted path resolution &mdash; <code class="il">"users/list_users"</code> walks the tree</li>
+  <li><code class="il">routing.instance("api/users")</code> &mdash; retrieve any attached child instance without storing it as an attribute</li>
 </ul>
 
 </div>
@@ -1080,7 +1081,9 @@ cli = RoutingCli(svc)</code></pre>
 <table>
   <tr><th>I want to...</th><th>Code</th></tr>
   <tr><td>Attach a child service</td><td><code class="il">parent.api.attach_instance(child, name="x")</code></td></tr>
+  <tr><td>Retrieve attached child instance</td><td><code class="il">parent.routing.instance("api/x")</code></td></tr>
   <tr><td>Call through hierarchy</td><td><code class="il">parent.api.node("x/handler")()</code></td></tr>
+  <tr><td>Resolve by endpoint_id</td><td><code class="il">parent.api.node("@MY-EP")()</code></td></tr>
   <tr><td>Create a pure namespace (no handlers)</td><td><code class="il">Router(self, name="api", branch=True)</code></td></tr>
   <tr><td>Strip method name prefixes</td><td><code class="il">Router(self, name="api", prefix="handle_")</code></td></tr>
   <tr><td>Auto-propagate db to children</td><td>Set <code class="il">ctx.db = conn</code> on <code class="il">RoutingContext</code> — parent chain handles propagation</td></tr>

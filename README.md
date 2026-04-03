@@ -245,7 +245,8 @@ See [Why One Name Per Operation](docs/guide/why-one-name-per-operation.md) for t
 ## Pattern Highlights
 
 - **Explicit naming + prefixes** - `@route("api", name="detail")` and `Router(self, prefix="handle_")` separate method names from public route names.
-- **Explicit instance hierarchies** - `self.api.attach_instance(self.child, name="alias")` connects RoutingClass instances with parent tracking and auto-detachment.
+- **Explicit instance hierarchies** - `self.api.attach_instance(child, name="alias")` connects RoutingClass instances. Retrieve children later with `routing.instance("api/alias")`.
+- **Endpoint ID** - `@route("api", endpoint_id="USR-001")` assigns a stable identifier for reverse lookup via `router.node("@USR-001")`.
 - **Branch routers** - `Router(self, branch=True)` creates pure organizational nodes without handlers.
 - **Built-in and custom plugins** - `Router(self, ...).plug("logging")`, `Router(self, ...).plug("pydantic")`, or custom plugins.
 - **Shorthand plugin syntax** - `@route("api", auth="admin")` instead of `@route("api", auth_rule="admin")`. Plugins declare their default parameter via `plugin_default_param`.

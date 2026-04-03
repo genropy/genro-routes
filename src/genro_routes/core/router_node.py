@@ -131,6 +131,13 @@ class RouterNode:
             self._entry = entry
 
     @property
+    def endpoint_id(self) -> str | None:
+        """Return the endpoint_id of the entry, if set."""
+        if self._entry is None:
+            return None
+        return self._entry.endpoint_id  # type: ignore[no-any-return]
+
+    @property
     def doc(self) -> str:
         """Return entry docstring."""
         if self._entry is None:

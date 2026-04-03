@@ -31,7 +31,11 @@ __all__ = ["route", "RoutingClass", "Router"]
 
 
 def route(
-    router: str | None = None, *, name: str | None = None, **kwargs: Any
+    router: str | None = None,
+    *,
+    name: str | None = None,
+    endpoint_id: str | None = None,
+    **kwargs: Any,
 ) -> Callable[[Callable], Callable]:
     """Mark a bound method for inclusion in the given router.
 
@@ -39,6 +43,8 @@ def route(
         router: Router identifier (e.g. ``"api"``). If None, uses the default
             router (only works if the class has exactly one router).
         name: Optional explicit entry name (overrides function name/prefix stripping).
+        endpoint_id: Optional globally unique identifier for reverse lookup.
+            When set, the handler can be resolved via ``router.node("@endpoint_id")``.
         **kwargs: Extra metadata merged into handler entry (e.g. plugin flags).
 
     Returns:
@@ -79,6 +85,8 @@ def route(
         payload: dict[str, Any] = {"name": router}  # None means "use default_router"
         if name is not None:
             payload["entry_name"] = name
+        if endpoint_id is not None:
+            payload["endpoint_id"] = endpoint_id
         for key, value in kwargs.items():
             payload[key] = value
         markers.append(payload)
