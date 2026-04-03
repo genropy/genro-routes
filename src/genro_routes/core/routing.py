@@ -238,16 +238,13 @@ class RoutingClass:
             object.__setattr__(child, "_routing_parent", self)
 
     def _link_router(self, parent_router: Any, child: RoutingClass, child_router_name: str, alias: str) -> None:
-        """Link a single child router into a parent router's _children."""
+        """Link a single child router into a parent router via include()."""
         child_router = child._routers.get(child_router_name)
         if child_router is None:
             raise ValueError(
                 f"No router named '{child_router_name}' on {type(child).__name__}"
             )
-        if alias in parent_router._children and parent_router._children[alias] is not child_router:
-            raise ValueError(f"Child name collision: {alias}")
-        parent_router._children[alias] = child_router
-        child_router._on_attached_to_parent(parent_router)
+        parent_router.include(child_router, name=alias)
 
     def _parse_router_spec(self, spec: str) -> list[tuple[str, str]]:
         """Parse 'child_router:alias,child_router2:alias2' into pairs."""

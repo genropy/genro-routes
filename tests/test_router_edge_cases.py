@@ -637,6 +637,123 @@ def test_parent_router_creates_hierarchy():
     assert svc.api.node("orders/list_orders")() == ["order1", "order2"]
 
 
+def test_include_router_on_nested_router():
+    """Test include(Router) for direct router-to-router linking. Closes #28."""
+
+    class SysApp(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def status(self):
+            return "ok"
+
+    class Server(RoutingClass):
+        def __init__(self):
+            self.main = Router(self, name="main", branch=True)
+            self._sys = Router(self, name="_sys", parent_router=self.main)
+            self.swagger = SysApp()
+            self._sys.include(self.swagger.api, name="swagger")
+
+    server = Server()
+
+    # Reachable through hierarchy
+    assert server.main.node("_sys/swagger/status")() == "ok"
+
+    # _routing_parent set on the owner
+    assert server.swagger._routing_parent is server
+
+    # default_router still works (only main is root)
+    assert server.default_router is server.main
+
+
+def test_include_router_without_name_uses_router_name():
+    """Test include(Router) without name uses the router's name as alias."""
+
+    class Child(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="billing")
+
+        @route("billing")
+        def invoice(self):
+            return "inv"
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    parent = Parent()
+    child = Child()
+    parent.api.include(child.api)
+    assert parent.api.node("billing/invoice")() == "inv"
+
+
+def test_include_node_as_entry_alias():
+    """Test include(RouterNode) creates an entry alias."""
+
+    class Pagamenti(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def collega_a_fattura(self, pag_id, fat_id):
+            return f"linked:{pag_id}-{fat_id}"
+
+    class Fatture(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def lista(self):
+            return "fatture"
+
+    pag = Pagamenti()
+    fat = Fatture()
+
+    # Include the entry as alias
+    fat.api.include(pag.api.node("collega_a_fattura"), name="collega_pagamento")
+
+    # Original still works
+    assert pag.api.node("collega_a_fattura")(1, 2) == "linked:1-2"
+
+    # Alias works on fatture
+    assert fat.api.node("collega_pagamento")(3, 4) == "linked:3-4"
+
+    # Original entries still there
+    assert fat.api.node("lista")() == "fatture"
+
+
+def test_include_node_requires_name():
+    """Test include(RouterNode) raises ValueError without name."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def action(self):
+            return "ok"
+
+    svc = Svc()
+    other = Router(type("Dummy", (RoutingClass,), {"__init__": lambda s: None})(), name="x")
+    # Actually test with a real setup
+    parent = Svc()
+    with pytest.raises(ValueError, match="requires name"):
+        parent.api.include(svc.api.node("action"))
+
+
+def test_include_rejects_invalid_type():
+    """Test include() raises TypeError for invalid source."""
+
+    class Parent(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    parent = Parent()
+    with pytest.raises(TypeError, match="Router or RouterNode"):
+        parent.api.include(object(), name="x")
+
+
 def test_parent_router_child_not_in_owner_routers():
     """Test that a router with parent_router is NOT registered in owner._routers.
 

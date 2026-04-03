@@ -292,6 +292,34 @@ self.attach_instance(child)
 - No routers are linked
 - Useful when you plan to link routers later or only need the parent chain for `ctx` propagation
 
+### `include` (on Router — low level)
+
+Direct router-to-router or entry-alias linking.
+
+**Include a Router:**
+
+```python
+self._sys_router.include(swagger.api, name="swagger")
+```
+
+- Links the source router as a child of this router
+- Sets `_routing_parent` on the source's owner
+- Triggers plugin inheritance
+- Use when the target is a nested router (e.g., created with `parent_router`)
+
+**Include a RouterNode (entry alias):**
+
+```python
+fatture.api.include(
+    pagamenti.api.node("collega_a_fattura"),
+    name="collega_pagamento",
+)
+```
+
+- Creates an alias: same handler, visible from two paths
+- No copy — the original MethodEntry is shared
+- `name` is required for RouterNode sources
+
 ### `detach_instance` (on Router)
 
 ```python
@@ -301,6 +329,47 @@ self.api.detach_instance(child)
 - Removes all of `child`'s routers from this router's `_children`
 - Clears `child._routing_parent`
 - Stays on **Router**, not RoutingClass
+
+---
+
+## Scenario 6: Entry Alias
+
+The same handler declared in one service, visible in another's tree.
+
+```mermaid
+graph TB
+    subgraph "Pagamenti"
+        PA["api (Router)"]
+        PA --- E1["lista_pagamenti &bull; entry"]
+        PA --- E2["collega_a_fattura &bull; entry"]
+    end
+    subgraph "Fatture"
+        FA["api (Router)"]
+        FA --- E3["lista_fatture &bull; entry"]
+        FA -.- E4["collega_pagamento &bull; alias"]
+    end
+    E4 -.->|"same handler"| E2
+
+    style PA fill:#bbdefb
+    style FA fill:#ffe0b2
+    style E4 fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5
+```
+
+**Syntax:**
+
+```python
+fatture.api.include(
+    pagamenti.api.node("collega_a_fattura"),
+    name="collega_pagamento",
+)
+```
+
+**Access paths:**
+
+```python
+pagamenti.api.node("collega_a_fattura")(1, 2)    # original
+fatture.api.node("collega_pagamento")(1, 2)       # alias — same handler
+```
 
 ---
 

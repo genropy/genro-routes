@@ -52,6 +52,9 @@ Lookup and execution
 
 Children (instance hierarchies)
 -------------------------------
+``include(source, name=...)`` links a Router or RouterNode into this router.
+Accepts a Router (child hierarchy) or RouterNode (entry alias).
+
 ``detach_instance(child)`` removes all routers belonging to a child instance.
 
 Instance attachment is handled by ``RoutingClass.attach_instance()``, which
@@ -546,6 +549,78 @@ class BaseRouter(RouterInterface):
     # ------------------------------------------------------------------
     # Children management
     # ------------------------------------------------------------------
+    def include(self, source: Any, *, name: str | None = None) -> None:
+        """Include a Router or RouterNode (entry alias) into this router.
+
+        Accepts two source types:
+
+        - **Router**: links the source router as a child of this router.
+          Plugin inheritance is triggered via ``_on_attached_to_parent``.
+          If the source router belongs to a RoutingClass, ``_routing_parent``
+          is set on the owner.
+        - **RouterNode**: creates an alias for a single entry in this router.
+          The original handler is shared — no copy is made.
+
+        Args:
+            source: A Router instance or a RouterNode from ``node()``.
+            name: Alias in this router. For Router sources, defaults to
+                ``source.name``. For RouterNode sources, required.
+
+        Raises:
+            TypeError: If source is not a Router or RouterNode.
+            ValueError: If name is required but not provided.
+            ValueError: If alias collision in _children or _entries.
+
+        Examples::
+
+            # Include a router
+            self._sys.include(swagger.api, name="swagger")
+
+            # Include an entry as alias
+            fatture.api.include(
+                pagamenti.api.node("collega_a_fattura"),
+                name="collega_pagamento",
+            )
+        """
+        from .router_node import RouterNode
+
+        if isinstance(source, BaseRouter):
+            self._include_router(source, name)
+        elif isinstance(source, RouterNode):
+            self._include_node(source, name)
+        else:
+            raise TypeError(
+                f"include() accepts Router or RouterNode, got {type(source).__name__}"
+            )
+
+    def _include_router(self, source: BaseRouter, name: str | None) -> None:
+        """Link a Router as a child of this router."""
+        alias = name or source.name
+        if not alias:
+            raise ValueError("include() requires a name (source router has no name)")
+        if alias in self._children and self._children[alias] is not source:
+            raise ValueError(f"Child name collision: {alias}")
+        self._children[alias] = source
+        source._on_attached_to_parent(self)
+        owner = source.instance
+        if owner is not None and getattr(owner, "_routing_parent", None) is None:
+            object.__setattr__(owner, "_routing_parent", self.instance)
+
+    def _include_node(self, source: Any, name: str | None) -> None:
+        """Create an entry alias from a RouterNode."""
+        if name is None:
+            raise ValueError("include() requires name when including a RouterNode")
+        entry = source._entry
+        if entry is None:
+            raise ValueError(
+                f"Cannot include RouterNode: no entry resolved (error={source.error})"
+            )
+        if name in self.__entries_raw and self.__entries_raw[name] is not entry:
+            raise ValueError(f"Entry name collision: {name}")
+        self.__entries_raw[name] = entry
+        if self._bound:
+            self._rebuild_handlers()
+
     def detach_instance(self, routing_child: Any) -> BaseRouter:
         """Detach all routers belonging to a RoutingClass instance."""
         if not safe_is_instance(routing_child, "genro_routes.core.routing.RoutingClass"):
