@@ -152,10 +152,11 @@ class BaseRouter(RouterInterface):
         if get_default_handler is not None:
             defaults.setdefault("default_handler", get_default_handler)
         self._get_defaults: dict[str, Any] = defaults
-        # Register with owner's _register_router hook if available
-        hook = getattr(self.instance, "_register_router", None)
-        if callable(hook):
-            hook(self)
+        # Register with owner only if this is a root router
+        if parent_router is None:
+            hook = getattr(self.instance, "_register_router", None)
+            if callable(hook):
+                hook(self)
 
         # Attach to parent router if specified
         if parent_router is not None:

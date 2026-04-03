@@ -637,6 +637,39 @@ def test_parent_router_creates_hierarchy():
     assert svc.api.node("orders/list_orders")() == ["order1", "order2"]
 
 
+def test_parent_router_child_not_in_owner_routers():
+    """Test that a router with parent_router is NOT registered in owner._routers.
+
+    Closes #27: child routers created with parent_router are internal structure,
+    not root routers. They must not appear in _routers, so default_router
+    returns the single root and name= shortcut works in attach_instance.
+    """
+
+    class MyApp(RoutingClass):
+        def __init__(self):
+            self.main = Router(self, name="main", branch=True)
+            self._meta = Router(self, name="_meta", parent_router=self.main)
+
+        @route("_meta")
+        def info(self):
+            return "meta"
+
+    app = MyApp()
+
+    # _routers contains only the root
+    assert list(app._routers.keys()) == ["main"]
+    assert "_meta" not in app._routers
+
+    # default_router works (single root)
+    assert app.default_router is app.main
+
+    # child is in parent's _children
+    assert "_meta" in app.main._children
+
+    # path resolution works through the hierarchy
+    assert app.main.node("_meta/info")() == "meta"
+
+
 def test_parent_router_requires_name():
     """Test that parent_router raises ValueError if child has no name."""
 
