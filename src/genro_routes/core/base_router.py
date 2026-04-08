@@ -658,6 +658,60 @@ class BaseRouter(RouterInterface):
         return routing_child  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
+    # URL building
+    # ------------------------------------------------------------------
+    def get_url(self, path: str, **kwargs: Any) -> str:
+        """Build a URL path for a handler, appending positional parameters.
+
+        Accepts a path (e.g., ``"users/detail"``) or an endpoint_id with
+        ``@`` prefix (e.g., ``"@invoice.detail"``). Keyword arguments that
+        match positional parameters in the handler's signature are appended
+        as path segments in declaration order.
+
+        Args:
+            path: Handler path or ``"@endpoint_id"``.
+            **kwargs: Parameter values to append to the path. Only
+                positional-or-keyword parameters are appended (in
+                declaration order). Keyword-only parameters are ignored.
+
+        Returns:
+            The full URL path string.
+
+        Raises:
+            ValueError: If the path does not resolve to a valid handler.
+
+        Example::
+
+            # Given: @route("api", endpoint_id="invoice.detail")
+            #        def detail(self, invoice_id): ...
+            # Mounted at: billing/detail
+
+            router.get_url("@invoice.detail", invoice_id=123)
+            # → "billing/detail/123"
+
+            router.get_url("billing/detail", invoice_id=123)
+            # → "billing/detail/123"
+        """
+        node = self._find_candidate_node(path)
+        if node._entry is None:
+            raise ValueError(f"get_url: path '{path}' does not resolve to a handler")
+        base: str = node.path or ""
+        if not kwargs:
+            return base
+        # Get positional parameter names from the handler signature
+        sig = inspect.signature(node._entry.func)
+        positional_names = [
+            p.name
+            for p in sig.parameters.values()
+            if p.name != "self"
+            and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+        ]
+        segments = [str(kwargs[name]) for name in positional_names if name in kwargs]
+        if segments:
+            return f"{base}/{'/'.join(segments)}"
+        return base
+
+    # ------------------------------------------------------------------
     # Node resolution
     # ------------------------------------------------------------------
     def _find_candidate_node(self, path: str) -> RouterNode:

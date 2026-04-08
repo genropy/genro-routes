@@ -1013,6 +1013,164 @@ def test_include_node_with_error_raises():
         svc.api.include(node, name="alias")
 
 
+def test_get_url_with_endpoint_id():
+    """Test get_url resolves @endpoint_id and appends positional params."""
+
+    class Invoices(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api", endpoint_id="invoice.list")
+        def list(self):
+            return "list"
+
+        @route("api", endpoint_id="invoice.detail")
+        def detail(self, invoice_id):
+            return f"detail:{invoice_id}"
+
+    class App(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.invoices = Invoices()
+            self.attach_instance(self.invoices, name="invoices")
+
+    app = App()
+
+    # Without params
+    assert app.api.get_url("@invoice.list") == "invoices/list"
+
+    # With positional param
+    assert app.api.get_url("@invoice.detail", invoice_id=123) == "invoices/detail/123"
+
+
+def test_get_url_with_path():
+    """Test get_url with a regular path (not endpoint_id)."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def action(self, xx, yy):
+            return f"{xx}:{yy}"
+
+    class App(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.svc = Svc()
+            self.attach_instance(self.svc, name="svc")
+
+    app = App()
+    assert app.api.get_url("svc/action", xx=23, yy="abc") == "svc/action/23/abc"
+
+
+def test_get_url_preserves_param_order():
+    """get_url appends params in signature order, regardless of kwarg order."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self, first, second, third):
+            pass
+
+    svc = Svc()
+    # Pass kwargs in reverse order
+    url = svc.api.get_url("handler", third="c", first="a", second="b")
+    assert url == "handler/a/b/c"
+
+
+def test_get_url_partial_params():
+    """get_url with only some params appends only those present."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self, required, optional="default"):
+            pass
+
+    svc = Svc()
+    assert svc.api.get_url("handler", required=42) == "handler/42"
+    assert svc.api.get_url("handler", required=42, optional="x") == "handler/42/x"
+
+
+def test_get_url_no_params():
+    """get_url without params returns just the path."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def simple(self):
+            return "ok"
+
+    svc = Svc()
+    assert svc.api.get_url("simple") == "simple"
+
+
+def test_get_url_invalid_path():
+    """get_url raises ValueError for non-existent path."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+    svc = Svc()
+    with pytest.raises(ValueError, match="does not resolve"):
+        svc.api.get_url("nonexistent")
+
+
+def test_get_url_deep_hierarchy():
+    """get_url works through deep hierarchies."""
+
+    class Deep(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api", endpoint_id="deep.action")
+        def action(self, x, y):
+            return f"{x}:{y}"
+
+    class Mid(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.deep = Deep()
+            self.attach_instance(self.deep, name="deep")
+
+    class Root(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+            self.mid = Mid()
+            self.attach_instance(self.mid, name="mid")
+
+    root = Root()
+
+    # Via path
+    assert root.api.get_url("mid/deep/action", x=1, y=2) == "mid/deep/action/1/2"
+
+    # Via endpoint_id
+    assert root.api.get_url("@deep.action", x=1, y=2) == "mid/deep/action/1/2"
+
+
+def test_get_url_ignores_keyword_only_params():
+    """get_url does not append keyword-only params to the path."""
+
+    class Svc(RoutingClass):
+        def __init__(self):
+            self.api = Router(self, name="api")
+
+        @route("api")
+        def handler(self, pos_param, *, kw_only="default"):
+            pass
+
+    svc = Svc()
+    assert svc.api.get_url("handler", pos_param=10, kw_only="ignore") == "handler/10"
+
+
 def test_parent_router_child_not_in_owner_routers():
     """Test that a router with parent_router is NOT registered in owner._routers.
 
