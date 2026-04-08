@@ -1,4 +1,4 @@
-# Copyright 2025 Softwell S.r.l. - All Rights Reserved
+# Copyright 2025-2026 Softwell S.r.l. - All Rights Reserved
 # SPDX-License-Identifier: Apache-2.0
 """Exceptions for Genro Routes.
 
