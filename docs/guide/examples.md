@@ -84,5 +84,5 @@ Maps Python files as routers, introspecting classes and functions at runtime. Co
 You can find all these files in the `examples/` directory of the repository. To run them:
 
 1. Clone the repository.
-2. Install dependencies: `pip install faker pygments qrcode[pil]`.
+2. Install dependencies: `pip install faker pygments qrcode[pil] anthropic`.
 3. Run any example directly: `python examples/faker_standard.py`.
