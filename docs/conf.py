@@ -1,4 +1,4 @@
-# Copyright 2025 Softwell S.r.l.
+# Copyright 2026 Softwell S.r.l.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ version = ".".join(release.split(".")[:2])
 
 # Project information
 project = "Genro Routes"
-copyright = "2025, Softwell S.r.l."
+copyright = "2026, Softwell S.r.l."
 author = "Genropy Team"
 
 # General configuration

@@ -1,4 +1,4 @@
-# Copyright 2025 Softwell S.r.l. — Apache License 2.0
+# Copyright 2025-2026 Softwell S.r.l. — Apache License 2.0
 """Builds a click command hierarchy from a RoutingClass instance."""
 
 import asyncio
