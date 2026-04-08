@@ -70,6 +70,12 @@ docs = [
 cli = [
     "click>=8.0.0",
 ]
+examples = [
+	 "faker",
+	 "pygments",
+	 "qrcode[pil]",
+	 "anthropic",
+]
 all = [
     "genro-routes[dev,docs,cli]",
 ]
