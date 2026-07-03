@@ -6,7 +6,7 @@ Configure plugins at runtime through a unified API with support for global setti
 
 Genro Routes provides `routing.configure()` for runtime plugin configuration with:
 
-- **Target syntax**: `<router>:<plugin>/<selector>` format
+- **Target syntax**: `<plugin>/<selector>` format
 - **Global configuration**: Apply to all handlers with `_all_`
 - **Handler-specific overrides**: Target individual handlers
 - **Glob patterns**: Match multiple handlers with wildcards
@@ -17,17 +17,22 @@ Genro Routes provides `routing.configure()` for runtime plugin configuration wit
 
 <!-- test: test_router_edge_cases.py::test_routed_configure_updates_plugins_global_and_local -->
 
-A configuration target has three parts:
+A configuration target has two parts:
 
 ```text
-<router_name>:<plugin_name>/<selector>
+<plugin_name>/<selector>
 ```
+
+The router is implicit: `routing.configure()` always operates on the
+instance's own router (`self.route`). Child routers belong to child
+instances — configure them through the child's own `routing` proxy.
 
 **Examples**:
 
-- `api:logging/_all_` - Apply to all handlers in the logging plugin
-- `api:logging/foo` - Apply only to the `foo` handler
-- `api:logging/b*` - Apply to handlers matching glob pattern `b*`
+- `logging/_all_` - Apply to all handlers in the logging plugin
+- `logging/foo` - Apply only to the `foo` handler
+- `logging/b*` - Apply to handlers matching glob pattern `b*`
+- `logging` - Same as `logging/_all_` (selector defaults to `_all_`)
 
 **Selectors**:
 
@@ -41,52 +46,52 @@ The selector part of the target supports `fnmatch` glob patterns for matching mu
 
 | Pattern | Matches | Example Target |
 |---------|---------|----------------|
-| `*` | Any string | `api:logging/*` (all handlers) |
-| `?` | Any single character | `api:logging/get_?` (get_a, get_b, ...) |
-| `[abc]` | Any char in brackets | `api:logging/get_[123]` |
-| `[!abc]` | Any char NOT in brackets | `api:logging/[!_]*` (not starting with _) |
-| `admin_*` | Prefix match | `api:logging/admin_*` |
-| `*_detail` | Suffix match | `api:logging/*_detail` |
+| `*` | Any string | `logging/*` (all handlers) |
+| `?` | Any single character | `logging/get_?` (get_a, get_b, ...) |
+| `[abc]` | Any char in brackets | `logging/get_[123]` |
+| `[!abc]` | Any char NOT in brackets | `logging/[!_]*` (not starting with _) |
+| `admin_*` | Prefix match | `logging/admin_*` |
+| `*_detail` | Suffix match | `logging/*_detail` |
 
 **Glob pattern examples**:
 
 ```python
 class Service(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("logging")
+        self.route.plug("logging")
 
-    @route("api")
+    @route()
     def admin_list(self): pass
 
-    @route("api")
+    @route()
     def admin_create(self): pass
 
-    @route("api")
+    @route()
     def admin_delete(self): pass
 
-    @route("api")
+    @route()
     def user_profile(self): pass
 
-    @route("api")
+    @route()
     def user_settings(self): pass
 
 svc = Service()
 
 # Disable logging for all admin handlers
-svc.routing.configure("api:logging/admin_*", enabled=False)
+svc.routing.configure("logging/admin_*", enabled=False)
 
-# Set debug level for all user handlers
-svc.routing.configure("api:logging/user_*", level="debug")
+# Print user handlers' log lines to stdout
+svc.routing.configure("logging/user_*", print=True)
 
 # Configure multiple patterns with comma-separated selector
-svc.routing.configure("api:logging/admin_list,admin_create", threshold=5)
+svc.routing.configure("logging/admin_list,admin_create", before=False)
 ```
 
 **Combining patterns**:
 
 ```python
 # Multiple comma-separated patterns in selector
-svc.routing.configure("api:logging/admin_*,user_*", enabled=True)
+svc.routing.configure("logging/admin_*,user_*", enabled=True)
 
 # Each pattern is matched independently:
 # admin_* matches: admin_list, admin_create, admin_delete
@@ -100,40 +105,40 @@ svc.routing.configure("api:logging/admin_*,user_*", enabled=True)
 Configure plugins using keyword arguments:
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class ConfService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("logging")
+        self.route.plug("logging")
 
-    @route("api")
+    @route()
     def foo(self):
         return "foo"
 
-    @route("api")
+    @route()
     def bar(self):
         return "bar"
 
 svc = ConfService()
 
 # Global configuration - applies to all handlers
-svc.routing.configure("api:logging/_all_", threshold=10)
-assert svc.api.logging.configuration()["threshold"] == 10
+svc.routing.configure("logging/_all_", print=True)
+assert svc.route.logging.configuration()["print"] is True
 
 # Handler-specific configuration
-svc.routing.configure("api:logging/foo", enabled=False)
-assert svc.api.logging.configuration("foo")["enabled"] is False
+svc.routing.configure("logging/foo", enabled=False)
+assert svc.route.logging.configuration("foo")["enabled"] is False
 
 # Glob pattern configuration
-svc.routing.configure("api:logging/b*", mode="strict")
-assert svc.api.logging.configuration("bar")["mode"] == "strict"
+svc.routing.configure("logging/b*", before=False)
+assert svc.route.logging.configuration("bar")["before"] is False
 ```
 
 **Configuration keys** depend on the plugin. Common keys:
 
 - `enabled` - Enable/disable plugin for handler(s)
-- `flags` - Plugin-specific flags
-- `threshold`, `mode`, `level` - Plugin-specific settings
+- `flags` - Boolean options as comma-separated string
+- `before`, `after`, `print` - Plugin-specific settings (here: LoggingPlugin)
 
 ## Batch Updates
 
@@ -144,13 +149,13 @@ Configure multiple targets with a list of dictionaries:
 ```python
 # JSON-friendly batch configuration
 payload = [
-    {"target": "api:logging/_all_", "flags": "trace"},
-    {"target": "api:logging/foo", "limit": 5},
+    {"target": "logging/_all_", "flags": "print"},
+    {"target": "logging/foo", "after": False},
 ]
 
 result = svc.routing.configure(payload)
 assert len(result) == 2
-assert svc.api.logging.configuration("foo")["limit"] == 5
+assert svc.route.logging.configuration("foo")["after"] is False
 ```
 
 **Each dictionary must have**:
@@ -176,37 +181,38 @@ Query the router and plugin structure with `"?"`:
 ```python
 class Leaf(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("logging")
+        self.route.plug("logging")
 
-    @route("api")
+    @route()
     def ping(self):
         return "leaf"
 
 class Root(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("logging")
+        self.route.plug("logging")
         self.leaf = Leaf()
         self.attach_instance(self.leaf, name="leaf")
 
-    @route("api")
+    @route()
     def root_ping(self):
         return "root"
 
 svc = Root()
 
-# Get full configuration tree
+# Get the router description (recursing into child routers)
 info = svc.routing.configure("?")
-assert "api" in info
-assert info["api"]["plugins"]
-assert "leaf" in info["api"]["routers"]
+assert info["name"] == "route"
+assert info["plugins"]
+assert "root_ping" in info["entries"]
+assert "leaf" in info["routers"]
 ```
 
-**Returns nested dictionary with**:
+**Returns the router description dict with**:
 
-- Router names
-- Attached plugins and their configurations
-- Child routers
-- Registered handlers
+- `name` - The router name (always `"route"`)
+- `plugins` - Attached plugins with their configurations and per-handler overrides
+- `entries` - Registered handler names
+- `routers` - Child routers, each described with the same structure
 
 ## Exposing Configuration API
 
@@ -217,10 +223,9 @@ Create a dedicated configuration endpoint:
 ```python
 class ConfigAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("logging")
-        self.admin = Router(self, name="admin")
+        self.route.plug("logging")
 
-    @route("admin")
+    @route()
     def configure_plugin(self, target: str, **options):
         """Configure plugins via API endpoint."""
         result = self.routing.configure(target, **options)
@@ -229,7 +234,7 @@ class ConfigAPI(RoutingClass):
 config = ConfigAPI()
 
 # Call via router
-result = config.admin.node("configure_plugin")("api:logging/_all_", enabled=True)
+result = config.route.node("configure_plugin")("logging/_all_", enabled=True)
 assert result["status"] == "ok"
 ```
 
@@ -245,27 +250,27 @@ assert result["status"] == "ok"
 **Invalid targets raise exceptions**:
 
 - `ValueError` - Malformed target syntax
-- `AttributeError` - Router or plugin not found
+- `AttributeError` - Plugin not found on the router
 - `KeyError` - Selector matches no handlers
 
 **Validation**:
 
 ```python
-# Router name cannot be empty
+# Plugin name cannot be empty
 try:
-    svc.routing.configure(":logging/_all_", enabled=True)
+    svc.routing.configure("/_all_", enabled=True)
 except ValueError:
     pass  # Expected
 
-# Plugin must exist
+# Plugin must be plugged on the router
 try:
-    svc.routing.configure("api:nonexistent/_all_", enabled=True)
+    svc.routing.configure("nonexistent/_all_", enabled=True)
 except AttributeError:
     pass  # Expected
 
 # Selector must match at least one handler
 try:
-    svc.routing.configure("api:logging/nonexistent", enabled=True)
+    svc.routing.configure("logging/nonexistent", enabled=True)
 except KeyError:
     pass  # Expected
 ```
@@ -276,11 +281,11 @@ except KeyError:
 
 ```python
 # Set defaults for all handlers
-svc.routing.configure("api:logging/_all_", enabled=True, level="info")
+svc.routing.configure("logging/_all_", enabled=True, log=True)
 
 # Override for specific handlers
-svc.routing.configure("api:logging/debug_*", level="debug")
-svc.routing.configure("api:logging/admin_*", enabled=False)
+svc.routing.configure("logging/debug_*", print=True)
+svc.routing.configure("logging/admin_*", enabled=False)
 ```
 
 **Configuration from files**:
@@ -300,10 +305,10 @@ svc.routing.configure(config["plugins"])
 
 ```python
 # Enable new feature for test handlers only
-svc.routing.configure("api:new_feature/test_*", enabled=True)
+svc.routing.configure("new_feature/test_*", enabled=True)
 
 # Expand to all after validation
-svc.routing.configure("api:new_feature/_all_", enabled=True)
+svc.routing.configure("new_feature/_all_", enabled=True)
 ```
 
 ## Next Steps

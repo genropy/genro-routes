@@ -350,7 +350,7 @@
 pip install genro-routes[pydantic] <span class="cmt"># With validation support</span></code></pre>
 
 <h3>Write your service</h3>
-<pre><code><span class="kw">from</span> genro_routes <span class="kw">import</span> <span class="cls">RoutingClass</span>, <span class="cls">Router</span>, <span class="fn">route</span>
+<pre><code><span class="kw">from</span> genro_routes <span class="kw">import</span> <span class="cls">RoutingClass</span>, <span class="fn">route</span>
 
 <span class="kw">class</span> <span class="cls">BookStore</span>(<span class="cls">RoutingClass</span>):
     <span class="kw">def</span> <span class="fn">__init__</span>(self):
@@ -358,44 +358,45 @@ pip install genro-routes[pydantic] <span class="cmt"># With validation support</
             {<span class="str">"id"</span>: <span class="num">1</span>, <span class="str">"title"</span>: <span class="str">"Dune"</span>, <span class="str">"author"</span>: <span class="str">"Herbert"</span>},
             {<span class="str">"id"</span>: <span class="num">2</span>, <span class="str">"title"</span>: <span class="str">"Neuromancer"</span>, <span class="str">"author"</span>: <span class="str">"Gibson"</span>},
         ]
-        self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>)
 
-    <span class="dec">@route</span>(<span class="str">"api"</span>)
+    <span class="dec">@route</span>()
     <span class="kw">def</span> <span class="fn">list_books</span>(self):
         <span class="kw">return</span> self.catalog
 
-    <span class="dec">@route</span>(<span class="str">"api"</span>)
+    <span class="dec">@route</span>()
     <span class="kw">def</span> <span class="fn">find_book</span>(self, book_id: <span class="cls">int</span>):
         <span class="kw">return</span> next((b <span class="kw">for</span> b <span class="kw">in</span> self.catalog <span class="kw">if</span> b[<span class="str">"id"</span>] == book_id), <span class="kw">None</span>)
 
-    <span class="dec">@route</span>(<span class="str">"api"</span>)
+    <span class="dec">@route</span>()
     <span class="kw">def</span> <span class="fn">add_book</span>(self, title: <span class="cls">str</span>, author: <span class="cls">str</span>):
         book = {<span class="str">"id"</span>: len(self.catalog) + <span class="num">1</span>, <span class="str">"title"</span>: title, <span class="str">"author"</span>: author}
         self.catalog.append(book)
         <span class="kw">return</span> book</code></pre>
 
+<p class="dim">Every <code class="il">RoutingClass</code> owns exactly one router, created automatically and exposed as <code class="il">self.route</code> &mdash; you never instantiate it yourself.</p>
+
 <h3>Call it directly &mdash; no server needed</h3>
 <pre><code>store = <span class="cls">BookStore</span>()
 
-store.api.node(<span class="str">"list_books"</span>)()              <span class="cmt"># [{"id": 1, ...}, {"id": 2, ...}]</span>
-store.api.node(<span class="str">"find_book"</span>)(book_id=<span class="num">1</span>)      <span class="cmt"># {"id": 1, "title": "Dune", ...}</span>
-store.api.node(<span class="str">"add_book"</span>)(title=<span class="str">"Snow Crash"</span>, author=<span class="str">"Stephenson"</span>)
+store.route.node(<span class="str">"list_books"</span>)()              <span class="cmt"># [{"id": 1, ...}, {"id": 2, ...}]</span>
+store.route.node(<span class="str">"find_book"</span>)(book_id=<span class="num">1</span>)      <span class="cmt"># {"id": 1, "title": "Dune", ...}</span>
+store.route.node(<span class="str">"add_book"</span>)(title=<span class="str">"Snow Crash"</span>, author=<span class="str">"Stephenson"</span>)
 
 <span class="cmt"># Introspect all registered handlers</span>
-info = store.api.nodes()
+info = store.route.nodes()
 print(info[<span class="str">"entries"</span>].keys())  <span class="cmt"># dict_keys(['list_books', 'find_book', 'add_book'])</span></code></pre>
 
 <h3>Test it &mdash; this is your entire test</h3>
 <pre><code><span class="kw">def</span> <span class="fn">test_find_book</span>():
     store = <span class="cls">BookStore</span>()
-    result = store.api.node(<span class="str">"find_book"</span>)(book_id=<span class="num">1</span>)
+    result = store.route.node(<span class="str">"find_book"</span>)(book_id=<span class="num">1</span>)
     <span class="kw">assert</span> result[<span class="str">"title"</span>] == <span class="str">"Dune"</span>
 
 <span class="kw">def</span> <span class="fn">test_add_book</span>():
     store = <span class="cls">BookStore</span>()
-    book = store.api.node(<span class="str">"add_book"</span>)(title=<span class="str">"Snow Crash"</span>, author=<span class="str">"Stephenson"</span>)
+    book = store.route.node(<span class="str">"add_book"</span>)(title=<span class="str">"Snow Crash"</span>, author=<span class="str">"Stephenson"</span>)
     <span class="kw">assert</span> book[<span class="str">"id"</span>] == <span class="num">3</span>
-    <span class="kw">assert</span> len(store.api.node(<span class="str">"list_books"</span>)()) == <span class="num">3</span></code></pre>
+    <span class="kw">assert</span> len(store.route.node(<span class="str">"list_books"</span>)()) == <span class="num">3</span></code></pre>
 
 <div class="callout">
 <p><strong>No HTTP client, no mock server, no fixtures.</strong> Your tests call the same methods your HTTP adapter will call. If the test passes, the API works.</p>
@@ -408,9 +409,9 @@ print(info[<span class="str">"entries"</span>].keys())  <span class="cmt"># dict
 store = <span class="cls">BookStore</span>()
 app = <span class="cls">GenroASGI</span>(store)  <span class="cmt"># That's it. uvicorn app:app</span>
 
-<span class="cmt"># GET  /api/list_books     &rarr; [{"id": 1, ...}]</span>
-<span class="cmt"># GET  /api/find_book?book_id=1  &rarr; {"id": 1, "title": "Dune"}</span>
-<span class="cmt"># POST /api/add_book       &rarr; {"id": 3, ...}</span></code></pre>
+<span class="cmt"># GET  /list_books     &rarr; [{"id": 1, ...}]</span>
+<span class="cmt"># GET  /find_book?book_id=1  &rarr; {"id": 1, "title": "Dune"}</span>
+<span class="cmt"># POST /add_book       &rarr; {"id": 3, ...}</span></code></pre>
 
 <p class="dim">Same BookStore, same logic, zero changes. The ASGI adapter maps router entries to HTTP endpoints, infers GET/POST from parameter types, and handles serialization.</p>
 
@@ -442,7 +443,7 @@ app = <span class="cls">GenroASGI</span>(store)  <span class="cmt"># That's it. 
   <line x1="370" y1="60" x2="405" y2="60" stroke="#8b90a0" stroke-width="1" marker-end="url(#a2)"/>
   <line x1="495" y1="60" x2="530" y2="60" stroke="#8b90a0" stroke-width="1" marker-end="url(#a2)"/>
   <text x="350" y="20" text-anchor="middle" fill="#8b90a0" font-size="10">Plugin pipeline &mdash; each handler passes through all attached plugins</text>
-  <text x="350" y="110" text-anchor="middle" fill="#8b90a0" font-size="10">Attach: <tspan fill="#6c9eff">Router(self, name="api").plug("pydantic").plug("auth")</tspan></text>
+  <text x="350" y="110" text-anchor="middle" fill="#8b90a0" font-size="10">Attach: <tspan fill="#6c9eff">self.route.plug("pydantic").plug("auth")</tspan></text>
   <defs><marker id="a2" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b90a0"/></marker></defs>
 </svg>
 </div>
@@ -450,15 +451,15 @@ app = <span class="cls">GenroASGI</span>(store)  <span class="cmt"># That's it. 
 <h3>Three ways to configure</h3>
 
 <p><strong>1. In the decorator</strong> &mdash; static, per-handler</p>
-<pre><code><span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"admin"</span>, pydantic_disabled=<span class="kw">True</span>)</code></pre>
+<pre><code><span class="dec">@route</span>(auth_rule=<span class="str">"admin"</span>, pydantic_disabled=<span class="kw">True</span>)</code></pre>
 
 <p><strong>2. On the plugin instance</strong> &mdash; runtime, global or targeted</p>
 <pre><code>router.auth.configure(rule=<span class="str">"user"</span>)                          <span class="cmt"># All handlers</span>
 router.auth.configure(_target=<span class="str">"admin_panel"</span>, rule=<span class="str">"admin"</span>)   <span class="cmt"># One handler</span></code></pre>
 
 <p><strong>3. Via the routing proxy</strong> &mdash; wildcards and introspection</p>
-<pre><code>svc.routing.configure(<span class="str">"api:auth/admin_*"</span>, rule=<span class="str">"admin"</span>)  <span class="cmt"># Glob pattern</span>
-svc.routing.configure(<span class="str">"?"</span>)                              <span class="cmt"># Show full config tree</span></code></pre>
+<pre><code>svc.routing.configure(<span class="str">"auth/admin_*"</span>, rule=<span class="str">"admin"</span>)  <span class="cmt"># Glob pattern</span>
+svc.routing.configure(<span class="str">"?"</span>)                          <span class="cmt"># Show full config tree</span></code></pre>
 
 <h3>At a glance</h3>
 <table>
@@ -491,39 +492,39 @@ svc.routing.configure(<span class="str">"?"</span>)                             
 <h3>What happens at runtime</h3>
 <pre><code><span class="kw">class</span> <span class="cls">API</span>(<span class="cls">RoutingClass</span>):
     <span class="kw">def</span> <span class="fn">__init__</span>(self):
-        self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>).plug(<span class="str">"auth"</span>)
+        self.route.plug(<span class="str">"auth"</span>)
 
-    <span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"admin"</span>)
+    <span class="dec">@route</span>(auth_rule=<span class="str">"admin"</span>)
     <span class="kw">def</span> <span class="fn">delete_user</span>(self, user_id: <span class="cls">int</span>): ...
 
-    <span class="dec">@route</span>(<span class="str">"api"</span>)                       <span class="cmt"># No rule = public</span>
+    <span class="dec">@route</span>()                       <span class="cmt"># No rule = public</span>
     <span class="kw">def</span> <span class="fn">health</span>(self): ...
 
 svc = <span class="cls">API</span>()
 
 <span class="cmt"># Authorized &mdash; works</span>
-svc.api.node(<span class="str">"delete_user"</span>, auth_tags=<span class="str">"admin"</span>)(user_id=<span class="num">42</span>)
+svc.route.node(<span class="str">"delete_user"</span>, auth_tags=<span class="str">"admin"</span>)(user_id=<span class="num">42</span>)
 
 <span class="cmt"># Wrong tags &mdash; raises NotAuthorized (403)</span>
-svc.api.node(<span class="str">"delete_user"</span>, auth_tags=<span class="str">"guest"</span>)
+svc.route.node(<span class="str">"delete_user"</span>, auth_tags=<span class="str">"guest"</span>)
 
 <span class="cmt"># No tags at all &mdash; raises NotAuthenticated (401)</span>
-svc.api.node(<span class="str">"delete_user"</span>)
+svc.route.node(<span class="str">"delete_user"</span>)
 
 <span class="cmt"># Public handler &mdash; always works</span>
-svc.api.node(<span class="str">"health"</span>)()</code></pre>
+svc.route.node(<span class="str">"health"</span>)()</code></pre>
 
 <h3>Filtered introspection</h3>
 <pre><code><span class="cmt"># nodes() shows only what the user can access:</span>
-svc.api.nodes(auth_tags=<span class="str">"admin"</span>)            <span class="cmt"># Sees: delete_user, health</span>
-svc.api.nodes(auth_tags=<span class="str">"guest"</span>)            <span class="cmt"># Sees: health only</span>
-svc.api.nodes()                            <span class="cmt"># Sees: health only (no tags = no access)</span></code></pre>
+svc.route.nodes(auth_tags=<span class="str">"admin"</span>)            <span class="cmt"># Sees: delete_user, health</span>
+svc.route.nodes(auth_tags=<span class="str">"guest"</span>)            <span class="cmt"># Sees: health only</span>
+svc.route.nodes()                            <span class="cmt"># Sees: health only (no tags = no access)</span></code></pre>
 
 <h3>Rule expressions</h3>
-<pre><code><span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"admin|moderator"</span>)     <span class="cmt"># Admin OR moderator</span>
-<span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"admin&amp;internal"</span>)      <span class="cmt"># Admin AND internal</span>
-<span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"!guest"</span>)              <span class="cmt"># NOT guest</span>
-<span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"(admin|mod)&amp;!banned"</span>) <span class="cmt"># Grouping</span></code></pre>
+<pre><code><span class="dec">@route</span>(auth_rule=<span class="str">"admin|moderator"</span>)     <span class="cmt"># Admin OR moderator</span>
+<span class="dec">@route</span>(auth_rule=<span class="str">"admin&amp;internal"</span>)      <span class="cmt"># Admin AND internal</span>
+<span class="dec">@route</span>(auth_rule=<span class="str">"!guest"</span>)              <span class="cmt"># NOT guest</span>
+<span class="dec">@route</span>(auth_rule=<span class="str">"(admin|mod)&amp;!banned"</span>) <span class="cmt"># Grouping</span></code></pre>
 
 <table>
   <tr><th>Operator</th><th>Meaning</th><th>Example</th></tr>
@@ -563,19 +564,19 @@ svc.api.nodes()                            <span class="cmt"># Sees: health only
 
 <span class="kw">class</span> <span class="cls">API</span>(<span class="cls">RoutingClass</span>):
     <span class="kw">def</span> <span class="fn">__init__</span>(self):
-        self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>).plug(<span class="str">"pydantic"</span>)
+        self.route.plug(<span class="str">"pydantic"</span>)
 
-    <span class="dec">@route</span>(<span class="str">"api"</span>)
+    <span class="dec">@route</span>()
     <span class="kw">def</span> <span class="fn">get_book</span>(self, book_id: <span class="cls">int</span>) -> <span class="cls">BookResponse</span>:
         <span class="kw">return</span> {<span class="str">"id"</span>: book_id, <span class="str">"title"</span>: <span class="str">"Dune"</span>, <span class="str">"author"</span>: <span class="str">"Herbert"</span>}
 
 svc = <span class="cls">API</span>()
-svc.api.node(<span class="str">"get_book"</span>)(book_id=<span class="num">1</span>)       <span class="cmt"># OK &rarr; {"id": 1, ...}</span>
-svc.api.node(<span class="str">"get_book"</span>)(book_id=<span class="str">"abc"</span>)   <span class="cmt"># ValidationError!</span></code></pre>
+svc.route.node(<span class="str">"get_book"</span>)(book_id=<span class="num">1</span>)       <span class="cmt"># OK &rarr; {"id": 1, ...}</span>
+svc.route.node(<span class="str">"get_book"</span>)(book_id=<span class="str">"abc"</span>)   <span class="cmt"># ValidationError!</span></code></pre>
 
 <h3>Response schema for free</h3>
 <pre><code><span class="cmt"># The return type annotation auto-generates a JSON Schema:</span>
-entry = svc.api._entries[<span class="str">"get_book"</span>]
+entry = svc.route._entries[<span class="str">"get_book"</span>]
 schema = entry.metadata[<span class="str">"pydantic"</span>][<span class="str">"response_schema"</span>]
 <span class="cmt"># {"type": "object", "properties": {"id": {"type": "integer"}, ...}}</span>
 
@@ -584,7 +585,7 @@ schema = entry.metadata[<span class="str">"pydantic"</span>][<span class="str">"
 <p><strong>Supported return types:</strong> TypedDict, dataclass, dict, list, str, int, bool, Pydantic models &mdash; anything Pydantic can serialize.</p>
 
 <h3>Skip validation for a handler</h3>
-<pre><code><span class="dec">@route</span>(<span class="str">"api"</span>, pydantic_disabled=<span class="kw">True</span>)
+<pre><code><span class="dec">@route</span>(pydantic_disabled=<span class="kw">True</span>)
 <span class="kw">def</span> <span class="fn">raw_handler</span>(self, data): ...  <span class="cmt"># No validation, no schema</span></code></pre>
 
 <h3>Parameters</h3>
@@ -607,20 +608,20 @@ schema = entry.metadata[<span class="str">"pydantic"</span>][<span class="str">"
 
 <p>Controls OpenAPI 3.1 schema generation. Overrides HTTP methods, adds tags, marks deprecated. Integrates with auth + env + pydantic automatically.</p>
 
-<pre><code>self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>).plug(<span class="str">"openapi"</span>).plug(<span class="str">"auth"</span>).plug(<span class="str">"pydantic"</span>)
+<pre><code>self.route.plug(<span class="str">"openapi"</span>).plug(<span class="str">"auth"</span>).plug(<span class="str">"pydantic"</span>)
 
-<span class="dec">@route</span>(<span class="str">"api"</span>, auth_rule=<span class="str">"admin"</span>,
+<span class="dec">@route</span>(auth_rule=<span class="str">"admin"</span>,
        openapi_tags=<span class="str">"admin"</span>,
        openapi_deprecated=<span class="kw">True</span>,
        openapi_method=<span class="str">"delete"</span>)
 <span class="kw">def</span> <span class="fn">remove_item</span>(self, item_id: <span class="cls">int</span>): ...
 
-<span class="cmt"># Generate full spec:</span>
-spec = svc.api.nodes(mode=<span class="str">"openapi"</span>)
+<span class="cmt"># Generate full spec (auth_tags to include protected handlers):</span>
+spec = svc.route.nodes(mode=<span class="str">"openapi"</span>, auth_tags=<span class="str">"admin"</span>)
 <span class="cmt"># {"paths": {"/remove_item": {"delete": {"security": [...], ...}}}}</span>
 
 <span class="cmt"># Or hierarchical (preserves router tree):</span>
-spec = svc.api.nodes(mode=<span class="str">"h_openapi"</span>)</code></pre>
+spec = svc.route.nodes(mode=<span class="str">"h_openapi"</span>, auth_tags=<span class="str">"admin"</span>)</code></pre>
 
 <h3>Auto-inference</h3>
 <p>Without explicit <code class="il">method</code>: <strong>GET</strong> for scalar-only params (str, int, bool), <strong>POST</strong> for complex params (dict, list, models).</p>
@@ -673,21 +674,21 @@ spec = svc.api.nodes(mode=<span class="str">"h_openapi"</span>)</code></pre>
 
 <span class="kw">class</span> <span class="cls">PaymentAPI</span>(<span class="cls">RoutingClass</span>):
     <span class="kw">def</span> <span class="fn">__init__</span>(self):
-        self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>).plug(<span class="str">"env"</span>)
+        self.route.plug(<span class="str">"env"</span>)
         self.capabilities = <span class="cls">SystemCaps</span>()
 
-    <span class="dec">@route</span>(<span class="str">"api"</span>, env_requires=<span class="str">"redis"</span>)
+    <span class="dec">@route</span>(env_requires=<span class="str">"redis"</span>)
     <span class="kw">def</span> <span class="fn">cached_lookup</span>(self): ...        <span class="cmt"># Visible (redis available)</span>
 
-    <span class="dec">@route</span>(<span class="str">"api"</span>, env_requires=<span class="str">"stripe|paypal"</span>)
+    <span class="dec">@route</span>(env_requires=<span class="str">"stripe|paypal"</span>)
     <span class="kw">def</span> <span class="fn">charge</span>(self): ...                <span class="cmt"># Hidden (neither available)</span>
 
 svc = <span class="cls">PaymentAPI</span>()
-svc.api.nodes()  <span class="cmt"># Shows cached_lookup only. charge is invisible.</span>
-svc.api.node(<span class="str">"charge"</span>)()  <span class="cmt"># Raises NotAvailable!</span>
+svc.route.nodes()  <span class="cmt"># Shows cached_lookup only. charge is invisible.</span>
+svc.route.node(<span class="str">"charge"</span>)()  <span class="cmt"># Raises NotAvailable!</span>
 
 <span class="cmt"># Provide capabilities at request time:</span>
-svc.api.node(<span class="str">"charge"</span>, env_capabilities=<span class="str">"stripe"</span>)()  <span class="cmt"># Now works</span></code></pre>
+svc.route.node(<span class="str">"charge"</span>, env_capabilities=<span class="str">"stripe"</span>)()  <span class="cmt"># Now works</span></code></pre>
 
 <p><strong>Same rule syntax as auth:</strong> <code class="il">|</code> OR, <code class="il">&amp;</code> AND, <code class="il">!</code> NOT, <code class="il">()</code> grouping.</p>
 <p><strong>Accumulation:</strong> Capabilities from parent instances are inherited. Request-time capabilities add to the set.</p>
@@ -713,9 +714,9 @@ svc.api.node(<span class="str">"charge"</span>, env_capabilities=<span class="st
 
 <p>Wraps handler calls with timing. Logs "start" before and "end (X ms)" after. Useful for debugging and monitoring.</p>
 
-<pre><code>self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>).plug(<span class="str">"logging"</span>)
+<pre><code>self.route.plug(<span class="str">"logging"</span>)
 
-<span class="dec">@route</span>(<span class="str">"api"</span>)
+<span class="dec">@route</span>()
 <span class="kw">def</span> <span class="fn">slow_op</span>(self):
     time.sleep(<span class="num">0.1</span>)
     <span class="kw">return</span> <span class="str">"done"</span>
@@ -725,13 +726,13 @@ svc.api.node(<span class="str">"charge"</span>, env_capabilities=<span class="st
 <span class="cmt">#   slow_op end (100.45 ms)</span></code></pre>
 
 <h3>Fine-grained control</h3>
-<pre><code><span class="dec">@route</span>(<span class="str">"api"</span>, logging_flags=<span class="str">"before,after:off"</span>)  <span class="cmt"># Start only, skip timing</span>
+<pre><code><span class="dec">@route</span>(logging_flags=<span class="str">"before,after:off"</span>)  <span class="cmt"># Start only, skip timing</span>
 <span class="kw">def</span> <span class="fn">fast_op</span>(self): ...
 
 <span class="cmt"># At runtime:</span>
-router.logging.configure(enabled=<span class="kw">False</span>)                    <span class="cmt"># Silence all</span>
-router.logging.configure(_target=<span class="str">"slow_op"</span>, after=<span class="kw">True</span>)    <span class="cmt"># Re-enable one</span>
-router.logging.configure(print=<span class="kw">True</span>)                       <span class="cmt"># Force print()</span></code></pre>
+svc.route.logging.configure(enabled=<span class="kw">False</span>)                    <span class="cmt"># Silence all</span>
+svc.route.logging.configure(_target=<span class="str">"slow_op"</span>, after=<span class="kw">True</span>)    <span class="cmt"># Re-enable one</span>
+svc.route.logging.configure(print=<span class="kw">True</span>)                       <span class="cmt"># Force print()</span></code></pre>
 
 <h3>Parameters</h3>
 <table>
@@ -760,7 +761,7 @@ router.logging.configure(print=<span class="kw">True</span>)                    
 <svg viewBox="0 0 680 280" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
   <rect x="240" y="10" width="200" height="50" rx="10" fill="#232733" stroke="#6c9eff" stroke-width="1.5"/>
   <text x="340" y="32" text-anchor="middle" fill="#6c9eff" font-size="12" font-weight="600">App</text>
-  <text x="340" y="48" text-anchor="middle" fill="#8b90a0" font-size="9">Router: api (branch) + auth plugin</text>
+  <text x="340" y="48" text-anchor="middle" fill="#8b90a0" font-size="9">route property + auth plugin</text>
   <rect x="40" y="110" width="170" height="50" rx="10" fill="#232733" stroke="#4ade80" stroke-width="1.2"/>
   <text x="125" y="132" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="600">UsersService</text>
   <text x="125" y="148" text-anchor="middle" fill="#8b90a0" font-size="9">list_users, create_user</text>
@@ -778,15 +779,15 @@ router.logging.configure(print=<span class="kw">True</span>)                    
   <text x="500" y="80" text-anchor="middle" fill="#8b90a0" font-size="9">"notify"</text>
   <rect x="40" y="195" width="600" height="72" rx="10" fill="#1a1d27" stroke="#2d3140" stroke-width="1"/>
   <text x="60" y="216" fill="#8b90a0" font-size="10">Path resolution:</text>
-  <text x="60" y="235" fill="#4ade80" font-size="10.5" font-family="JetBrains Mono, monospace">app.api.node("users/list_users")()</text>
-  <text x="60" y="252" fill="#a78bfa" font-size="10.5" font-family="JetBrains Mono, monospace">app.api.node("orders/approve_order")(order_id="123")</text>
+  <text x="60" y="235" fill="#4ade80" font-size="10.5" font-family="JetBrains Mono, monospace">app.route.node("users/list_users")()</text>
+  <text x="60" y="252" fill="#a78bfa" font-size="10.5" font-family="JetBrains Mono, monospace">app.route.node("orders/approve_order")(order_id="123")</text>
   <defs><marker id="a3" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b90a0"/></marker></defs>
 </svg>
 </div>
 
 <pre><code><span class="kw">class</span> <span class="cls">App</span>(<span class="cls">RoutingClass</span>):
     <span class="kw">def</span> <span class="fn">__init__</span>(self):
-        self.api = <span class="cls">Router</span>(self, name=<span class="str">"api"</span>, branch=<span class="kw">True</span>).plug(<span class="str">"auth"</span>)
+        self.route.plug(<span class="str">"auth"</span>)
 
         self.users = <span class="cls">UsersService</span>()
         self.orders = <span class="cls">OrdersService</span>()
@@ -797,24 +798,24 @@ router.logging.configure(print=<span class="kw">True</span>)                    
         self.attach_instance(self.notify, name=<span class="str">"notify"</span>)
 
 app = <span class="cls">App</span>()
-app.api.node(<span class="str">"users/list_users"</span>)()
-app.api.node(<span class="str">"orders/approve_order"</span>)(order_id=<span class="str">"123"</span>)
+app.route.node(<span class="str">"users/list_users"</span>)()
+app.route.node(<span class="str">"orders/approve_order"</span>)(order_id=<span class="str">"123"</span>)
 
 <span class="cmt"># Introspect the entire tree:</span>
-tree = app.api.nodes()
+tree = app.route.nodes()
 print(tree[<span class="str">"routers"</span>].keys())  <span class="cmt"># dict_keys(['users', 'orders', 'notify'])</span></code></pre>
 
 <div class="callout">
-<p><strong>Auth plugin was plugged once on App.api.</strong> All three child services inherit it automatically. UsersService, OrdersService, and NotifyService know nothing about auth &mdash; it's managed at the root.</p>
+<p><strong>Auth plugin was plugged once on App's router.</strong> All three child services inherit it automatically. UsersService, OrdersService, and NotifyService know nothing about auth &mdash; it's managed at the root.</p>
 </div>
 
 <h3>Composition features</h3>
 <ul>
-  <li><code class="il">branch=True</code> &mdash; pure namespace, no handlers at root level</li>
-  <li><code class="il">prefix="handle_"</code> &mdash; strip method prefixes (<code class="il">handle_list</code> &rarr; entry <code class="il">list</code>)</li>
+  <li><code class="il">Section("Admin area")</code> &mdash; pure grouping node, no handlers; attach it like any child instance</li>
+  <li><code class="il">self.route.prefix = "handle_"</code> &mdash; strip method prefixes (<code class="il">handle_list</code> &rarr; entry <code class="il">list</code>)</li>
   <li>Auto-detach on attribute replacement &mdash; swap child services at runtime</li>
   <li>Dotted path resolution &mdash; <code class="il">"users/list_users"</code> walks the tree</li>
-  <li><code class="il">routing.instance("api/users")</code> &mdash; retrieve any attached child instance without storing it as an attribute</li>
+  <li><code class="il">routing.instance("users")</code> &mdash; retrieve any attached child instance without storing it as an attribute</li>
 </ul>
 
 </div>
@@ -895,7 +896,7 @@ request_ctx.user = request.state.user</code></pre>
 svc.ctx = request_ctx
 
 <span class="cmt"># Every handler reads it (walks parent chain)</span>
-<span class="kw">@route</span>(<span class="str">"api"</span>)
+<span class="kw">@route</span>()
 <span class="kw">def</span> <span class="fn">list_orders</span>(self):
     db = self.ctx.db        <span class="cmt"># from request_ctx (local)</span>
     user = self.ctx.user    <span class="cmt"># from request_ctx (local)</span>
@@ -927,20 +928,19 @@ svc.ctx = <span class="kw">None</span></code></pre>
 <h3>Minimal Script</h3>
 
 <pre><code class="language-python">#!/usr/bin/env python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 from genro_routes.cli import RoutingCli
 
 class OrdersAPI(RoutingClass):
     def __init__(self, label: str):
         self.label = label
-        self.api = Router(self, name="orders")
 
-    @route("orders")
+    @route()
     def list(self):
         """List all orders."""
         return ["order-1", "order-2"]
 
-    @route("orders")
+    @route()
     def retrieve(self, ident: str):
         """Retrieve a single order."""
         return f"{self.label}:{ident}"
@@ -971,7 +971,7 @@ Usage: ordersapi retrieve [OPTIONS] IDENT
 
 <table>
   <tr><th>genro-routes concept</th><th>CLI equivalent</th></tr>
-  <tr><td>Router</td><td>Command group (subcommand namespace)</td></tr>
+  <tr><td>The instance's router (<code class="il">route</code>)</td><td>Root command group</td></tr>
   <tr><td>Handler (entry)</td><td>Command</td></tr>
   <tr><td>Parameter without default</td><td>Positional argument</td></tr>
   <tr><td>Parameter with default</td><td><code class="il">--option</code></td></tr>
@@ -983,16 +983,15 @@ Usage: ordersapi retrieve [OPTIONS] IDENT
   <tr><td>Handler docstring</td><td>Command help text</td></tr>
 </table>
 
-<h3>Multiple Routers</h3>
+<h3>Nested Commands</h3>
 
-<p>With a single router, entries are commands at root level. With multiple routers, each becomes a sub-group:</p>
+<p>Entries on the class's router are commands at root level. Attached child services become sub-groups:</p>
 
-<pre><code class="language-bash"># Single router:
+<pre><code class="language-bash"># Root handlers:
 $ myapp list
 $ myapp retrieve 42
 
-# Multiple routers:
-$ myapp api list
+# Attached child ("admin"):
 $ myapp admin reset</code></pre>
 
 <h3>Tab Completion</h3>
@@ -1045,24 +1044,24 @@ cli = RoutingCli(svc)</code></pre>
 <h3>Essentials</h3>
 <table>
   <tr><th>I want to...</th><th>Code</th></tr>
-  <tr><td>Create a router on my class</td><td><code class="il">self.api = Router(self, name="api")</code></td></tr>
-  <tr><td>Register a handler</td><td><code class="il">@route("api") def my_handler(self): ...</code></td></tr>
-  <tr><td>Call a handler by name</td><td><code class="il">svc.api.node("my_handler")(arg1, arg2)</code></td></tr>
-  <tr><td>See all available handlers</td><td><code class="il">svc.api.nodes()</code></td></tr>
-  <tr><td>Get OpenAPI for the whole router</td><td><code class="il">svc.api.nodes(mode="openapi")</code></td></tr>
+  <tr><td>Get my class's router (auto-created)</td><td><code class="il">self.route</code></td></tr>
+  <tr><td>Register a handler</td><td><code class="il">@route() def my_handler(self): ...</code></td></tr>
+  <tr><td>Call a handler by name</td><td><code class="il">svc.route.node("my_handler")(arg1, arg2)</code></td></tr>
+  <tr><td>See all available handlers</td><td><code class="il">svc.route.nodes()</code></td></tr>
+  <tr><td>Get OpenAPI for the whole router</td><td><code class="il">svc.route.nodes(mode="openapi")</code></td></tr>
 </table>
 
 <h3>Plugins</h3>
 <table>
   <tr><th>I want to...</th><th>Code</th></tr>
-  <tr><td>Attach a plugin</td><td><code class="il">Router(self, name="api").plug("auth")</code></td></tr>
-  <tr><td>Set auth rule on a handler</td><td><code class="il">@route("api", auth_rule="admin")</code></td></tr>
+  <tr><td>Attach a plugin</td><td><code class="il">self.route.plug("auth")</code></td></tr>
+  <tr><td>Set auth rule on a handler</td><td><code class="il">@route(auth_rule="admin")</code></td></tr>
   <tr><td>Validate inputs with type hints</td><td><code class="il">.plug("pydantic")</code> + add type annotations</td></tr>
-  <tr><td>Require a system capability</td><td><code class="il">@route("api", env_requires="redis")</code></td></tr>
-  <tr><td>Override HTTP method for OpenAPI</td><td><code class="il">@route("api", openapi_method="delete")</code></td></tr>
-  <tr><td>Configure a plugin globally</td><td><code class="il">svc.api.auth.configure(rule="user")</code></td></tr>
-  <tr><td>Configure for one handler only</td><td><code class="il">svc.api.auth.configure(_target="x", rule="admin")</code></td></tr>
-  <tr><td>Configure with wildcard matching</td><td><code class="il">svc.routing.configure("api:auth/admin_*", ...)</code></td></tr>
+  <tr><td>Require a system capability</td><td><code class="il">@route(env_requires="redis")</code></td></tr>
+  <tr><td>Override HTTP method for OpenAPI</td><td><code class="il">@route(openapi_method="delete")</code></td></tr>
+  <tr><td>Configure a plugin globally</td><td><code class="il">svc.route.auth.configure(rule="user")</code></td></tr>
+  <tr><td>Configure for one handler only</td><td><code class="il">svc.route.auth.configure(_target="x", rule="admin")</code></td></tr>
+  <tr><td>Configure with wildcard matching</td><td><code class="il">svc.routing.configure("auth/admin_*", ...)</code></td></tr>
   <tr><td>See current plugin config</td><td><code class="il">svc.routing.configure("?")</code></td></tr>
 </table>
 
@@ -1080,16 +1079,15 @@ cli = RoutingCli(svc)</code></pre>
 <h3>Composition</h3>
 <table>
   <tr><th>I want to...</th><th>Code</th></tr>
-  <tr><td>Attach a child service (single router)</td><td><code class="il">parent.attach_instance(child, name="x")</code></td></tr>
-  <tr><td>Attach with explicit cross-mapping</td><td><code class="il">parent.attach_instance(child, router_api="orders:sales")</code></td></tr>
-  <tr><td>Retrieve attached child instance</td><td><code class="il">parent.routing.instance("api/x")</code></td></tr>
-  <tr><td>Call through hierarchy</td><td><code class="il">parent.api.node("x/handler")()</code></td></tr>
-  <tr><td>Resolve by endpoint_id</td><td><code class="il">parent.api.node("@MY-EP")()</code></td></tr>
-  <tr><td>Create a pure namespace (no handlers)</td><td><code class="il">Router(self, name="api", branch=True)</code></td></tr>
-  <tr><td>Strip method name prefixes</td><td><code class="il">Router(self, name="api", prefix="handle_")</code></td></tr>
+  <tr><td>Attach a child service</td><td><code class="il">parent.attach_instance(child, name="x")</code></td></tr>
+  <tr><td>Retrieve attached child instance</td><td><code class="il">parent.routing.instance("x")</code></td></tr>
+  <tr><td>Call through hierarchy</td><td><code class="il">parent.route.node("x/handler")()</code></td></tr>
+  <tr><td>Resolve by endpoint_id</td><td><code class="il">parent.route.node("@MY-EP")()</code></td></tr>
+  <tr><td>Create a pure grouping node (no handlers)</td><td><code class="il">parent.attach_instance(Section("Admin"), name="admin")</code></td></tr>
+  <tr><td>Strip method name prefixes</td><td><code class="il">self.route.prefix = "handle_"</code> (in <code class="il">__init__</code>)</td></tr>
   <tr><td>Auto-propagate db to children</td><td>Set <code class="il">ctx.db = conn</code> on <code class="il">RoutingContext</code> — parent chain handles propagation</td></tr>
-  <tr><td>Filter by user permissions</td><td><code class="il">svc.api.nodes(auth_tags="admin")</code></td></tr>
-  <tr><td>Filter by system capabilities</td><td><code class="il">svc.api.nodes(env_capabilities="redis")</code></td></tr>
+  <tr><td>Filter by user permissions</td><td><code class="il">svc.route.nodes(auth_tags="admin")</code></td></tr>
+  <tr><td>Filter by system capabilities</td><td><code class="il">svc.route.nodes(env_capabilities="redis")</code></td></tr>
 </table>
 
 <h3>CLI</h3>

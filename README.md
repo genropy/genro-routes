@@ -41,9 +41,9 @@ This separation enables:
 
 ## Key Features
 
-1. **Instance-scoped routers** - Each object instantiates its own routers (`Router(self, ...)`) with isolated state.
+1. **One class, one router** - Every `RoutingClass` owns exactly one router with isolated state, auto-created and exposed as the `route` property.
 2. **Friendly registration** - `@route(...)` accepts explicit names, auto-strips prefixes, and supports custom metadata.
-3. **Simple hierarchies** - `attach_instance(child, name="alias")` (method on `RoutingClass`) connects instances with path access (`parent.api.node("child/method")`).
+3. **Simple hierarchies** - `attach_instance(child, name="alias")` (method on `RoutingClass`) connects instances with path access (`parent.route.node("child/method")`).
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
 5. **Runtime configuration** - `routing.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
 6. **Built-in plugins** - `logging`, `pydantic`, `auth`, `env`, `openapi`, and `channel` plugins are included out of the box.
@@ -53,30 +53,29 @@ This separation enables:
 ## Quick Example
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class OrdersAPI(RoutingClass):
     def __init__(self, label: str):
         self.label = label
-        self.api = Router(self, name="orders")
 
-    @route("orders")
+    @route()
     def list(self):
         return ["order-1", "order-2"]
 
-    @route("orders")
+    @route()
     def retrieve(self, ident: str):
         return f"{self.label}:{ident}"
 
-    @route("orders")
+    @route()
     def create(self, payload: dict):
         return {"status": "created", **payload}
 
 orders = OrdersAPI("acme")
-print(orders.api.node("list")())        # ["order-1", "order-2"]
-print(orders.api.node("retrieve")("42"))  # acme:42
+print(orders.route.node("list")())        # ["order-1", "order-2"]
+print(orders.route.node("retrieve")("42"))  # acme:42
 
-overview = orders.api.nodes()
+overview = orders.route.nodes()
 print(overview["entries"].keys())      # dict_keys(['list', 'retrieve', 'create'])
 ```
 
@@ -86,26 +85,22 @@ Build nested service structures with path access:
 
 ```python
 class UsersAPI(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def list(self):
         return ["alice", "bob"]
 
 class Application(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")
         self.users = UsersAPI()
 
         # Attach child service
         self.attach_instance(self.users, name="users")
 
 app = Application()
-print(app.api.node("users/list")())  # ["alice", "bob"]
+print(app.route.node("users/list")())  # ["alice", "bob"]
 
 # Introspect hierarchy
-info = app.api.nodes()
+info = app.route.nodes()
 print(info["routers"].keys())  # dict_keys(['users'])
 ```
 
@@ -162,7 +157,7 @@ Arguments:
 
 Features:
 
-- **Routers become command groups** - Multiple routers create nested subcommands
+- **Child routers become command groups** - Attached child services create nested subcommands
 - **Parameters from signatures** - Type hints map to click types (int, bool flags, Choice for Literal/Enum, multiple for list)
 - **Tab completion** - Native bash/zsh/fish via click (`eval "$(_MYAPP_COMPLETE=bash_source myapp)"`)
 - **Output formatting** - Auto (JSON for dicts, plain for strings), or force `json`/`table`/`raw`
@@ -194,7 +189,7 @@ Annotate return types to generate response schemas automatically. Bridges (MCP, 
 
 ```python
 from typing import TypedDict
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class UserResponse(TypedDict):
     id: int
@@ -203,21 +198,21 @@ class UserResponse(TypedDict):
 
 class UsersAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("api")
+    @route()
     def get_user(self, user_id: int) -> UserResponse:
         return {"id": user_id, "name": "alice", "active": True}
 
 api = UsersAPI()
 
 # Response schema is available in route metadata
-entry = api.api._entries["get_user"]
+entry = api.route._entries["get_user"]
 schema = entry.metadata["pydantic"]["response_schema"]
 # {"type": "object", "properties": {"id": {"type": "integer"}, ...}}
 
 # OpenAPI translation includes it automatically
-openapi = api.api.nodes(mode="openapi")
+openapi = api.route.nodes(mode="openapi")
 # paths["/get_user"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
 ```
 
@@ -225,9 +220,10 @@ Supported types: `TypedDict`, `dict[str, int]`, `list[...]`, `str`, `int`, `bool
 
 ## Core Concepts
 
-- **`Router`** - Runtime router bound directly to an object via `Router(self, name="api")`
-- **`@route("name")`** - Decorator that marks bound methods for the router with the matching name
-- **`RoutingClass`** - Mixin that tracks routers per instance and exposes the `routing` proxy
+- **`Router`** - Runtime router owned by a `RoutingClass` instance, auto-created lazily and exposed as the read-only `route` property (never instantiated by user code)
+- **`@route()`** - Decorator that marks bound methods for the class's single router (keyword-only options: `name`, `endpoint_id`, plugin flags)
+- **`RoutingClass`** - Mixin that binds a class to its single router and exposes the `routing` proxy
+- **`Section`** - Empty `RoutingClass` used as a grouping node: `svc.attach_instance(Section("Admin area"), name="admin")`
 - **`RoutingContext`** - Extensible execution context with parent chain delegation. Attach any attribute (`ctx.db`, `ctx.user`, `ctx.session`); missing lookups walk up `RoutingContext(parent=...)`. Stored in a `_ctx` slot on each instance — children inherit via `_routing_parent` chain. See [Execution Context Guide](docs/guide/context.md).
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
 - **`obj.routing`** - Proxy exposed by every RoutingClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
@@ -244,14 +240,14 @@ See [Why One Name Per Operation](docs/guide/why-one-name-per-operation.md) for t
 
 ## Pattern Highlights
 
-- **Explicit naming + prefixes** - `@route("api", name="detail")` and `Router(self, prefix="handle_")` separate method names from public route names.
-- **Explicit instance hierarchies** - `self.attach_instance(child, name="alias")` connects RoutingClass instances. Retrieve children later with `routing.instance("api/alias")`.
-- **Endpoint ID** - `@route("api", endpoint_id="USR-001")` assigns a stable identifier for reverse lookup via `router.node("@USR-001")`.
-- **Branch routers** - `Router(self, branch=True)` creates pure organizational nodes without handlers.
-- **Built-in and custom plugins** - `Router(self, ...).plug("logging")`, `Router(self, ...).plug("pydantic")`, or custom plugins.
-- **Shorthand plugin syntax** - `@route("api", auth="admin")` instead of `@route("api", auth_rule="admin")`. Plugins declare their default parameter via `plugin_default_param`.
-- **Channel filtering** - `@route("api", channel="mcp,bot_.*")` controls which transport channels can access each handler. Supports regex patterns.
-- **Runtime configuration** - `routing.configure("api:logging/_all_", enabled=False)` applies targeted overrides with wildcards or batch updates.
+- **Explicit naming + prefixes** - `@route(name="detail")` and `self.route.prefix = "handle_"` separate method names from public route names.
+- **Explicit instance hierarchies** - `self.attach_instance(child, name="alias")` connects RoutingClass instances. Retrieve children later with `routing.instance("alias")`.
+- **Endpoint ID** - `@route(endpoint_id="USR-001")` assigns a stable identifier for reverse lookup via `router.node("@USR-001")`.
+- **Grouping nodes** - `attach_instance(Section("Admin area"), name="admin")` creates pure organizational nodes without handlers.
+- **Built-in and custom plugins** - `self.route.plug("logging")`, `self.route.plug("pydantic")`, or custom plugins.
+- **Shorthand plugin syntax** - `@route(auth="admin")` instead of `@route(auth_rule="admin")`. Plugins declare their default parameter via `plugin_default_param`.
+- **Channel filtering** - `@route(channel="mcp,bot_.*")` controls which transport channels can access each handler. Supports regex patterns.
+- **Runtime configuration** - `routing.configure("logging/_all_", enabled=False)` applies targeted overrides with wildcards or batch updates.
 - **Lazy binding** - Routers auto-bind on first use; no explicit `bind()` call needed.
 
 ## Documentation

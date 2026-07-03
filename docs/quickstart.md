@@ -15,14 +15,13 @@ pip install genro-routes
 Create a service with instance-scoped routing:
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class Service(RoutingClass):
     def __init__(self, label: str):
         self.label = label
-        self.api = Router(self, name="api")
 
-    @route("api")
+    @route()
     def describe(self):
         return f"service:{self.label}"
 
@@ -30,17 +29,17 @@ class Service(RoutingClass):
 first = Service("alpha")
 second = Service("beta")
 
-assert first.api.node("describe")() == "service:alpha"
-assert second.api.node("describe")() == "service:beta"
+assert first.route.node("describe")() == "service:alpha"
+assert second.route.node("describe")() == "service:beta"
 ```
 
-**Key concept**: Routers are instantiated in `__init__` with `Router(self, ...)` - each instance gets its own isolated router.
+**Key concept**: Every `RoutingClass` owns exactly one router, created automatically and exposed as the `route` property - each instance gets its own isolated router. You never instantiate `Router` yourself.
 
 ## Custom Entry Names
 
 <!-- test: test_router_basic.py::test_prefix_and_name_override -->
 
-[From test](https://github.com/genropy/genro-routes/blob/main/tests/test_router_basic.py#L151-L156)
+[From test](https://github.com/genropy/genro-routes/blob/main/tests/test_router_basic.py#L150-L154)
 
 Use prefixes and explicit names for cleaner method registration:
 
@@ -48,45 +47,44 @@ Use prefixes and explicit names for cleaner method registration:
 class SubService(RoutingClass):
     def __init__(self, prefix: str):
         self.prefix = prefix
-        self.routes = Router(self, name="routes", prefix="handle_")
+        self.route.prefix = "handle_"
 
-    @route("routes")
+    @route()
     def handle_list(self):
         return f"{self.prefix}:list"
 
-    @route("routes", name="detail")
+    @route(name="detail")
     def handle_detail(self, ident: int):
         return f"{self.prefix}:detail:{ident}"
 
 sub = SubService("users")
 
 # Prefix stripped: "handle_list" → "list"
-assert sub.routes.node("list")() == "users:list"
+assert sub.route.node("list")() == "users:list"
 
 # Custom name used: "handle_detail" → "detail"
-assert sub.routes.node("detail")(10) == "users:detail:10"
+assert sub.route.node("detail")(10) == "users:detail:10"
 ```
 
-## Single Router Default
+Router options like `prefix` and `description` are set on the existing router in `__init__` (binding is lazy, so this is race-free).
+
+## One Class, One Router
 
 <!-- test: test_router_basic.py::TestSingleRouterDefault::test_route_without_args_uses_single_router -->
 
-When a class has exactly one router, `@route()` without arguments uses it automatically:
+`@route()` always registers the method on the class's single router. A class with no plugins or router options needs no `__init__` at all:
 
 ```python
 class Table(RoutingClass):
-    def __init__(self):
-        self.table = Router(self, name="table")
-
-    @route()  # Uses the only router automatically
+    @route()
     def add(self, data):
         return f"added:{data}"
 
 t = Table()
-assert t.table.node("add")("x") == "added:x"
+assert t.route.node("add")("x") == "added:x"
 ```
 
-If the class has multiple routers, you must specify the router name explicitly.
+Need more than one routing surface (e.g. `api` and `admin`)? Compose separate `RoutingClass` instances with `attach_instance()` - see [Building Hierarchies](#building-hierarchies) below.
 
 ## Building Hierarchies
 
@@ -95,7 +93,6 @@ Create nested router structures:
 ```python
 class RootAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")
         self.users = SubService("users")
         self.products = SubService("products")
 
@@ -105,56 +102,56 @@ class RootAPI(RoutingClass):
 root = RootAPI()
 
 # Access with path separator
-assert root.api.node("users/list")() == "users:list"
-assert root.api.node("products/detail")(5) == "products:detail:5"
+assert root.route.node("users/list")() == "users:list"
+assert root.route.node("products/detail")(5) == "products:detail:5"
 ```
 
 ## Adding Plugins
 
 <!-- test: test_router_basic.py::test_plugins_are_per_instance_and_accessible -->
 
-[From test](https://github.com/genropy/genro-routes/blob/main/tests/test_router_basic.py#L159-L167)
+[From test](https://github.com/genropy/genro-routes/blob/main/tests/test_router_basic.py#L157-L165)
 
 Extend behavior with plugins. Built-in plugins (`logging`, `pydantic`, `auth`, `env`, `openapi`) are pre-registered.
 
 ```python
 class PluginService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("logging")
+        self.route.plug("logging")
 
-    @route("api")
+    @route()
     def do_work(self):
         return "ok"
 
 svc = PluginService()
-result = svc.api.node("do_work")()  # Automatically logged
+result = svc.route.node("do_work")()  # Automatically logged
 ```
 
 ## Validating Arguments
 
 <!-- test: test_pydantic_plugin.py::test_pydantic_plugin_accepts_valid_input -->
 
-[From test](https://github.com/genropy/genro-routes/blob/main/tests/test_pydantic_plugin.py#L22-L27)
+[From test](https://github.com/genropy/genro-routes/blob/main/tests/test_pydantic_plugin.py#L36-L41)
 
 Use Pydantic for automatic validation:
 
 ```python
 class ValidateService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("api")
+    @route()
     def concat(self, text: str, number: int = 1) -> str:
         return f"{text}:{number}"
 
 svc = ValidateService()
 
 # Valid inputs
-assert svc.api.node("concat")("hello", 3) == "hello:3"
-assert svc.api.node("concat")("hi") == "hi:1"
+assert svc.route.node("concat")("hello", 3) == "hello:3"
+assert svc.route.node("concat")("hi") == "hi:1"
 
 # Invalid inputs raise ValidationError
-# svc.api.node("concat")(123, "oops")  # ValidationError!
+# svc.route.node("concat")(123, "oops")  # ValidationError!
 ```
 
 ## Response Schemas
@@ -170,16 +167,16 @@ class StatusResponse(TypedDict):
 
 class HealthService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("api")
+    @route()
     def health(self) -> StatusResponse:
         return {"ok": True, "message": "running"}
 
 svc = HealthService()
 
 # Response schema is generated automatically
-entry = svc.api._entries["health"]
+entry = svc.route._entries["health"]
 schema = entry.metadata["pydantic"]["response_schema"]
 # {"type": "object", "properties": {"ok": {"type": "boolean"}, "message": {"type": "string"}}, ...}
 ```
@@ -192,13 +189,10 @@ Handlers need access to shared state (database, user, session) without
 knowing which adapter provides it. Use `RoutingContext`:
 
 ```python
-from genro_routes import RoutingClass, RoutingContext, Router, route
+from genro_routes import RoutingClass, RoutingContext, route
 
 class OrderService(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def list_orders(self):
         return self.ctx.db.query("SELECT * FROM orders")
 
@@ -208,7 +202,7 @@ ctx.db = my_database
 
 svc = OrderService()
 svc.ctx = ctx
-svc.api.node("list_orders")()  # handler reads self.ctx.db
+svc.route.node("list_orders")()  # handler reads self.ctx.db
 ```
 
 Contexts can be layered with `RoutingContext(parent=parent_ctx)` — missing

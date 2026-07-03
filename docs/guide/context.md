@@ -112,7 +112,7 @@ async def dispatch(request, service):
     # Set it — now every RoutingClass in this task sees it
     service.ctx = ctx
     try:
-        result = await service.api.call("some_handler", ...)
+        result = service.route.node("some_handler")(...)
     finally:
         service.ctx = None   # cleanup for this task
 ```
@@ -120,7 +120,7 @@ async def dispatch(request, service):
 After `service.ctx = ctx`, any handler can do:
 
 ```python
-@route("api")
+@route()
 def list_orders(self):
     db = self.ctx.db          # from request_ctx (local)
     user = self.ctx.user      # from request_ctx (local)
@@ -145,7 +145,7 @@ server_ctx.db = db_connection
 svc.ctx = server_ctx
 
 # Handler access — same as before
-@route("api")
+@route()
 def query(self):
     return self.ctx.db.execute("SELECT 1")
 ```

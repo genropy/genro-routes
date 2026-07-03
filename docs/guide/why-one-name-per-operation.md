@@ -15,7 +15,7 @@ detail, resolved at the bridge layer.
 
 The REST model maps four CRUD verbs to four HTTP methods on a resource path:
 
-```
+```text
 GET    /users      -> list
 POST   /users      -> create
 GET    /users/123  -> retrieve
@@ -61,18 +61,15 @@ In genro-routes, each handler has a unique name that **is** the operation:
 
 ```python
 class OrdersAPI(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="orders")
-
-    @route("orders")
+    @route()
     def list_orders(self):
         return [...]
 
-    @route("orders")
+    @route()
     def create_order(self, payload: dict):
         return {"status": "created"}
 
-    @route("orders")
+    @route()
     def approve_order(self, order_id: str):
         return {"status": "approved"}
 ```
@@ -81,9 +78,10 @@ The HTTP method is inferred automatically when generating OpenAPI schemas:
 handlers with no parameters or only scalar parameters become GET,
 handlers with complex parameters become POST.
 
-When exposed via an HTTP bridge like genro-asgi, the mapping is:
+When exposed via an HTTP bridge like genro-asgi (with the service attached
+under the `orders` alias), the mapping is:
 
-```
+```text
 GET  /orders/list_orders
 POST /orders/create_order
 POST /orders/approve_order
