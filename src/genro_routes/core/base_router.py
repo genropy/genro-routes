@@ -9,21 +9,22 @@ Constructor and slots
 ---------------------
 Constructor signature::
 
-    BaseRouter(owner, name=None, prefix=None, *, description=None,
-               default_entry="index", branch=False, parent_router=None)
+    BaseRouter(owner, *, prefix=None, description=None,
+               default_entry="index", get_default_handler=None,
+               get_kwargs=None)
 
 - ``owner`` is required; ``None`` raises ``ValueError``. Routers are bound to
-  this instance and never re-bound.
+  this instance and never re-bound. Every router is created by its owning
+  RoutingClass (lazy ``route`` property) and registers itself with the owner;
+  its ``name`` is always ``"route"``.
 - ``description``: optional human-readable description of this router's purpose.
   Included in ``nodes()`` output for documentation/introspection.
 - ``default_entry``: the fallback entry name (default: "index") used when a path
   cannot be fully resolved. The router returns this entry with any unconsumed
   path segments passed as positional arguments when invoked.
-- ``parent_router``: optional parent router. When provided, this router is
-  automatically attached as a child using ``name`` as the alias. Requires
-  ``name`` to be set; raises ``ValueError`` on name collision.
-- Slots: ``instance``, ``name``, ``prefix``, ``description`` (optional router description),
-  ``_entries`` (logical name → MethodEntry with handler), ``_children`` (name → child router).
+- Slots: ``instance``, ``name``, ``prefix``, ``description``, ``default_entry``,
+  ``__entries_raw`` (logical name → MethodEntry with handler), ``_children``
+  (alias → child router), ``_get_defaults``, ``_bound``.
 
 Lazy binding
 ------------
@@ -33,9 +34,9 @@ is needed.
 
 Marker discovery
 ----------------
-``_iter_marked_methods`` walks the reversed MRO of ``type(owner)`` (child first
-wins), scans ``__dict__`` for plain functions carrying ``_route_decorator_kw``
-markers. Only markers whose ``name`` matches this router's ``name`` are used.
+``_iter_marked_methods`` walks the MRO of ``type(owner)`` (child classes
+first, so derived overrides win), scans ``__dict__`` for plain functions
+carrying ``_route_decorator_kw`` markers. All markers belong to this router.
 
 Handler table and wrapping
 --------------------------
@@ -58,8 +59,10 @@ Accepts a Router (child hierarchy) or RouterNode (entry alias).
 ``detach_instance(child)`` removes all routers belonging to a child instance.
 
 Instance attachment is handled by ``RoutingClass.attach_instance()``, which
-sets ``_routing_parent`` and links child routers into parent routers.
-Attached child routers inherit plugins via ``_on_attached_to_parent``.
+sets ``_routing_parent`` and delegates the routing link to ``include()``.
+On the first (primary) attachment ``include()`` triggers plugin inheritance
+via ``_on_attached_to_parent``; subsequent includes of the same router are
+navigational shortcuts only.
 
 Introspection
 -------------
@@ -118,22 +121,18 @@ class BaseRouter(RouterInterface):
         "__entries_raw",
         "_children",
         "_get_defaults",
-        "_is_branch",
         "_bound",
     )
 
     def __init__(
         self,
         owner: Any,
-        name: str | None = None,
-        prefix: str | None = None,
         *,
+        prefix: str | None = None,
         description: str | None = None,
         default_entry: str = "index",
         get_default_handler: Callable | None = None,
         get_kwargs: dict[str, Any] | None = None,
-        branch: bool = False,
-        parent_router: BaseRouter | None = None,
     ) -> None:
         if owner is None:
             raise ValueError("Router requires a parent instance")
@@ -143,11 +142,10 @@ class BaseRouter(RouterInterface):
                 "Inherit from RoutingClass to use Router."
             )
         self.instance = owner
-        self.name = name
+        self.name = "route"
         self.prefix = prefix or ""
         self.description = description
         self.default_entry = default_entry
-        self._is_branch = bool(branch)
         self._bound = False
         self.__entries_raw: dict[str, MethodEntry] = {}
         self._children: dict[str, BaseRouter] = {}
@@ -155,21 +153,7 @@ class BaseRouter(RouterInterface):
         if get_default_handler is not None:
             defaults.setdefault("default_handler", get_default_handler)
         self._get_defaults: dict[str, Any] = defaults
-        # Register with owner only if this is a root router
-        if parent_router is None:
-            hook = getattr(self.instance, "_register_router", None)
-            if callable(hook):
-                hook(self)
-
-        # Attach to parent router if specified
-        if parent_router is not None:
-            alias = name
-            if not alias:
-                raise ValueError("Child router must have a name when using parent_router")
-            if alias in parent_router._children and parent_router._children[alias] is not self:
-                raise ValueError(f"Child name collision: {alias!r}")
-            parent_router._children[alias] = self
-            self._on_attached_to_parent(parent_router)
+        self.instance._register_router(self)
 
     # ------------------------------------------------------------------
     # Lazy binding property
@@ -256,8 +240,6 @@ class BaseRouter(RouterInterface):
             AttributeError: when resolving missing attributes on owner.
             TypeError: on unsupported target type.
         """
-        if self._is_branch:
-            raise ValueError("Branch routers cannot register handlers")
         entry_name = name
         # Split plugin-scoped options (<plugin>_<key>) and meta_* from core options
         plugin_options: dict[str, dict[str, Any]] = {}
@@ -434,19 +416,13 @@ class BaseRouter(RouterInterface):
             )
 
     def _iter_marked_methods(self) -> Iterator[tuple[Callable, dict[str, Any]]]:
-        """Yield (func, marker_dict) for methods decorated with @route for this router.
+        """Yield (func, marker_dict) for methods decorated with @route.
 
         Walks the MRO (child classes first) and scans __dict__ for functions
-        carrying _route_decorator_kw markers. Only yields markers where the
-        router name matches this router's name.
+        carrying _route_decorator_kw markers. All markers belong to this
+        router (one router per class).
         """
         cls = type(self.instance)
-        # Check if instance has exactly one router (default_router)
-        default_router_name: str | None = None
-        if hasattr(self.instance, "default_router"):
-            default = self.instance.default_router
-            if default is not None:
-                default_router_name = default.name
         # Track seen method names to respect MRO (derived class wins)
         # Track seen function ids to avoid duplicate registration of aliases (alias = original)
         seen_names: set[str] = set()
@@ -469,15 +445,7 @@ class BaseRouter(RouterInterface):
                 if not markers:
                     continue
                 for marker in markers:
-                    marker_name = marker.get("name")
-                    # If marker_name is None, use default_router (only if single router)
-                    if marker_name is None:
-                        marker_name = default_router_name
-                    if marker_name != self.name:
-                        continue
-                    payload = dict(marker)
-                    payload.pop("name", None)
-                    yield value, payload
+                    yield value, dict(marker)
 
     def _resolve_name(self, func_name: str, *, name_override: str | None) -> str:
         """Compute the logical entry name from the function name.
@@ -524,8 +492,7 @@ class BaseRouter(RouterInterface):
         if self._bound:
             return  # Already bound, no-op
         self._bound = True  # Set BEFORE work to avoid recursion via properties
-        if not self._is_branch:
-            self.add_entry("*")
+        self.add_entry("*")
 
     def _require_bound(self, operation: str) -> None:
         """Ensure the router is bound, auto-binding if needed.
@@ -576,11 +543,11 @@ class BaseRouter(RouterInterface):
         Examples::
 
             # Include a router
-            self._sys.include(swagger.api, name="swagger")
+            self._sys.include(swagger.route, name="swagger")
 
             # Include an entry as alias
-            fatture.api.include(
-                pagamenti.api.node("collega_a_fattura"),
+            fatture.route.include(
+                pagamenti.route.node("collega_a_fattura"),
                 name="collega_pagamento",
             )
         """
@@ -682,7 +649,7 @@ class BaseRouter(RouterInterface):
 
         Example::
 
-            # Given: @route("api", endpoint_id="invoice.detail")
+            # Given: @route(endpoint_id="invoice.detail")
             #        def detail(self, invoice_id): ...
             # Mounted at: billing/detail
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from genro_routes import RoutingClass, Router
+from genro_routes import Router, RoutingClass
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
 
 
@@ -48,7 +48,7 @@ def _make_router():
     class Owner(RoutingClass):
         pass
 
-    return Router(Owner(), name="api")
+    return Owner().route
 
 
 def test_nodes_entry_extra_rejects_non_dict_from_plugin():

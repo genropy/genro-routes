@@ -8,8 +8,8 @@ Genro Routes provides instance-scoped routing with hierarchical organization and
 
 **Key concepts**:
 
-- Routers are instantiated at runtime: `Router(self, name="api")`
-- Methods are marked with `@route("router_name")` decorator
+- Every `RoutingClass` owns exactly one router, auto-created lazily and exposed as `self.route`
+- Methods are marked with the `@route()` decorator (keyword-only options)
 - Each instance gets isolated routing state
 - Plugins apply per-instance, not globally
 
@@ -18,14 +18,13 @@ Genro Routes provides instance-scoped routing with hierarchical organization and
 Create a service with instance-scoped routing:
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class Service(RoutingClass):
     def __init__(self, label: str):
         self.label = label
-        self.api = Router(self, name="api")
 
-    @route("api")
+    @route()
     def describe(self):
         return f"service:{self.label}"
 
@@ -33,15 +32,15 @@ class Service(RoutingClass):
 first = Service("alpha")
 second = Service("beta")
 
-assert first.api.node("describe")() == "service:alpha"
-assert second.api.node("describe")() == "service:beta"
+assert first.route.node("describe")() == "service:alpha"
+assert second.route.node("describe")() == "service:beta"
 ```
 
 **Key points**:
 
-- `Router(self, name="api")` creates instance-scoped router in `__init__`
-- `@route("api")` marks method for registration
-- `RoutingClass` is **required** - all classes using `Router` must inherit from it
+- The router is created automatically on first access of `self.route` — never call `Router(...)` yourself
+- `@route()` marks a method for registration
+- `RoutingClass` is **required** - only its instances can own a router
 - Each instance has independent routing state
 
 ## Registering Handlers
@@ -52,50 +51,56 @@ Methods are automatically registered when decorated with `@route`:
 
 ```python
 class API(RoutingClass):
-    def __init__(self):
-        self.routes = Router(self, name="routes")
-
-    @route("routes")
+    @route()
     def echo(self, value: str):
         return value
 
-    @route("routes", name="alt_name")
+    @route(name="alt_name")
     def action(self):
         return "executed"
 
 api = API()
 
 # Direct name resolution
-assert api.routes.node("echo")("hello") == "hello"
+assert api.route.node("echo")("hello") == "hello"
 
 # Custom name resolution
-assert api.routes.node("alt_name")() == "executed"
+assert api.route.node("alt_name")() == "executed"
 ```
 
-**Registration happens automatically** when you inherit from `RoutingClass` and instantiate routers in `__init__`.
+**Registration happens automatically**: the router discovers marked methods lazily on first use — no explicit bind call, and no `__init__` needed unless you configure plugins or router options.
 
-## Single Router Default
+## One Class, One Router
 
 <!-- test: test_router_basic.py::TestSingleRouterDefault::test_route_without_args_uses_single_router -->
 
-When a class has exactly one router, `@route()` without arguments uses it automatically:
+`@route()` always registers the method on the class's single router:
 
 ```python
 class Table(RoutingClass):
-    def __init__(self):
-        self.table = Router(self, name="table")
-
-    @route()  # Uses the only router automatically
+    @route()
     def add(self, data):
         return f"added:{data}"
 
-    @route()  # Also uses the single router
+    @route()
     def remove(self, id):
         return f"removed:{id}"
 
 t = Table()
-assert t.table.node("add")("x") == "added:x"
-assert t.table.node("remove")(1) == "removed:1"
+assert t.route.node("add")("x") == "added:x"
+assert t.route.node("remove")(1) == "removed:1"
+```
+
+Router options (`description`, `prefix`, `default_entry`) are set on the existing router in `__init__` (binding is lazy, so this is race-free):
+
+```python
+class DocumentedTable(RoutingClass):
+    def __init__(self):
+        self.route.description = "Table operations"
+
+    @route()
+    def add(self, data):
+        return f"added:{data}"
 ```
 
 ## Database Access via Context
@@ -106,13 +111,10 @@ on any `RoutingClass` instance — all instances in the same task share it
 via the `_routing_parent` chain.
 
 ```python
-from genro_routes import RoutingClass, RoutingContext, Router, route
+from genro_routes import RoutingClass, RoutingContext, route
 
 class UsersModule(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def list_users(self):
         return self.ctx.db.execute("SELECT * FROM users")
 
@@ -147,30 +149,36 @@ svc.ctx = request_ctx
 See the **[Execution Context Guide](context.md)** for the full explanation
 including adapter patterns and subclassing.
 
-### Accessing the Default Router
+### Multiple Surfaces via Composition
 
-You can access the default router programmatically via the `default_router` property:
+A class has exactly one router. When you need distinct surfaces (e.g. a public
+API and an admin area), compose separate `RoutingClass` instances:
 
 ```python
-class SingleAPI(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
+class PublicAPI(RoutingClass):
     @route()
     def ping(self):
         return "pong"
 
-svc = SingleAPI()
-assert svc.default_router is svc.api  # Only one router = default
+class AdminAPI(RoutingClass):
+    @route()
+    def reset(self):
+        return "reset done"
 
-class MultiAPI(RoutingClass):
+class App(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")
-        self.admin = Router(self, name="admin")
+        self.api = PublicAPI()
+        self.admin = AdminAPI()
+        self.attach_instance(self.api, name="api")
+        self.attach_instance(self.admin, name="admin")
 
-m = MultiAPI()
-assert m.default_router is None  # Multiple routers = no default
+app = App()
+assert app.route.node("api/ping")() == "pong"
+assert app.route.node("admin/reset")() == "reset done"
 ```
+
+For a grouping level without a dedicated class, attach a `Section` (an empty
+`RoutingClass`): `app.attach_instance(Section("Admin area"), name="admin")`.
 
 ## Calling Handlers
 
@@ -180,17 +188,14 @@ Use `node()` to retrieve handlers - it returns a callable `RouterNode`:
 
 ```python
 class Calculator(RoutingClass):
-    def __init__(self):
-        self.ops = Router(self, name="ops")
-
-    @route("ops")
+    @route()
     def add(self, a: int, b: int):
         return a + b
 
 calc = Calculator()
 
 # node() returns a RouterNode which is callable
-node = calc.ops.node("add")
+node = calc.route.node("add")
 assert node(2, 3) == 5
 
 # RouterNode also provides metadata access
@@ -214,23 +219,23 @@ Clean up method names with prefixes and provide alternative names with the `name
 class SubService(RoutingClass):
     def __init__(self, prefix: str):
         self.prefix = prefix
-        self.routes = Router(self, name="routes", prefix="handle_")
+        self.route.prefix = "handle_"
 
-    @route("routes")
+    @route()
     def handle_list(self):
         return f"{self.prefix}:list"
 
-    @route("routes", name="detail")
+    @route(name="detail")
     def handle_detail(self, ident: int):
         return f"{self.prefix}:detail:{ident}"
 
 sub = SubService("users")
 
 # Prefix stripped: "handle_list" → "list"
-assert sub.routes.node("list")() == "users:list"
+assert sub.route.node("list")() == "users:list"
 
 # Custom name used: "handle_detail" → "detail"
-assert sub.routes.node("detail")(10) == "users:detail:10"
+assert sub.route.node("detail")(10) == "users:detail:10"
 ```
 
 **Benefits**:
@@ -245,22 +250,19 @@ Use `node.error` to check if a path resolved correctly:
 
 ```python
 class Fallback(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def known_action(self):
         return "success"
 
 fb = Fallback()
 
 # Existing handler - no error
-node = fb.api.node("known_action")
+node = fb.route.node("known_action")
 if not node.error:
     assert node() == "success"
 
 # Non-existing - node has error
-missing = fb.api.node("missing")
+missing = fb.route.node("missing")
 if missing.error:
     print(f"Handler error: {missing.error}")
 ```
@@ -289,47 +291,47 @@ from genro_routes import NotFound, NotAuthenticated, NotAuthorized, NotAvailable
 **Using `node()` with filters**:
 
 ```python
-from genro_routes import RoutingClass, Router, route, NotFound, NotAuthorized
+from genro_routes import RoutingClass, route, NotFound, NotAuthorized
 
 class SecureAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("auth")
+        self.route.plug("auth")
 
-    @route("api", auth_rule="admin")
+    @route(auth_rule="admin")
     def admin_action(self):
         return "admin only"
 
-    @route("api", auth_rule="public")
+    @route(auth_rule="public")
     def public_action(self):
         return "public"
 
 api = SecureAPI()
 
 # Entry exists and tag matches - node is callable
-node = api.api.node("admin_action", auth_tags="admin")
+node = api.route.node("admin_action", auth_tags="admin")
 assert node() == "admin only"
 
 # Entry exists but tag doesn't match - node has error
-node = api.api.node("admin_action", auth_tags="public")
+node = api.route.node("admin_action", auth_tags="public")
 assert node.error == "not_authorized"  # Error reason
 # Calling raises NotAuthorized
 try:
     node()
 except NotAuthorized as e:
-    print(f"Access denied: {e.selector}")  # "api:admin_action"
+    print(f"Access denied: {e.selector}")  # "route:admin_action"
 
 # Entry doesn't exist - node has error
-node = api.api.node("nonexistent")
+node = api.route.node("nonexistent")
 # Calling raises NotFound
 try:
     node()
 except NotFound as e:
-    print(f"Not found: {e.selector}")  # "api:nonexistent"
+    print(f"Not found: {e.selector}")  # "route" (nothing resolved, path is empty)
 ```
 
 **Exception attributes**:
 
-- `selector`: The full selector in format `"router_name:path"` (e.g., `"api:admin_action"`)
+- `selector`: The full selector in format `"router_name:path"` (e.g., `"route:admin_action"` — the router name is always `"route"`; when nothing resolves, the path part is omitted)
 
 **RouterNode properties**:
 
@@ -352,7 +354,7 @@ result = node()  # calls handler("unknown", "path")
 Map router error codes to your framework's exception classes using the `errors` parameter in `node()`:
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 # Define your framework's exceptions
 class HTTPNotFound(Exception):
@@ -366,16 +368,16 @@ class HTTPUnauthorized(Exception):
 
 class MyAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("auth")
+        self.route.plug("auth")
 
-    @route("api", auth_rule="admin")
+    @route(auth_rule="admin")
     def admin_only(self):
         return "secret"
 
 api = MyAPI()
 
 # Map error codes to custom exceptions
-node = api.api.node("admin_only", auth_tags="guest", errors={
+node = api.route.node("admin_only", auth_tags="guest", errors={
     "not_found": HTTPNotFound,
     "not_authorized": HTTPForbidden,
     "not_authenticated": HTTPUnauthorized,
@@ -406,15 +408,15 @@ except HTTPForbidden:
 
 ## Catch-All Routing with `default_entry`
 
-Routers have a `default_entry` parameter (default: `"index"`) that enables catch-all routing patterns via best-match resolution:
+Routers have a `default_entry` option (default: `"index"`) that enables catch-all routing patterns via best-match resolution:
 
 ```python
 class FileServer(RoutingClass):
     def __init__(self):
         # default_entry="index" is the default, but can be customized
-        self.api = Router(self, name="api", default_entry="serve")
+        self.route.default_entry = "serve"
 
-    @route("api")
+    @route()
     def serve(self, *path_segments):
         return f"Serving: {'/'.join(path_segments)}"
 
@@ -422,7 +424,7 @@ server = FileServer()
 
 # node() uses best-match resolution - when path can't be fully resolved,
 # unconsumed segments become arguments to the handler
-node = server.api.node("docs/api/reference")
+node = server.route.node("docs/api/reference")
 assert node() == "Serving: docs/api/reference"
 ```
 
@@ -449,19 +451,18 @@ Create nested router structures with path-based access:
 class SubService(RoutingClass):
     def __init__(self, prefix: str):
         self.prefix = prefix
-        self.routes = Router(self, name="routes", prefix="handle_")
+        self.route.prefix = "handle_"
 
-    @route("routes")
+    @route()
     def handle_list(self):
         return f"{self.prefix}:list"
 
-    @route("routes", name="detail")
+    @route(name="detail")
     def handle_detail(self, ident: int):
         return f"{self.prefix}:detail:{ident}"
 
 class RootAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")
         self.users = SubService("users")
         self.products = SubService("products")
 
@@ -471,15 +472,15 @@ class RootAPI(RoutingClass):
 root = RootAPI()
 
 # Access with path separator
-assert root.api.node("users/list")() == "users:list"
-assert root.api.node("products/detail")(5) == "products:detail:5"
+assert root.route.node("users/list")() == "users:list"
+assert root.route.node("products/detail")(5) == "products:detail:5"
 ```
 
 **Key points**:
 
 - `attach_instance` is a method on `RoutingClass`, not on `Router`
-- `name="alias"` is a shortcut when the child has a single router
-- For multi-router children, use `router_<parent>=...` kwargs (see [Hierarchies Guide](hierarchies.md))
+- `name="alias"` links the child's router into the parent's router under that alias
+- For grouping levels without handlers, attach a `Section` (see [Hierarchies Guide](hierarchies.md))
 
 **Hierarchies enable**:
 
@@ -496,27 +497,26 @@ Inspect router structure and registered handlers:
 ```python
 class Inspectable(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")
         self.child_service = SubService("child")
         self.attach_instance(self.child_service, name="sub")
 
-    @route("api")
+    @route()
     def action(self):
         pass
 
 insp = Inspectable()
 
 # Get metadata (single source: nodes)
-info = insp.api.nodes()
+info = insp.route.nodes()
 assert "action" in info["entries"]
 assert "sub" in info["routers"]
 
 # Get nodes starting from a specific path
-sub_info = insp.api.nodes(basepath="sub")
+sub_info = insp.route.nodes(basepath="sub")
 assert "list" in sub_info["entries"]
 
 # Use lazy=True for on-demand expansion of children
-lazy_info = insp.api.nodes(lazy=True)
+lazy_info = insp.route.nodes(lazy=True)
 sub_router = lazy_info["routers"]["sub"]  # Router reference, not expanded
 sub_expanded = sub_router.nodes()  # Expand on demand
 ```
@@ -537,13 +537,13 @@ sub_expanded = sub_router.nodes()  # Expand on demand
 
 ```python
 # Flat OpenAPI schema (all paths merged)
-schema = insp.api.nodes(mode="openapi")
+schema = insp.route.nodes(mode="openapi")
 
 # Hierarchical OpenAPI schema (preserves router structure)
-h_schema = insp.api.nodes(mode="h_openapi")
+h_schema = insp.route.nodes(mode="h_openapi")
 
 # Filter entries by name pattern
-admin_entries = insp.api.nodes(pattern="admin_.*")
+admin_entries = insp.route.nodes(pattern="admin_.*")
 ```
 
 **Including blocked entries**:
@@ -572,27 +572,24 @@ Add custom metadata to handlers using the `meta_` prefix in `@route()`:
 
 ```python
 class MetadataAPI(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api", meta_mimetype="application/json", meta_deprecated=True)
+    @route(meta_mimetype="application/json", meta_deprecated=True)
     def get_data(self):
         """Return data in JSON format."""
         return {"foo": "bar"}
 
-    @route("api", meta_version="2.0", meta_auth_required=True)
+    @route(meta_version="2.0", meta_auth_required=True)
     def get_data_v2(self):
         return {"foo": "bar", "extra": True}
 
 api = MetadataAPI()
 
 # Access metadata via node() - returns meta dict directly
-node = api.api.node("get_data")
+node = api.route.node("get_data")
 assert node.metadata["mimetype"] == "application/json"
 assert node.metadata["deprecated"] is True
 
 # Or via nodes() for all entries - uses full path
-all_info = api.api.nodes()
+all_info = api.route.nodes()
 entry_meta = all_info["entries"]["get_data_v2"]["metadata"]["meta"]
 assert entry_meta["version"] == "2.0"
 assert entry_meta["auth_required"] is True
@@ -620,7 +617,7 @@ See the **[Execution Context Guide](context.md)** for the complete reference.
 
 Quick summary: `RoutingContext` is an extensible container with parent chain
 delegation. Adapters create layered contexts (server → app → request), set
-them via `svc.ctx = ctx` (stored in a the `_routing_parent` chain), and handlers read
+them via `svc.ctx = ctx` (stored in a `_ctx` slot on the instance), and handlers read
 shared state with `self.ctx.db`, `self.ctx.user`, etc. Missing
 attributes walk up the parent chain automatically.
 
@@ -629,19 +626,16 @@ attributes walk up the parent chain automatically.
 Use `ResultWrapper` to return handler results with metadata that the transport layer can use (e.g., for content-type negotiation).
 
 ```python
-from genro_routes import RoutingClass, Router, route, is_result_wrapper
+from genro_routes import RoutingClass, route, is_result_wrapper
 
 class APIService(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def render_html(self):
         content = "<html><body>Hello</body></html>"
         return self.result_wrapper(content, mime_type="text/html")
 
 svc = APIService()
-result = svc.api.node("render_html")()
+result = svc.route.node("render_html")()
 
 # Check if result is wrapped
 if is_result_wrapper(result):

@@ -5,9 +5,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from genro_routes import Router, RoutingClass, route
+from genro_routes import RoutingClass, route
 from genro_routes.plugins.env import CapabilitiesSet, capability
 
 
@@ -155,21 +153,21 @@ class TestCapabilitiesSetWithRouting:
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("env")
+                self.route.plug("env")
                 self.capabilities = ServerCaps()
 
-            @route("api", env_requires="redis")
+            @route(env_requires="redis")
             def needs_redis(self):
                 return "ok"
 
-            @route("api", env_requires="postgres")
+            @route(env_requires="postgres")
             def needs_postgres(self):
                 return "ok"
 
         svc = Service()
 
         # redis is active - entry visible in nodes()
-        entries = svc.api.nodes().get("entries", {})
+        entries = svc.route.nodes().get("entries", {})
         assert "needs_redis" in entries
 
         # postgres is inactive - entry not visible
@@ -188,26 +186,26 @@ class TestCapabilitiesSetWithRouting:
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("env")
+                self.route.plug("env")
                 self._caps = DynamicCaps()
                 self.capabilities = self._caps
 
-            @route("api", env_requires="online")
+            @route(env_requires="online")
             def process(self):
                 return "processed"
 
         svc = Service()
 
         # Initially online - entry visible
-        entries = svc.api.nodes().get("entries", {})
+        entries = svc.route.nodes().get("entries", {})
         assert "process" in entries
 
         # Enter maintenance mode - entry not visible
         svc._caps._maintenance = True
-        entries = svc.api.nodes().get("entries", {})
+        entries = svc.route.nodes().get("entries", {})
         assert "process" not in entries
 
         # Exit maintenance mode - entry visible again
         svc._caps._maintenance = False
-        entries = svc.api.nodes().get("entries", {})
+        entries = svc.route.nodes().get("entries", {})
         assert "process" in entries

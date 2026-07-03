@@ -4,21 +4,22 @@ How to connect RoutingClass instances into hierarchies.
 
 ## Core Concept
 
-`attach_instance` lives on **RoutingClass** (not on Router). It does two things:
+`attach_instance` lives on **RoutingClass** (not on Router). Every RoutingClass
+owns exactly one router (`self.route`). Attaching does two things:
 
 1. Sets the parent-child relationship (`child._routing_parent = self`)
-2. Links child routers into parent routers (`parent_router._children[alias] = child_router`)
+2. Links the child's router into the parent's router (`parent.route._children[alias] = child.route`, via `include()`)
 
 ```mermaid
 graph LR
     subgraph "RoutingClass (parent)"
         P["self"]
-        PR["api (Router)"]
+        PR["route (Router)"]
         P --> PR
     end
     subgraph "RoutingClass (child)"
         C["child"]
-        CR["api (Router)"]
+        CR["route (Router)"]
         C --> CR
     end
     P -- "_routing_parent" --> C
@@ -29,20 +30,20 @@ graph LR
 
 ---
 
-## Scenario 1: One-to-One
+## Scenario 1: Attaching a Child
 
-Parent has **1 router**, child has **1 router**.
+Parent and child each own one router. The child's router is linked under the alias.
 
 ```mermaid
 graph TB
     subgraph "Parent"
-        PA["api (Router)"]
+        PA["route (Router)"]
         PA --- E1["health &bull; entry"]
         PA --- E2["status &bull; entry"]
         PA === S1["[sales]"]
     end
     subgraph "Child (vendite)"
-        CA["api (Router)"]
+        CA["route (Router)"]
         CA --- E3["ordini &bull; entry"]
         CA --- E4["fatture &bull; entry"]
     end
@@ -62,81 +63,35 @@ self.attach_instance(vendite, name="sales")
 **Access paths:**
 
 ```python
-self.api.node("health")()         # local entry
-self.api.node("sales/ordini")()   # child entry
-self.api.node("sales/fatture")()  # child entry
+self.route.node("health")()         # local entry
+self.route.node("sales/ordini")()   # child entry
+self.route.node("sales/fatture")()  # child entry
 ```
 
-**Rule:** `name=` shortcut works only when child has exactly one router.
+**Rule:** `name=` is the alias in the parent's router. This is the only calling
+style — every RoutingClass has exactly one router, so there is nothing else to map.
 
 ---
 
-## Scenario 2: One parent router, two child routers — child "dissolves"
+## Scenario 2: Child with Its Own Children
 
-Child's routers are flattened into the parent's single router. The child instance does not appear as an intermediate node.
+An attached child brings its whole sub-tree along.
 
 ```mermaid
 graph TB
     subgraph "Parent"
-        PA["api (Router)"]
-        PA --- E1["health &bull; entry"]
-        PA === S1["[sales]"]
-        PA === S2["[tech]"]
-    end
-    subgraph "Child (vendite)"
-        CA["orders (Router)"]
-        CA --- E3["ordini &bull; entry"]
-        CB["support (Router)"]
-        CB --- E4["ticket &bull; entry"]
-    end
-    S1 --> CA
-    S2 --> CB
-
-    style PA fill:#bbdefb
-    style CA fill:#ffe0b2
-    style CB fill:#ffe0b2
-    style S1 fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
-    style S2 fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
-```
-
-**Syntax:**
-
-```python
-self.attach_instance(vendite, router_api="orders:sales,support:tech")
-```
-
-**Format:** `router_<parent_router>="<child_router>:<alias>,<child_router>:<alias>"`
-
-**Access paths:**
-
-```python
-self.api.node("sales/ordini")()   # from child.orders
-self.api.node("tech/ticket")()    # from child.support
-```
-
----
-
-## Scenario 3: One parent router, two child routers — child "appears" with one router
-
-Only one of the child's routers is linked. The child appears as a node in the hierarchy, and any sub-routers of the linked router come along.
-
-```mermaid
-graph TB
-    subgraph "Parent"
-        PA["api (Router)"]
+        PA["route (Router)"]
         PA --- E1["health &bull; entry"]
         PA === S1["[sales]"]
     end
     subgraph "Child (vendite)"
-        CA["api (Router)"]
+        CA["route (Router)"]
         CA --- E3["ordini &bull; entry"]
         CA --- E4["fatture &bull; entry"]
         CA === SS["[statistiche]"]
-        CB["admin (Router)"]
-        CB --- E5["gestione &bull; entry"]
     end
     subgraph "Grandchild"
-        GR["stats (Router)"]
+        GR["route (Router)"]
         GR --- E6["mensili &bull; entry"]
         GR --- E7["annuali &bull; entry"]
     end
@@ -145,7 +100,6 @@ graph TB
 
     style PA fill:#bbdefb
     style CA fill:#ffe0b2
-    style CB fill:#ffe0b2,stroke-dasharray: 5 5
     style S1 fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
     style SS fill:#c8e6c9
     style GR fill:#f3e5f5
@@ -154,83 +108,57 @@ graph TB
 **Syntax:**
 
 ```python
-self.attach_instance(vendite, router_api="api:sales")
-# Only vendite.api is linked. vendite.admin is NOT attached.
+vendite.attach_instance(statistiche, name="statistiche")
+self.attach_instance(vendite, name="sales")
 ```
 
 **Access paths:**
 
 ```python
-self.api.node("sales/ordini")()              # child entry
-self.api.node("sales/statistiche/mensili")() # grandchild entry
-# self.api.node("???/gestione")  -- NOT accessible (admin not linked)
+self.route.node("sales/ordini")()              # child entry
+self.route.node("sales/statistiche/mensili")() # grandchild entry
 ```
 
 ---
 
-## Scenario 4: Two parent routers, one child router — parent chooses where
+## Scenario 3: Multiple Surfaces — Composition
+
+One class exposes one router. A service that needs several surfaces (public API,
+admin, ...) is split into **one class per surface**, composed under grouping
+nodes. `Section` provides an empty grouping node without a dedicated class.
 
 ```mermaid
 graph TB
-    subgraph "Parent"
-        PA["api (Router)"]
+    subgraph "Application"
+        PA["route (Router)"]
         PA --- E1["health &bull; entry"]
-        PA === S1["[users]"]
-        PB["admin (Router)"]
-        PB --- E2["dashboard &bull; entry"]
+        PA === S1["[api]"]
+        PA === S2["[admin]"]
     end
-    subgraph "Child"
-        CA["api (Router)"]
-        CA --- E3["list &bull; entry"]
-        CA --- E4["detail &bull; entry"]
+    subgraph "Section (Public API)"
+        SA["route (Router)"]
+        SA === S3["[orders]"]
     end
-    S1 --> CA
+    subgraph "Section (Admin area)"
+        SB["route (Router)"]
+        SB === S4["[orders]"]
+    end
+    subgraph "OrdersApi"
+        CA["route (Router)"]
+        CA --- E3["get_data &bull; entry"]
+    end
+    subgraph "OrdersAdmin"
+        CB["route (Router)"]
+        CB --- E4["manage &bull; entry"]
+    end
+    S1 --> SA
+    S2 --> SB
+    S3 --> CA
+    S4 --> CB
 
     style PA fill:#bbdefb
-    style PB fill:#bbdefb
-    style CA fill:#ffe0b2
-    style S1 fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
-```
-
-**Syntax:**
-
-```python
-self.attach_instance(child, router_api="api:users")
-```
-
-The kwarg `router_api` targets the parent's `api` router. The child could be linked to `admin` instead:
-
-```python
-self.attach_instance(child, router_admin="api:users")
-```
-
-**Note:** `name=` does NOT work here because the parent has multiple routers.
-
----
-
-## Scenario 5: Two parent routers, two child routers — cross-mapping
-
-```mermaid
-graph TB
-    subgraph "Parent"
-        PA["api (Router)"]
-        PA --- E1["health &bull; entry"]
-        PA === S1["[sales]"]
-        PB["admin (Router)"]
-        PB --- E2["dashboard &bull; entry"]
-        PB === S2["[management]"]
-    end
-    subgraph "Child (vendite)"
-        CA["orders (Router)"]
-        CA --- E3["ordini &bull; entry"]
-        CB["mgmt (Router)"]
-        CB --- E4["gestione &bull; entry"]
-    end
-    S1 --> CA
-    S2 --> CB
-
-    style PA fill:#bbdefb
-    style PB fill:#bbdefb
+    style SA fill:#c5cae9
+    style SB fill:#c5cae9
     style CA fill:#ffe0b2
     style CB fill:#ffe0b2
     style S1 fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
@@ -240,47 +168,41 @@ graph TB
 **Syntax:**
 
 ```python
-self.attach_instance(vendite,
-    router_api="orders:sales",
-    router_admin="mgmt:management",
-)
-```
+from genro_routes import Section
 
-Each `router_<parent_router>` kwarg specifies which child routers go into which parent router.
+api = Section("Public API")
+admin = Section("Admin area")
+self.attach_instance(api, name="api")
+self.attach_instance(admin, name="admin")
+api.attach_instance(OrdersApi(), name="orders")
+admin.attach_instance(OrdersAdmin(), name="orders")
+```
 
 **Access paths:**
 
 ```python
-self.api.node("sales/ordini")()           # parent.api -> child.orders
-self.admin.node("management/gestione")()  # parent.admin -> child.mgmt
+self.route.node("api/orders/get_data")()   # public surface
+self.route.node("admin/orders/manage")()   # admin surface
 ```
+
+> **Note:** earlier versions supported multiple routers per class with a
+> `router_*` cross-mapping DSL in `attach_instance`. That feature was removed:
+> composition (one class per surface, `Section` for grouping) covers the same
+> use cases with a single calling style.
 
 ---
 
 ## Syntax Reference
 
-### `name=` shortcut (1:1)
+### `attach_instance(child, name=...)`
 
 ```python
 self.attach_instance(child, name="alias")
 ```
 
-- Child must have **exactly one** router
-- Parent must have **exactly one** router
-- The child's single router is linked under `alias` in the parent's single router
-
-### `router_*` kwargs (any mapping)
-
-```python
-self.attach_instance(child,
-    router_<parent_router>="<child_router>:<alias>,<child_router>:<alias>",
-    router_<parent_router>="<child_router>:<alias>",
-)
-```
-
-- Works with any number of parent/child routers
-- Multiple child routers can be linked to the same parent router (comma-separated)
-- Different child routers can go to different parent routers (separate kwargs)
+- The child's router is linked under `alias` in the parent's router
+- Sets `child._routing_parent = self`
+- Raises `ValueError` on alias collision or if the child is already bound to another parent
 
 ### Attach only (no routing)
 
@@ -299,19 +221,19 @@ Direct router-to-router or entry-alias linking.
 **Include a Router:**
 
 ```python
-self._sys_router.include(swagger.api, name="swagger")
+self._sys.route.include(swagger.route, name="swagger")
 ```
 
 - Links the source router as a child of this router
-- Sets `_routing_parent` on the source's owner
-- Triggers plugin inheritance
-- Use when the target is a nested router (e.g., created with `parent_router`)
+- On the **primary** attachment (source has no parent yet) it sets
+  `_routing_parent` on the source's owner and triggers plugin inheritance
+- Subsequent includes of the same router are navigational shortcuts only
 
 **Include a RouterNode (entry alias):**
 
 ```python
-fatture.api.include(
-    pagamenti.api.node("collega_a_fattura"),
+fatture.route.include(
+    pagamenti.route.node("collega_a_fattura"),
     name="collega_pagamento",
 )
 ```
@@ -323,28 +245,28 @@ fatture.api.include(
 ### `detach_instance` (on Router)
 
 ```python
-self.api.detach_instance(child)
+self.route.detach_instance(child)
 ```
 
-- Removes all of `child`'s routers from this router's `_children`
+- Removes every alias of `child`'s router from this router's `_children`
 - Clears `child._routing_parent`
 - Stays on **Router**, not RoutingClass
 
 ---
 
-## Scenario 6: Entry Alias
+## Scenario 4: Entry Alias
 
 The same handler declared in one service, visible in another's tree.
 
 ```mermaid
 graph TB
     subgraph "Pagamenti"
-        PA["api (Router)"]
+        PA["route (Router)"]
         PA --- E1["lista_pagamenti &bull; entry"]
         PA --- E2["collega_a_fattura &bull; entry"]
     end
     subgraph "Fatture"
-        FA["api (Router)"]
+        FA["route (Router)"]
         FA --- E3["lista_fatture &bull; entry"]
         FA -.- E4["collega_pagamento &bull; alias"]
     end
@@ -358,8 +280,8 @@ graph TB
 **Syntax:**
 
 ```python
-fatture.api.include(
-    pagamenti.api.node("collega_a_fattura"),
+fatture.route.include(
+    pagamenti.route.node("collega_a_fattura"),
     name="collega_pagamento",
 )
 ```
@@ -367,8 +289,8 @@ fatture.api.include(
 **Access paths:**
 
 ```python
-pagamenti.api.node("collega_a_fattura")(1, 2)    # original
-fatture.api.node("collega_pagamento")(1, 2)       # alias — same handler
+pagamenti.route.node("collega_a_fattura")(1, 2)   # original
+fatture.route.node("collega_pagamento")(1, 2)     # alias — same handler
 ```
 
 ---
@@ -377,21 +299,20 @@ fatture.api.node("collega_pagamento")(1, 2)       # alias — same handler
 
 ```mermaid
 flowchart TD
-    A["How many routers does the child have?"] --> B{"1 router"}
-    A --> C{"2+ routers"}
+    A["What do you need?"] --> B["Expose a child service\nunder an alias"]
+    A --> C["A pure grouping level\n(no handlers)"]
+    A --> D["Several surfaces\n(api, admin, ...)"]
+    A --> E["Make one entry visible\nfrom another tree"]
 
-    B --> D{"Parent has 1 router?"}
-    D -->|Yes| E["name='alias'"]
-    D -->|No| F["router_X='child_router:alias'"]
+    B --> F["attach_instance(child, name='alias')"]
+    C --> G["attach_instance(Section('...'), name='group')"]
+    D --> H["One RoutingClass per surface,\ncomposed with attach_instance"]
+    E --> I["router.include(node, name='alias')"]
 
-    C --> G{"All go to same parent router?"}
-    G -->|Yes| H["router_X='a:alias1,b:alias2'"]
-    G -->|No| I["router_X='a:alias1'\nrouter_Y='b:alias2'"]
-
-    style E fill:#c8e6c9,stroke:#2e7d32
-    style F fill:#fff3e0,stroke:#ef6c00
+    style F fill:#c8e6c9,stroke:#2e7d32
+    style G fill:#c8e6c9,stroke:#2e7d32
     style H fill:#fff3e0,stroke:#ef6c00
-    style I fill:#fff3e0,stroke:#ef6c00
+    style I fill:#f3e5f5,stroke:#7b1fa2
 ```
 
 ---
@@ -399,27 +320,21 @@ flowchart TD
 ## Real-World Example
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class AuthService(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def login(self, username: str, password: str):
         return {"token": "..."}
 
 class UserService(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def list_users(self):
         return ["alice", "bob"]
 
 class Application(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("logging")
+        self.route.plug("logging")
         self.auth = AuthService()
         self.users = UserService()
 
@@ -428,6 +343,6 @@ class Application(RoutingClass):
 
 app = Application()
 
-app.api.node("auth/login")("alice", "secret")
-app.api.node("users/list_users")()
+app.route.node("auth/login")("alice", "secret")
+app.route.node("users/list_users")()
 ```

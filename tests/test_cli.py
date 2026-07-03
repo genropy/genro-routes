@@ -16,14 +16,12 @@
 
 import json
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal
 
-import pytest
 from click.testing import CliRunner
 
-from genro_routes import Router, RoutingClass, route
+from genro_routes import RoutingClass, route
 from genro_routes.cli import RoutingCli
-
 
 # ---------------------------------------------------------------------------
 # Test fixtures: RoutingClass examples
@@ -32,59 +30,41 @@ from genro_routes.cli import RoutingCli
 class SimpleService(RoutingClass):
     """A simple test service."""
 
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def hello(self, name: str = "world"):
         return f"Hello {name}"
 
-    @route("api")
+    @route()
     def add(self, a: int, b: int):
         """Add two numbers."""
         return a + b
 
-    @route("api")
+    @route()
     def greet(self, name: str):
         """Greet someone by name."""
         return f"Hi {name}!"
 
-
-class MultiRouterService(RoutingClass):
-    """Service with multiple routers."""
-
-    def __init__(self):
-        self.api = Router(self, name="api")
-        self.admin = Router(self, name="admin")
-
-    @route("api")
+    @route()
     def status(self):
         return {"status": "ok"}
-
-    @route("admin")
-    def reset(self):
-        return "reset done"
 
 
 class TypedService(RoutingClass):
     """Service with various parameter types."""
 
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def with_flag(self, verbose: bool = False):
         return f"verbose={verbose}"
 
-    @route("api")
-    def with_optional(self, name: Optional[str] = None):
+    @route()
+    def with_optional(self, name: str | None = None):
         return f"name={name}"
 
-    @route("api")
+    @route()
     def with_literal(self, mode: Literal["fast", "slow"] = "fast"):
         return f"mode={mode}"
 
-    @route("api")
+    @route()
     def with_list(self, items: list[str] = ()):
         return f"items={list(items)}"
 
@@ -96,19 +76,13 @@ class Color(Enum):
 
 
 class EnumService(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def paint(self, color: Color = Color.RED):
         return f"color={color.name}"
 
 
 class ChildService(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def detail(self, item_id: int):
         return f"item={item_id}"
 
@@ -117,11 +91,10 @@ class ParentService(RoutingClass):
     """Service with child hierarchy."""
 
     def __init__(self):
-        self.api = Router(self, name="api")
         self.child = ChildService()
         self.attach_instance(self.child, name="items")
 
-    @route("api")
+    @route()
     def index(self):
         return "parent index"
 
@@ -162,17 +135,6 @@ class TestCommandStructure:
         assert "hello" in cmd_names
         assert "add" in cmd_names
         assert "greet" in cmd_names
-
-    def test_multi_router_creates_subgroups(self):
-        cli = RoutingCli(MultiRouterService)
-        cmd_names = set(cli.click_group.commands.keys())
-        assert "api" in cmd_names
-        assert "admin" in cmd_names
-
-    def test_multi_router_subgroup_has_commands(self):
-        cli = RoutingCli(MultiRouterService)
-        api_group = cli.click_group.commands["api"]
-        assert "status" in api_group.commands
 
     def test_child_hierarchy(self):
         cli = RoutingCli(ParentService)
@@ -217,17 +179,11 @@ class TestInvocation:
         assert "7" in result.output
 
     def test_dict_output_is_json(self):
-        cli = RoutingCli(MultiRouterService)
-        result = self.runner.invoke(cli.click_group, ["api", "status"])
+        cli = RoutingCli(SimpleService)
+        result = self.runner.invoke(cli.click_group, ["status"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data == {"status": "ok"}
-
-    def test_multi_router_command(self):
-        cli = RoutingCli(MultiRouterService)
-        result = self.runner.invoke(cli.click_group, ["admin", "reset"])
-        assert result.exit_code == 0
-        assert "reset done" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -315,13 +271,6 @@ class TestHelp:
         assert result.exit_code == 0
         assert "Add two numbers" in result.output
 
-    def test_multi_router_help(self):
-        cli = RoutingCli(MultiRouterService)
-        result = self.runner.invoke(cli.click_group, ["--help"])
-        assert result.exit_code == 0
-        assert "api" in result.output
-        assert "admin" in result.output
-
 
 # ---------------------------------------------------------------------------
 # Tests: child hierarchy invocation
@@ -352,25 +301,22 @@ class TestOutputFormat:
 
     def test_json_format(self):
         runner = CliRunner()
-        cli = RoutingCli(MultiRouterService, output_format="json")
-        result = runner.invoke(cli.click_group, ["api", "status"])
+        cli = RoutingCli(SimpleService, output_format="json")
+        result = runner.invoke(cli.click_group, ["status"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data == {"status": "ok"}
 
     def test_raw_format(self):
         runner = CliRunner()
-        cli = RoutingCli(MultiRouterService, output_format="raw")
-        result = runner.invoke(cli.click_group, ["admin", "reset"])
+        cli = RoutingCli(SimpleService, output_format="raw")
+        result = runner.invoke(cli.click_group, ["hello"])
         assert result.exit_code == 0
-        assert "'reset done'" in result.output
+        assert "'Hello world'" in result.output
 
     def test_none_return_no_output(self):
         class NoneService(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
+            @route()
             def noop(self):
                 return None
 

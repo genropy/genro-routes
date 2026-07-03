@@ -33,7 +33,7 @@ The routing logic lives in your application objects - the transport adapter (lik
 
 ## Key Features
 
-- **Instance-scoped routers** - Every object gets an isolated router with its own plugin stack
+- **One class, one router** - Every `RoutingClass` owns exactly one isolated router with its own plugin stack, exposed as the `route` property
 - **Hierarchical organization** - Build router trees with `attach_instance()` and `/` path traversal
 - **Composable plugins** - Hook into decoration and handler execution with `BasePlugin`
 - **Plugin inheritance** - Plugins propagate automatically from parent to child routers
@@ -44,14 +44,13 @@ The routing logic lives in your application objects - the transport adapter (lik
 ## Quick Example
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class Service(RoutingClass):
     def __init__(self, label: str):
         self.label = label
-        self.api = Router(self, name="api")
 
-    @route("api")
+    @route()
     def describe(self):
         return f"service:{self.label}"
 
@@ -59,8 +58,8 @@ class Service(RoutingClass):
 first = Service("alpha")
 second = Service("beta")
 
-assert first.api.node("describe")() == "service:alpha"
-assert second.api.node("describe")() == "service:beta"
+assert first.route.node("describe")() == "service:alpha"
+assert second.route.node("describe")() == "service:beta"
 ```
 
 ## Documentation Sections

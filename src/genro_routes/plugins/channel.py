@@ -13,26 +13,26 @@ Usage::
 
     class MyAPI(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("channel")
-            self.api.channel.configure(channels="*")  # default: all channels
+            self.route.plug("channel")
+            self.route.channel.configure(channels="*")  # default: all channels
 
-        @route("api", channel_channels="mcp")
+        @route(channel_channels="mcp")
         def mcp_only(self):
             return "only accessible from MCP channel"
 
-        @route("api", channel_channels="mcp,bot_.*")
+        @route(channel_channels="mcp,bot_.*")
         def mcp_and_bots(self):
             return "MCP + any bot channel"
 
-        @route("api")
+        @route()
         def everywhere(self):
             return "inherits * from router config"
 
     obj = MyAPI()
-    obj.api.nodes(channel_channel="mcp")     # sees all three
-    obj.api.nodes(channel_channel="rest")    # sees only everywhere
-    obj.api.node("mcp_only", channel_channel="mcp")  # OK
-    obj.api.node("mcp_only", channel_channel="rest")  # NotAvailable
+    obj.route.nodes(channel_channel="mcp")     # sees all three
+    obj.route.nodes(channel_channel="rest")    # sees only everywhere
+    obj.route.node("mcp_only", channel_channel="mcp")  # OK
+    obj.route.node("mcp_only", channel_channel="rest")  # NotAvailable
 
 Channel patterns:
     - Comma-separated list of patterns: ``"mcp,bot_.*,rest"``

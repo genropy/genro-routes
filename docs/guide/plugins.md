@@ -20,18 +20,18 @@ Genro Routes includes six production-ready plugins:
 **LoggingPlugin** (`logging`):
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class Service(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("logging")
+        self.route.plug("logging")
 
-    @route("api")
+    @route()
     def process(self, data: str):
         return f"processed:{data}"
 
 svc = Service()
-result = svc.api.node("process")("test")  # Automatically logged
+result = svc.route.node("process")("test")  # Automatically logged
 ```
 
 **PydanticPlugin** (`pydantic`):
@@ -47,22 +47,22 @@ class UserResponse(TypedDict):
 
 class ValidatedService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("api")
+    @route()
     def concat(self, text: str, number: int = 1) -> str:
         return f"{text}:{number}"
 
-    @route("api")
+    @route()
     def get_user(self, user_id: int) -> UserResponse:
         return {"id": user_id, "name": "alice"}
 
 svc = ValidatedService()
-svc.api.node("concat")("hello", 3)  # Valid
-# svc.api.node("concat")(123, "oops")  # ValidationError
+svc.route.node("concat")("hello", 3)  # Valid
+# svc.route.node("concat")(123, "oops")  # ValidationError
 
 # Response schema available in metadata
-entry = svc.api._entries["get_user"]
+entry = svc.route._entries["get_user"]
 schema = entry.metadata["pydantic"]["response_schema"]
 # {"type": "object", "properties": {"id": {"type": "integer"}, "name": {"type": "string"}}, ...}
 ```
@@ -72,15 +72,15 @@ schema = entry.metadata["pydantic"]["response_schema"]
 ```python
 class SecureService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("auth")
+        self.route.plug("auth")
 
-    @route("api", auth_rule="admin")
+    @route(auth_rule="admin")
     def admin_only(self):
         return "secret"
 
 svc = SecureService()
-node = svc.api.node("admin_only", auth_tags="admin")  # Authorized
-node = svc.api.node("admin_only", auth_tags="guest")  # Not authorized
+node = svc.route.node("admin_only", auth_tags="admin")  # Authorized
+node = svc.route.node("admin_only", auth_tags="guest")  # Not authorized
 ```
 
 **EnvPlugin** (`env`):
@@ -95,15 +95,15 @@ class ServerCapabilities(CapabilitiesSet):
 
 class CapabilityService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("env")
+        self.route.plug("env")
         self.capabilities = ServerCapabilities()
 
-    @route("api", env_requires="redis")
+    @route(env_requires="redis")
     def cached_action(self):
         return "cached"
 
 svc = CapabilityService()
-entries = svc.api.nodes().get("entries", {})  # "cached_action" visible
+entries = svc.route.nodes().get("entries", {})  # "cached_action" visible
 ```
 
 For dynamic capabilities that change at runtime, use `CapabilitiesSet`:
@@ -123,10 +123,10 @@ class ServerCapabilities(CapabilitiesSet):
 
 class DynamicService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("env")
+        self.route.plug("env")
         self.capabilities = ServerCapabilities()
 
-    @route("api", env_requires="maintenance_window")
+    @route(env_requires="maintenance_window")
     def maintenance_task(self):
         return "maintenance"
 ```
@@ -138,9 +138,9 @@ Capabilities are evaluated dynamically on each `nodes()` call.
 ```python
 class APIService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("openapi")
+        self.route.plug("openapi")
 
-    @route("api", openapi_method="post", openapi_tags="users")
+    @route(openapi_method="post", openapi_tags="users")
     def create_user(self, name: str) -> dict:
         return {"name": name}
 
@@ -153,24 +153,24 @@ svc = APIService()
 ```python
 class MultiChannelAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("channel")
-        self.api.channel.configure(channels="*")  # default: all channels
+        self.route.plug("channel")
+        self.route.channel.configure(channels="*")  # default: all channels
 
-    @route("api", channel="mcp")  # shorthand for channel_channels="mcp"
+    @route(channel="mcp")  # shorthand for channel_channels="mcp"
     def mcp_only(self):
         return "MCP exclusive"
 
-    @route("api", channel="mcp,bot_.*")  # regex patterns supported
+    @route(channel="mcp,bot_.*")  # regex patterns supported
     def mcp_and_bots(self):
         return "MCP + any bot channel"
 
-    @route("api")  # inherits "*" from router config
+    @route()  # inherits "*" from router config
     def everywhere(self):
         return "all channels"
 
 svc = MultiChannelAPI()
-entries = svc.api.nodes(channel_channel="mcp")["entries"]   # all three
-entries = svc.api.nodes(channel_channel="rest")["entries"]   # only everywhere
+entries = svc.route.nodes(channel_channel="mcp")["entries"]   # all three
+entries = svc.route.nodes(channel_channel="rest")["entries"]   # only everywhere
 ```
 
 See [Quick Start - Plugins](../quickstart.md#adding-plugins) for more examples.
@@ -181,14 +181,14 @@ Plugins that declare a `plugin_default_param` support shorthand syntax in the `@
 
 ```python
 # These are equivalent:
-@route("api", auth_rule="admin")        # longform
-@route("api", auth="admin")             # shorthand
+@route(auth_rule="admin")        # longform
+@route(auth="admin")             # shorthand
 
-@route("api", env_requires="redis")     # longform
-@route("api", env="redis")              # shorthand
+@route(env_requires="redis")     # longform
+@route(env="redis")              # shorthand
 
-@route("api", channel_channels="mcp")   # longform
-@route("api", channel="mcp")            # shorthand
+@route(channel_channels="mcp")   # longform
+@route(channel="mcp")            # shorthand
 ```
 
 The shorthand is opt-in per plugin. Built-in plugins that support it:
@@ -249,48 +249,48 @@ The AuthPlugin provides **tag-based authorization** with boolean rule expression
 **Complete example**:
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 from genro_routes import NotAuthenticated, NotAuthorized
 
 class SecureAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("auth")
+        self.route.plug("auth")
 
-    @route("api")  # No rule = always accessible
+    @route()  # No rule = always accessible
     def public_info(self):
         return "public"
 
-    @route("api", auth_rule="user")  # Requires "user" tag
+    @route(auth_rule="user")  # Requires "user" tag
     def user_profile(self):
         return "profile"
 
-    @route("api", auth_rule="admin|moderator")  # Requires admin OR moderator
+    @route(auth_rule="admin|moderator")  # Requires admin OR moderator
     def manage_content(self):
         return "content"
 
-    @route("api", auth_rule="admin&!banned")  # Requires admin AND NOT banned
+    @route(auth_rule="admin&!banned")  # Requires admin AND NOT banned
     def admin_panel(self):
         return "admin"
 
 api = SecureAPI()
 
 # No tags - only public entries visible
-public_entries = api.api.nodes()
+public_entries = api.route.nodes()
 assert "public_info" in public_entries["entries"]
 assert "user_profile" not in public_entries["entries"]
 
 # With user tag
-user_entries = api.api.nodes(auth_tags="user")
+user_entries = api.route.nodes(auth_tags="user")
 assert "user_profile" in user_entries["entries"]
 
 # Calling protected handler
-node = api.api.node("admin_panel", auth_tags="admin")
+node = api.route.node("admin_panel", auth_tags="admin")
 assert node.error is None  # Authorized
 
-node = api.api.node("admin_panel", auth_tags="admin,banned")
+node = api.route.node("admin_panel", auth_tags="admin,banned")
 assert node.error == "not_authorized"  # Has admin but also banned
 
-node = api.api.node("admin_panel")  # No tags
+node = api.route.node("admin_panel")  # No tags
 assert node.error == "not_authenticated"
 ```
 
@@ -370,14 +370,14 @@ child.capabilities = ChildCapabilities()     # has "email"
 
 parent.attach_instance(child, name="child")
 
-# child.api.current_capabilities returns {"redis", "email"}
+# child.route.current_capabilities returns {"redis", "email"}
 # (accumulated from parent + child)
 ```
 
 **Complete example**:
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 from genro_routes.plugins.env import CapabilitiesSet, capability
 
 class AppCapabilities(CapabilitiesSet):
@@ -391,33 +391,33 @@ class AppCapabilities(CapabilitiesSet):
 
 class FeatureAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("env")
+        self.route.plug("env")
         self.capabilities = AppCapabilities()
 
-    @route("api")  # No requirements = always available
+    @route()  # No requirements = always available
     def basic_feature(self):
         return "basic"
 
-    @route("api", env_requires="cache")
+    @route(env_requires="cache")
     def cached_data(self):
         return "cached"
 
-    @route("api", env_requires="premium")
+    @route(env_requires="premium")
     def premium_feature(self):
         return "premium"
 
-    @route("api", env_requires="cache|premium")
+    @route(env_requires="cache|premium")
     def either_feature(self):
         return "either"
 
-    @route("api", env_requires="cache&premium")
+    @route(env_requires="cache&premium")
     def both_features(self):
         return "both"
 
 api = FeatureAPI()
 
 # Based on capabilities (cache=True, premium=False)
-entries = api.api.nodes()["entries"]
+entries = api.route.nodes()["entries"]
 assert "basic_feature" in entries
 assert "cached_data" in entries      # cache is True
 assert "premium_feature" not in entries  # premium is False
@@ -425,7 +425,7 @@ assert "either_feature" in entries   # cache OR premium
 assert "both_features" not in entries    # cache AND premium
 
 # Override with request capabilities
-entries = api.api.nodes(env_capabilities="premium")["entries"]
+entries = api.route.nodes(env_capabilities="premium")["entries"]
 assert "premium_feature" in entries  # Now available
 assert "both_features" in entries    # cache (instance) + premium (request)
 ```
@@ -461,7 +461,7 @@ Supported return types: `TypedDict`, `dict[str, T]`, `list[T]`, `str`, `int`, `b
 
 ```python
 from typing import TypedDict
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class UserResponse(TypedDict):
     id: int
@@ -470,25 +470,25 @@ class UserResponse(TypedDict):
 
 class UserAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("api")
+    @route()
     def get_user(self, user_id: int) -> UserResponse:
         return {"id": user_id, "name": "alice", "active": True}
 
-    @route("api")
+    @route()
     def list_users(self) -> list[UserResponse]:
         return []
 
 api = UserAPI()
 
 # Response schema in entry metadata
-entry = api.api._entries["get_user"]
+entry = api.route._entries["get_user"]
 schema = entry.metadata["pydantic"]["response_schema"]
 # {"type": "object", "properties": {"id": {...}, "name": {...}, "active": {...}}, ...}
 
 # Also exposed via nodes() introspection
-nodes = api.api.nodes()
+nodes = api.route.nodes()
 pydantic_meta = nodes["entries"]["get_user"]["plugins"]["pydantic"]["metadata"]
 assert "response_schema" in pydantic_meta
 ```
@@ -515,9 +515,8 @@ The OpenAPIPlugin provides **explicit control over OpenAPI schema generation**. 
 
 | Condition | Method |
 |-----------|--------|
-| Has parameters | `POST` |
-| No parameters, returns `None` | `POST` (side effect assumed) |
-| No parameters, returns value | `GET` |
+| All parameters are scalar (str, int, float, bool, Enum) | `GET` |
+| Any parameter is complex (dict, list, TypedDict, model) | `POST` |
 
 **Response schema generation**:
 
@@ -525,7 +524,7 @@ When handlers have return type annotations, the OpenAPI translator automatically
 
 ```python
 from typing import TypedDict
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class ItemResponse(TypedDict):
     id: int
@@ -533,16 +532,16 @@ class ItemResponse(TypedDict):
 
 class ItemAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("pydantic").plug("openapi")
+        self.route.plug("pydantic").plug("openapi")
 
-    @route("api")
+    @route()
     def get_item(self, item_id: int) -> ItemResponse:
         """Get a single item."""
         return {"id": item_id, "name": "widget"}
 
 api = ItemAPI()
-openapi = api.api.nodes(mode="openapi")
-# paths["/get_item"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
+openapi = api.route.nodes(mode="openapi")
+# paths["/get_item"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
 # → {"type": "object", "properties": {"id": {"type": "integer"}, "name": {"type": "string"}}, ...}
 ```
 
@@ -554,7 +553,7 @@ The plugin includes `OpenAPITranslator` for converting `nodes()` output to OpenA
 from genro_routes.plugins.openapi import OpenAPITranslator
 
 # Get nodes data
-nodes_data = api.api.nodes()
+nodes_data = api.route.nodes()
 
 # Flat OpenAPI format (all paths merged)
 openapi = OpenAPITranslator.translate_openapi(nodes_data)
@@ -568,35 +567,35 @@ h_openapi = OpenAPITranslator.translate_h_openapi(nodes_data)
 **Complete example**:
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 from genro_routes.plugins.openapi import OpenAPITranslator
 
 class UserAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("openapi")
+        self.route.plug("openapi")
 
-    @route("api", openapi_tags=["users"])
+    @route(openapi_tags=["users"])
     def list_users(self) -> list:
         """Get all users."""
         return []
 
-    @route("api", openapi_method="post", openapi_tags=["users"])
+    @route(openapi_method="post", openapi_tags=["users"])
     def create_user(self, name: str, email: str) -> dict:
         """Create a new user."""
         return {"name": name, "email": email}
 
-    @route("api", openapi_method="delete", openapi_tags=["users", "admin"])
+    @route(openapi_method="delete", openapi_tags=["users", "admin"])
     def delete_user(self, user_id: int) -> dict:
         """Delete a user (admin only)."""
         return {"deleted": user_id}
 
-    @route("api", openapi_deprecated=True)
+    @route(openapi_deprecated=True)
     def legacy_endpoint(self) -> str:
         """Deprecated endpoint."""
         return "legacy"
 
 api = UserAPI()
-nodes = api.api.nodes()
+nodes = api.route.nodes()
 openapi = OpenAPITranslator.translate_openapi(nodes)
 
 # openapi["paths"] contains:
@@ -650,43 +649,43 @@ The ChannelPlugin provides **channel-based endpoint filtering**. It controls acc
 **Complete example**:
 
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class MultiChannelAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("channel")
-        self.api.channel.configure(channels="*")  # default: all channels
+        self.route.plug("channel")
+        self.route.channel.configure(channels="*")  # default: all channels
 
-    @route("api", channel="mcp")  # shorthand syntax
+    @route(channel="mcp")  # shorthand syntax
     def mcp_tool(self):
         return "only via MCP"
 
-    @route("api", channel="mcp,bot_.*")
+    @route(channel="mcp,bot_.*")
     def ai_accessible(self):
         return "MCP + any bot"
 
-    @route("api", channel="rest,web")
+    @route(channel="rest,web")
     def browser_only(self):
         return "REST or web"
 
-    @route("api")  # inherits "*" from router config
+    @route()  # inherits "*" from router config
     def universal(self):
         return "everywhere"
 
 api = MultiChannelAPI()
 
 # MCP client sees: mcp_tool, ai_accessible, universal
-entries = api.api.nodes(channel_channel="mcp")["entries"]
+entries = api.route.nodes(channel_channel="mcp")["entries"]
 assert "mcp_tool" in entries
 assert "browser_only" not in entries
 
 # REST client sees: browser_only, universal
-entries = api.api.nodes(channel_channel="rest")["entries"]
+entries = api.route.nodes(channel_channel="rest")["entries"]
 assert "browser_only" in entries
 assert "mcp_tool" not in entries
 
-# Combined with auth
-api2 = Router(Owner(), name="api").plug("channel").plug("auth")
+# Combined with auth: plug both plugins on the same router
+# self.route.plug("channel").plug("auth")
 # Both filters must pass for entry to be visible
 ```
 
@@ -740,15 +739,15 @@ Router.register_plugin(CapturePlugin)
 # Use in service
 class PluginService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("capture")
+        self.route.plug("capture")
 
-    @route("api")
+    @route()
     def do_work(self):
         return "ok"
 
 svc = PluginService()
-result = svc.api.node("do_work")()
-assert svc.api.capture.calls == ["do_work"]
+result = svc.route.node("do_work")()
+assert svc.route.capture.calls == ["do_work"]
 ```
 
 ### Constructor Signature
@@ -806,11 +805,9 @@ Response ← [Last Plugin] ← [Middle Plugin] ← [First Plugin] ← Handler
 ```python
 class Service(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")\
-            .plug("logging")\
-            .plug("pydantic")
+        self.route.plug("logging").plug("pydantic")
 
-    @route("api")
+    @route()
     def process(self, count: int):
         return f"processed:{count}"
 ```
@@ -838,8 +835,7 @@ class Service(RoutingClass):
 **Common pattern for production**:
 
 ```python
-self.api = Router(self, name="api")\
-    .plug("logging")\
+self.route.plug("logging")\
     .plug("auth")\
     .plug("pydantic")\
     .plug("openapi")
@@ -1141,33 +1137,35 @@ This approach gives maximum flexibility:
 
 ### Example: AuthPlugin Inheritance
 
-AuthPlugin has specific inheritance semantics using **union** of tags:
+AuthPlugin follows the default inheritance behavior: a child without its own
+auth configuration inherits the parent's router-level rule:
 
 ```python
-class Parent(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api").plug("auth", tags="corporate")
-        self.child = Child()
-
 class Child(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api").plug("auth", tags="internal")
-
-    @route("api", auth_rule="admin")
+    @route(auth_rule="admin")
     def admin_only(self): ...
 
+    @route()
+    def open_action(self): ...
+
+class Parent(RoutingClass):
+    def __init__(self):
+        self.route.plug("auth", rule="corporate")
+        self.child = Child()
+        self.attach_instance(self.child, name="child")
+
 parent = Parent()
-parent.attach_instance(parent.child, name="child")
 
 # Result:
-# - child._all_ tags: "corporate,internal" (union from parent + child)
-# - admin_only tags: "corporate,internal,admin" (union with entry tags)
+# - The child inherits the auth plugin with the parent's router-level
+#   rule ("corporate"): open_action requires the "corporate" tag
+# - admin_only keeps its own entry rule ("admin")
 ```
 
-**Tag semantics**:
+**Rule semantics**:
 
-- Entry without tags → always visible (public)
-- Entry with tags → visible if filter matches at least one tag
+- Entry without a rule (and no router-level rule) → always accessible (public)
+- Entry with a rule → accessible only if the `auth_tags` satisfy the rule expression
 
 See [ARCHITECTURE.md](../ARCHITECTURE.md#plugin-inheritance) for detailed inheritance documentation.
 
@@ -1189,7 +1187,7 @@ Router.register_plugin(CustomPlugin)
 # Now available in all routers
 class Service(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("custom")
+        self.route.plug("custom")
 ```
 
 **Registration rules**:
@@ -1236,9 +1234,9 @@ Router.register_plugin(CapturePlugin)
 svc1 = PluginService()
 svc2 = PluginService()
 
-svc1.api.node("do_work")()
-assert svc1.api.capture.calls == ["do_work"]
-assert svc2.api.capture.calls == []  # Independent state
+svc1.route.node("do_work")()
+assert svc1.route.capture.calls == ["do_work"]
+assert svc2.route.capture.calls == []  # Independent state
 ```
 
 **Benefits**:
@@ -1405,14 +1403,14 @@ Router.register_plugin(AuthPlugin)
 # Use in service
 class API(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("auth")
+        self.route.plug("auth")
 
-    @route("api")
+    @route()
     def public_endpoint(self, request):
         """@roles:guest"""
         return "public data"
 
-    @route("api")
+    @route()
     def admin_endpoint(self, request):
         """@roles:admin"""
         return "admin data"
@@ -1420,7 +1418,7 @@ class API(RoutingClass):
 api = API()
 
 # Configure: disable auth requirement for public endpoints
-api.api.auth.configure(_target="public_endpoint", required=False)
+api.route.auth.configure(_target="public_endpoint", required=False)
 ```
 
 ## Best Practices
@@ -1441,14 +1439,13 @@ class EverythingPlugin(BasePlugin): ...
 
 ```python
 # Good: Multiple simple plugins
-self.api = Router(self, name="api")\
-    .plug("logging")\
+self.route.plug("logging")\
     .plug("pydantic")\
     .plug("caching")\
     .plug("auth")
 
 # Bad: One complex plugin
-self.api = Router(self, name="api").plug("monolith")
+self.route.plug("monolith")
 ```
 
 **Configuration defaults**:
@@ -1490,13 +1487,13 @@ The `Router` class provides methods to enable/disable plugins and store runtime 
 svc = MyService()
 
 # Disable pydantic validation for a specific handler at runtime
-svc.api.set_plugin_enabled("handler_name", "pydantic", enabled=False)
+svc.route.set_plugin_enabled("handler_name", "pydantic", enabled=False)
 
 # Disable globally for all handlers
-svc.api.set_plugin_enabled("_all_", "logging", enabled=False)
+svc.route.set_plugin_enabled("_all_", "logging", enabled=False)
 
 # Check if a plugin is enabled for a handler
-if svc.api.is_plugin_enabled("handler_name", "pydantic"):
+if svc.route.is_plugin_enabled("handler_name", "pydantic"):
     print("Validation active")
 ```
 
@@ -1514,10 +1511,10 @@ Plugins can use `set_runtime_data` / `get_runtime_data` to store handler-specifi
 
 ```python
 # Store runtime data for a plugin/handler combination
-svc.api.set_runtime_data("handler_name", "my_plugin", "call_count", 0)
+svc.route.set_runtime_data("handler_name", "my_plugin", "call_count", 0)
 
 # Retrieve runtime data
-count = svc.api.get_runtime_data("handler_name", "my_plugin", "call_count", default=0)
+count = svc.route.get_runtime_data("handler_name", "my_plugin", "call_count", default=0)
 ```
 
 **Use cases**:

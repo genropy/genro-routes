@@ -7,19 +7,21 @@ This document is the source of truth for how routing, hierarchy, and plugins wor
 ```mermaid
 graph TD
   RC[RoutingClass instance]
-  Router[Router (per instance)]
+  Router[Router (route property, one per instance)]
   ChildRC[Child RoutingClass]
   ChildRouter[Child Router]
 
-  RC -->|attribute| Router
+  RC -->|route property| Router
   RC -->|attribute| ChildRC
-  ChildRC -->|attribute| ChildRouter
-  RC -->|attach_instance(name/mapping)| ChildRouter
+  ChildRC -->|route property| ChildRouter
+  RC -->|attach_instance(name)| ChildRC
+  Router -->|include(child.route, name)| ChildRouter
   Router -->|nodes| M[Nodes tree]
 ```
 
-- Hierarchies are built via `attach_instance` (method on `RoutingClass`) and torn down via `detach_instance` (method on `Router`).
-- Branch routers (`branch=True`) exist but do not auto-discover handlers.
+- Every `RoutingClass` owns exactly one `Router`, created lazily on first access of the read-only `route` property. User code never instantiates `Router` directly; router options (`description`, `prefix`, `default_entry`) are set on `self.route` in `__init__`.
+- Hierarchies are built via `attach_instance(child, name=alias)` (method on `RoutingClass`), which links `child.route` into the parent's router under the alias, and torn down via `detach_instance` (method on `Router`).
+- `Section` (an empty `RoutingClass`) provides pure grouping nodes without handlers: `svc.attach_instance(Section("Admin area"), name="admin")`.
 - `default_entry` (default: `"index"`) specifies which handler to use for catch-all routing (best-match resolution).
 - Introspection: `nodes()` is the sole API; it returns router/instance, handlers (with metadata, doc, signature, plugins, params), children, and `plugin_info`.
 
@@ -198,9 +200,9 @@ graph TD
 ### Data flow
 
 1. `RoutingCli(target)` — accepts class or instance.
-2. `CliBuilder.build()` — iterates `instance._iter_registered_routers()`:
-   - Single router → entries become root commands.
-   - Multiple routers → each router becomes a `click.Group`.
+2. `CliBuilder.build()` — reads `instance.route.nodes()`:
+   - Entries become root commands.
+   - Child routers (attached instances) become nested `click.Group`s.
 3. For each entry, `ParamConverter.to_click_params(handler)` maps `inspect.signature` + `get_type_hints` to click parameters.
 4. The command callback invokes the handler and pipes the result through `OutputFormatter`.
 

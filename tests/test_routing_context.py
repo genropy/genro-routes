@@ -14,9 +14,12 @@
 
 """Tests for RoutingContext and slot-based ctx property on RoutingClass."""
 
+from pathlib import Path
+
 import pytest
 
-from genro_routes import Router, RoutingClass, RoutingContext
+import genro_routes.core.routing
+from genro_routes import RoutingClass, RoutingContext
 
 
 class TestRoutingContextAttributes:
@@ -89,8 +92,7 @@ class TestCtxSlot:
     def test_default_none(self):
         """ctx returns None when not set."""
         class Svc(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
+            pass
 
         svc = Svc()
         assert svc.ctx is None
@@ -98,8 +100,7 @@ class TestCtxSlot:
     def test_set_and_get(self):
         """Set and get ctx via property."""
         class Svc(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
+            pass
 
         svc = Svc()
         ctx = RoutingContext()
@@ -111,8 +112,7 @@ class TestCtxSlot:
     def test_clear_ctx(self):
         """Setting ctx to None clears the local slot."""
         class Svc(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
+            pass
 
         svc = Svc()
         ctx = RoutingContext()
@@ -124,12 +124,10 @@ class TestCtxSlot:
     def test_parent_chain_lookup(self):
         """ctx walks up _routing_parent chain."""
         class Parent(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
+            pass
 
         class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
+            pass
 
         parent = Parent()
         child = Child()
@@ -146,12 +144,10 @@ class TestCtxSlot:
     def test_child_override(self):
         """Child can set its own ctx, overriding parent's."""
         class Parent(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
+            pass
 
         class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
+            pass
 
         parent = Parent()
         child = Child()
@@ -171,12 +167,10 @@ class TestCtxSlot:
     def test_clear_child_falls_through_to_parent(self):
         """Clearing child's ctx makes it fall through to parent."""
         class Parent(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
+            pass
 
         class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
+            pass
 
         parent = Parent()
         child = Child()
@@ -200,8 +194,7 @@ class TestCtxSlot:
     def test_instances_are_independent(self):
         """Two unrelated instances have independent ctx slots."""
         class Svc(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
+            pass
 
         a = Svc()
         b = Svc()
@@ -216,7 +209,6 @@ class TestCtxSlot:
 
     def test_no_contextvar_import(self):
         """Verify ContextVar is not imported in routing.py."""
-        import genro_routes.core.routing as mod
-        source = open(mod.__file__).read()
+        source = Path(genro_routes.core.routing.__file__).read_text()
         assert "from contextvars" not in source
         assert "ContextVar" not in source

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from genro_routes import RoutingClass, Router
+from genro_routes import RoutingClass, route
 
 
 class Owner(RoutingClass):
@@ -15,7 +15,7 @@ class Owner(RoutingClass):
 
 
 def _make_router():
-    return Router(Owner(), name="api")
+    return Owner().route
 
 
 class TestAuthPluginIntegration:
@@ -149,33 +149,29 @@ class TestAuthPluginIntegration:
 
     def test_auth_with_child_routers(self):
         """Test that authorization works with hierarchical routers."""
-        from genro_routes import RoutingClass, route
 
         class Parent(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("auth")
+                self.route.plug("auth")
 
         class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api", auth_rule="admin")
+            @route(auth_rule="admin")
             def child_admin(self):
                 return "child_admin"
 
-            @route("api", auth_rule="public")
+            @route(auth_rule="public")
             def child_public(self):
                 return "child_public"
 
         parent = Parent()
-        parent.api.add_entry(lambda: "parent_admin", name="parent_admin", auth_rule="admin")
+        parent.route.add_entry(lambda: "parent_admin", name="parent_admin", auth_rule="admin")
 
         child = Child()
         # Attach child - plugin is inherited from parent
         parent.attach_instance(child, name="child")
 
         # Filter should apply to both parent and child
-        result = parent.api.nodes(auth_tags="admin")
+        result = parent.route.nodes(auth_tags="admin")
         assert "parent_admin" in result.get("entries", {})
         # Child router should be present if it has matching entries
         assert "child" in result.get("routers", {})
@@ -186,28 +182,24 @@ class TestAuthPluginIntegration:
 
     def test_auth_removes_empty_child_routers(self):
         """Child routers with no matching entries should be pruned."""
-        from genro_routes import RoutingClass, route
 
         class Parent(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("auth")
+                self.route.plug("auth")
 
         class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api", auth_rule="public")
+            @route(auth_rule="public")
             def only_public(self):
                 return "public"
 
         parent = Parent()
-        parent.api.add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
+        parent.route.add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
 
         child = Child()
         parent.attach_instance(child, name="child")
 
         # Filter for admin - child has no admin entries
-        result = parent.api.nodes(auth_tags="admin")
+        result = parent.route.nodes(auth_tags="admin")
         assert "admin_action" in result.get("entries", {})
         # Child should be pruned (empty after filter)
         assert "child" not in result.get("routers", {})
@@ -217,47 +209,45 @@ class TestAuth401vs403:
 
     def test_nodes_filters_out_both_401_and_403(self):
         """nodes() silently filters out entries that would be 401 or 403."""
-        from genro_routes import RoutingClass, route
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("auth")
+                self.route.plug("auth")
 
-            @route("api", auth_rule="admin")
+            @route(auth_rule="admin")
             def admin_action(self):
                 return "admin"
 
-            @route("api", auth_rule="public")
+            @route(auth_rule="public")
             def public_action(self):
                 return "public"
 
-            @route("api")  # No tags
+            @route()  # No tags
             def open_action(self):
                 return "open"
 
         svc = Svc()
 
         # With admin tags - sees admin and open, not public
-        entries = svc.api.nodes(auth_tags="admin").get("entries", {})
+        entries = svc.route.nodes(auth_tags="admin").get("entries", {})
         assert "admin_action" in entries
         assert "open_action" in entries
         assert "public_action" not in entries
 
         # With public tags - sees public and open, not admin
-        entries = svc.api.nodes(auth_tags="public").get("entries", {})
+        entries = svc.route.nodes(auth_tags="public").get("entries", {})
         assert "public_action" in entries
         assert "open_action" in entries
         assert "admin_action" not in entries
 
         # Without any tags - only sees entries without rules (401 filtered out)
-        entries = svc.api.nodes().get("entries", {})
+        entries = svc.route.nodes().get("entries", {})
         assert "admin_action" not in entries  # Has rule, no tags → 401
         assert "public_action" not in entries  # Has rule, no tags → 401
         assert "open_action" in entries  # No rule → always visible
 
     def test_custom_exception_classes(self):
         """Test that custom exception classes are used for 401 and 403."""
-        from genro_routes import RoutingClass, route
 
         class Custom401(Exception):
             def __init__(self, path):
@@ -269,29 +259,29 @@ class TestAuth401vs403:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("auth")
+                self.route.plug("auth")
 
-            @route("api", auth_rule="admin")
+            @route(auth_rule="admin")
             def admin_action(self):
                 return "admin"
 
         svc = Svc()
 
         # Test 401 with custom exception
-        node = svc.api.node("admin_action", errors={
+        node = svc.route.node("admin_action", errors={
             "not_authenticated": Custom401
         })
         with pytest.raises(Custom401) as exc_info:
             node()
-        assert exc_info.value.path == "api:admin_action"
+        assert exc_info.value.path == "route:admin_action"
 
         # Test 403 with custom exception
-        node = svc.api.node("admin_action", auth_tags="public", errors={
+        node = svc.route.node("admin_action", auth_tags="public", errors={
             "not_authorized": Custom403
         })
         with pytest.raises(Custom403) as exc_info:
             node()
-        assert exc_info.value.path == "api:admin_action"
+        assert exc_info.value.path == "route:admin_action"
 
 
 class TestAuthRuleValidation:
@@ -299,56 +289,53 @@ class TestAuthRuleValidation:
 
     def test_comma_in_auth_rule_raises_error(self):
         """Using comma in auth_rule should raise ValueError in configure()."""
-        from genro_routes import RoutingClass, route
 
         class MyService(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("auth")
+                self.route.plug("auth")
 
-            @route("api")
+            @route()
             def action(self):
                 return "ok"
 
         svc = MyService()
         with pytest.raises(ValueError, match="Comma not allowed"):
-            svc.api.auth.configure(rule="admin,manager")
+            svc.route.auth.configure(rule="admin,manager")
 
     def test_pipe_in_auth_rule_works(self):
         """Using pipe for OR in auth_rule should work."""
-        from genro_routes import RoutingClass, route
 
         class GoodService(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("auth")
+                self.route.plug("auth")
 
-            @route("api", auth_rule="admin|manager")
+            @route(auth_rule="admin|manager")
             def good_action(self):
                 return "good"
 
         svc = GoodService()
 
         # User with admin can access
-        entries = svc.api.nodes(auth_tags="admin").get("entries", {})
+        entries = svc.route.nodes(auth_tags="admin").get("entries", {})
         assert "good_action" in entries
 
         # User with manager can access
-        entries = svc.api.nodes(auth_tags="manager").get("entries", {})
+        entries = svc.route.nodes(auth_tags="manager").get("entries", {})
         assert "good_action" in entries
 
     def test_comma_in_auth_tags_still_works(self):
         """Comma in auth_tags (user credentials) should still work."""
-        from genro_routes import RoutingClass, route
 
         class StrictService(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("auth")
+                self.route.plug("auth")
 
-            @route("api", auth_rule="admin&internal")
+            @route(auth_rule="admin&internal")
             def strict_action(self):
                 return "strict"
 
         svc = StrictService()
 
         # User passes multiple tags with comma - should work
-        entries = svc.api.nodes(auth_tags="admin,internal").get("entries", {})
+        entries = svc.route.nodes(auth_tags="admin,internal").get("entries", {})
         assert "strict_action" in entries

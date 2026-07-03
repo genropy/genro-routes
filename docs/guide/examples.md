@@ -69,7 +69,7 @@ Exposes a filesystem repository as a service with `list_dir`, `read_file`, and `
 
 ### 10. Deep Repo Explorer
 
-Maps Python files as routers, introspecting classes and functions at runtime. Combined with MCP Bridge, allows an LLM to **discover API structure without filesystem access**.
+Maps Python files as routing services, introspecting classes and functions at runtime. Combined with MCP Bridge, allows an LLM to **discover API structure without filesystem access**.
 
 - **Source**: [examples/deep_repo_explorer.py](https://github.com/genropy/genro-routes/blob/main/examples/deep_repo_explorer.py)
 

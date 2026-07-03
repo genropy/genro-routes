@@ -18,7 +18,7 @@ The utility of `genro-routes` emerges when you look at the **system architecture
 
 ## 4. Automatic Documentation (OpenAPI)
 *   **Pure Library**: To know what the library does, developers must read its source code or external documentation.
-*   **With Genro-Routes**: Calling `service.api.nodes(mode="openapi")` instantly generates technical documentation (Swagger/OpenAPI). Your colleagues will know exactly which methods are available and what parameters they require without ever seeing your Python code.
+*   **With Genro-Routes**: Calling `service.route.nodes(mode="openapi")` instantly generates technical documentation (Swagger/OpenAPI). Your colleagues will know exactly which methods are available and what parameters they require without ever seeing your Python code.
 
 ## 5. Technical Decoupling (The Contract)
 If you decide to switch the underlying implementation (e.g., swapping `Pygments` for a faster Rust-based highlighter), you only change the internal code of your handler. For everyone else in the organization, the endpoint `api/highlighter/html` remains identical. **You have created a stable contract, not just a function call.**

@@ -4,67 +4,56 @@ This guide covers production-tested patterns and anti-patterns for Genro Routes.
 
 ## Router Design
 
-### Keep Routers Focused
+### Keep Services Focused
 
-Each router should have a clear, single responsibility:
+Each RoutingClass should have a clear, single responsibility. A class with
+no plugins or router options needs no `__init__` at all:
 
 ```python
-# Good: Focused routers
+# Good: Focused service
 class UserService(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def list_users(self): ...
 
-    @route("api")
+    @route()
     def get_user(self, user_id: int): ...
 
-    @route("api")
+    @route()
     def create_user(self, data: dict): ...
 
 
-# Bad: Router doing too much
+# Bad: Service doing too much
 class EverythingService(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def list_users(self): ...
 
-    @route("api")
+    @route()
     def send_email(self): ...
 
-    @route("api")
+    @route()
     def generate_report(self): ...
 ```
 
 ### Use Meaningful Names
 
-Router and handler names should be self-documenting:
+Handler names and attachment aliases should be self-documenting:
 
 ```python
 # Good: Clear, descriptive names
 class OrderService(RoutingClass):
-    def __init__(self):
-        self.orders = Router(self, name="orders")
-
-    @route("orders")
+    @route()
     def list_pending(self): ...
 
-    @route("orders")
+    @route()
     def mark_shipped(self, order_id: int): ...
 
 
 # Bad: Vague names
 class Service(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def do_stuff(self): ...
 
-    @route("api")
+    @route()
     def process(self, id): ...
 ```
 
@@ -75,14 +64,14 @@ Use prefixes to group related handlers while keeping public names clean:
 ```python
 class AdminAPI(RoutingClass):
     def __init__(self):
-        self.admin = Router(self, name="admin", prefix="admin_")
+        self.route.prefix = "admin_"
 
-    @route("admin")
+    @route()
     def admin_list_users(self):
         """Exposed as 'list_users'"""
         ...
 
-    @route("admin")
+    @route()
     def admin_delete_user(self, user_id: int):
         """Exposed as 'delete_user'"""
         ...
@@ -96,27 +85,31 @@ Prefer shallow hierarchies over deeply nested ones:
 
 ```python
 # Good: Shallow, navigable hierarchy
-app.api.node("users/list")()
-app.api.node("orders/create")()
-app.api.node("reports/sales")()
+app.route.node("users/list")()
+app.route.node("orders/create")()
+app.route.node("reports/sales")()
 
 # Bad: Too deep, hard to navigate
-app.api.node("v1/internal/services/users/management/list")()
+app.route.node("v1/internal/services/users/management/list")()
 ```
 
-### Use Branch Routers for Organization
+### Use Sections for Organization
 
-Branch routers provide namespace organization without handlers:
+A `Section` is an empty RoutingClass that provides namespace organization
+without handlers:
 
 ```python
+from genro_routes import RoutingClass, Section
+
 class Application(RoutingClass):
     def __init__(self):
-        # Branch router as namespace container
-        self.api = Router(self, name="api", branch=True)
+        # Section as a namespace container
+        admin = Section("Admin area")
+        self.attach_instance(admin, name="admin")
 
-        # Attach actual services
-        self.attach_instance(self.users, name="users")
-        self.attach_instance(self.orders, name="orders")
+        # Attach actual services under the section
+        admin.attach_instance(UserAdmin(), name="users")
+        admin.attach_instance(OrderAdmin(), name="orders")
 ```
 
 ### Attaching Child Instances
@@ -126,12 +119,11 @@ Child instances can be attached directly — storing as an attribute is optional
 ```python
 class Parent(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")
         # Both approaches work — the router tree keeps a strong reference
         self.attach_instance(ChildService(), name="child")
 
 # Retrieve the child instance later if needed
-child = parent.routing.instance("api/child")
+child = parent.routing.instance("child")
 ```
 
 ## Plugin Usage
@@ -144,7 +136,7 @@ Attach plugins where they make sense:
 # Good: Logging at root, validation where needed
 class Application(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("logging")  # All handlers logged
+        self.route.plug("logging")  # All handlers logged
 
         self.public = PublicAPI()  # No validation needed
         self.admin = AdminAPI()    # Has its own pydantic plugin
@@ -155,7 +147,7 @@ class Application(RoutingClass):
 
 class AdminAPI(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("pydantic")  # Strict validation
+        self.route.plug("pydantic")  # Strict validation
 ```
 
 ### Compose Simple Plugins
@@ -164,13 +156,12 @@ Multiple focused plugins beat one complex plugin:
 
 ```python
 # Good: Composable plugins
-self.api = Router(self, name="api")\
-    .plug("logging")\
+self.route.plug("logging")\
     .plug("pydantic")\
     .plug("caching")
 
 # Bad: Monolithic plugin
-self.api = Router(self, name="api").plug("do_everything")
+self.route.plug("do_everything")
 ```
 
 ### Configure Plugins Explicitly
@@ -179,11 +170,11 @@ Don't rely on defaults for production:
 
 ```python
 # Good: Explicit configuration
-svc.routing.configure("api:logging/_all_", level="info", enabled=True)
-svc.routing.configure("api:pydantic/_all_", strict=True)
+svc.routing.configure("logging/_all_", enabled=True, log=True)
+svc.routing.configure("pydantic/_all_", disabled=False)
 
 # Bad: Implicit defaults everywhere
-svc.api.plug("logging").plug("pydantic")  # What's the config?
+svc.route.plug("logging").plug("pydantic")  # What's the config?
 ```
 
 ## Error Handling
@@ -194,14 +185,14 @@ Don't swallow exceptions in handlers:
 
 ```python
 # Good: Let errors propagate
-@route("api")
+@route()
 def create_user(self, data: dict):
     user = self.repository.create(data)  # May raise
     return user
 
 
 # Bad: Swallowing errors
-@route("api")
+@route()
 def create_user(self, data: dict):
     try:
         user = self.repository.create(data)
@@ -240,12 +231,12 @@ Test handler logic independently of routing:
 def test_user_service_list():
     svc = UserService()
     # Test via router
-    result = svc.api.node("list_users")()
+    result = svc.route.node("list_users")()
     assert isinstance(result, list)
 
 def test_user_service_create():
     svc = UserService()
-    result = svc.api.node("create_user")({"name": "Alice"})
+    result = svc.route.node("create_user")({"name": "Alice"})
     assert result["name"] == "Alice"
 ```
 
@@ -258,12 +249,12 @@ def test_application_hierarchy():
     app = Application()
 
     # Verify structure
-    nodes = app.api.nodes()
+    nodes = app.route.nodes()
     assert "users" in nodes["routers"]
     assert "orders" in nodes["routers"]
 
     # Verify access
-    users = app.api.node("users/list_users")()
+    users = app.route.node("users/list_users")()
     assert isinstance(users, list)
 ```
 
@@ -274,7 +265,7 @@ Test that plugins affect handler execution:
 ```python
 def test_logging_plugin_called(caplog):
     svc = LoggedService()
-    svc.api.node("action")()
+    svc.route.node("action")()
 
     assert "action" in caplog.text
 ```
@@ -289,11 +280,9 @@ Attach plugins during router creation for optimal handler wrapping:
 # Good: Plugins attached during construction
 class Service(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")\
-            .plug("logging")\
-            .plug("pydantic")
+        self.route.plug("logging").plug("pydantic")
 
-    @route("api")
+    @route()
     def action(self):
         return "done"
 ```
@@ -304,13 +293,13 @@ If calling the same handler repeatedly, cache the reference:
 
 ```python
 # Good: Cache for repeated calls
-node = svc.api.node("process")
+node = svc.route.node("process")
 for item in items:
     node(item)
 
 # Less efficient: Lookup every time
 for item in items:
-    svc.api.node("process")(item)
+    svc.route.node("process")(item)
 ```
 
 ## Anti-Patterns
@@ -349,13 +338,11 @@ Avoid circular attachments:
 # Bad: Circular reference
 class A(RoutingClass):
     def __init__(self, b):
-        self.api = Router(self, name="api")
         self.b = b
         self.attach_instance(b, name="b")
 
 class B(RoutingClass):
     def __init__(self, a):
-        self.api = Router(self, name="api")
         self.a = a
         self.attach_instance(a, name="a")  # Circular!
 ```
@@ -366,21 +353,21 @@ Don't configure what doesn't need configuration:
 
 ```python
 # Bad: Over-engineered
-svc.routing.configure("api:logging/handler1", level="info")
-svc.routing.configure("api:logging/handler2", level="info")
-svc.routing.configure("api:logging/handler3", level="info")
+svc.routing.configure("logging/handler1", log=True)
+svc.routing.configure("logging/handler2", log=True)
+svc.routing.configure("logging/handler3", log=True)
 # ... 50 more lines
 
 # Good: Use defaults and override exceptions
-svc.routing.configure("api:logging/_all_", level="info")
-svc.routing.configure("api:logging/debug_*", level="debug")
+svc.routing.configure("logging/_all_", log=True)
+svc.routing.configure("logging/debug_*", print=True)
 ```
 
 ## Summary
 
 | Do | Don't |
 |----|-------|
-| Keep routers focused | Mix unrelated handlers |
+| Keep services focused | Mix unrelated handlers |
 | Use meaningful names | Use vague names |
 | Use `routing.instance()` to retrieve children | Rely on global variables for child access |
 | Apply plugins at right level | Over-apply plugins |

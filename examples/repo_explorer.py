@@ -1,38 +1,41 @@
 from __future__ import annotations
+
 import os
-from typing import List, Dict, Any
-from genro_routes import Router, RoutingClass, route
+from typing import Any
+
+from genro_routes import RoutingClass, route
+
 
 class RepositoryService(RoutingClass):
     """
     Exposes a repository as a Service.
-    
-    Instead of mapping every file to a Router (anti-pattern), 
+
+    Instead of mapping every file to a Router (anti-pattern),
     we provide methods that take paths as arguments.
     """
-    
+
     def __init__(self, root_path: str):
         self.root = os.path.abspath(root_path)
         # Use Pydantic for path validation
-        self.api = Router(self, name="repo").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("repo")
-    def list_dir(self, path: str = ".") -> List[str]:
+    @route()
+    def list_dir(self, path: str = ".") -> list[str]:
         """Lists files and directories in a given path."""
         target = self._secure_path(path)
         return os.listdir(target)
 
-    @route("repo")
+    @route()
     def read_file(self, path: str) -> str:
         """Reads the content of a file."""
         target = self._secure_path(path)
         if not os.path.isfile(target):
             raise ValueError(f"Path is not a file: {path}")
-        with open(target, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(target, encoding='utf-8', errors='ignore') as f:
             return f.read()
 
-    @route("repo")
-    def get_info(self, path: str) -> Dict[str, Any]:
+    @route()
+    def get_info(self, path: str) -> dict[str, Any]:
         """Returns metadata for a file or directory."""
         target = self._secure_path(path)
         stats = os.stat(target)
@@ -56,19 +59,19 @@ if __name__ == "__main__":
     service = RepositoryService(repo_root)
 
     print(f"--- Repository Service Demo: {repo_root} ---")
-    
+
     # List root
-    print(f"\n1. Listing root:")
-    print(service.api.node("list_dir")(path="."))
+    print("\n1. Listing root:")
+    print(service.route.node("list_dir")(path="."))
 
     # Read README.md
-    print(f"\n2. Reading README.md (first 100 chars):")
+    print("\n2. Reading README.md (first 100 chars):")
     try:
-        content = service.api.node("read_file")(path="README.md")
+        content = service.route.node("read_file")(path="README.md")
         print(content[:100] + "...")
     except Exception as e:
         print(f"Error: {e}")
 
     # Inspect a folder
-    print(f"\n3. Info for 'src':")
-    print(service.api.node("get_info")(path="src"))
+    print("\n3. Info for 'src':")
+    print(service.route.node("get_info")(path="src"))

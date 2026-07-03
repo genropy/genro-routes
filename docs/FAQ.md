@@ -14,23 +14,20 @@
 
 **Example**:
 ```python
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 class OrdersAPI(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="orders")
-
-    @route("orders")
+    @route()
     def list(self):
         return ["order-1", "order-2"]
 
-    @route("orders")
+    @route()
     def create(self, payload: dict):
         return {"status": "created", **payload}
 
 orders = OrdersAPI()
-orders.api.node("list")()  # Calls list()
-orders.api.node("create")({"name": "order-3"})  # Calls create()
+orders.route.node("list")()  # Calls list()
+orders.route.node("create")({"name": "order-3"})  # Calls create()
 ```
 
 ### Genro Routes vs function dictionary?
@@ -70,44 +67,43 @@ You can use Genro Routes **alongside** FastAPI to organize your internal handler
 1. **Registers handlers**: methods decorated with `@route()`
 2. **Resolves by name**: `router.node("method_name")` → callable RouterNode
 3. **Applies plugins**: intercepts decoration and execution
-4. **Is isolated per instance**: each object has its own router
+4. **Is isolated per instance**: every `RoutingClass` instance owns exactly one router, auto-created and exposed as the `route` property
 
 ```python
 class Service(RoutingClass):
     def __init__(self, label: str):
         self.label = label
-        self.api = Router(self, name="api")
 
-    @route("api")
+    @route()
     def info(self):
         return f"service:{self.label}"
 
 s1 = Service("alpha")
 s2 = Service("beta")
-s1.api.node("info")()  # "service:alpha"
-s2.api.node("info")()  # "service:beta"
+s1.route.node("info")()  # "service:alpha"
+s2.route.node("info")()  # "service:beta"
 ```
 
-Each instance (`s1`, `s2`) has a **separate and isolated** router.
+Each instance (`s1`, `s2`) has a **separate and isolated** router. You never call `Router(...)` yourself.
 
 ### How does the @route decorator work?
 
-**Question**: What does `@route("api")` exactly do?
+**Question**: What does `@route()` exactly do?
 
 <!-- test: test_router_basic.py::test_prefix_and_name_override -->
 
-**Answer**: The `@route("router_name")` decorator marks a method to be registered in a specific router. When you create the instance and call `Router(self, name="api")`, the router finds all methods marked with `@route("api")` and registers them automatically.
+**Answer**: The `@route()` decorator marks a method for registration on the class's single router. The router is created lazily on first access of `self.route` and automatically discovers all marked methods. All options are keyword-only.
 
 **Options**:
 ```python
-@route("api")  # Auto name (method name)
+@route()  # Auto name (method name)
 def list_users(self): ...
 
-@route("api", name="users")  # Explicit name
+@route(name="users")  # Explicit name
 def handle_users(self): ...
 
-# With Router(prefix="handle_")
-@route("api")
+# With self.route.prefix = "handle_" set in __init__
+@route()
 def handle_create(self): ...  # Registered as "create" (strips prefix)
 ```
 
@@ -115,13 +111,14 @@ def handle_create(self): ...  # Registered as "create" (strips prefix)
 
 **Question**: Do I always need to inherit from `RoutingClass`?
 
-**Answer**: **Recommended but not required**. `RoutingClass` provides:
+**Answer**: **Yes**. `RoutingClass` is the mixin that binds a class to its router:
 
-- `obj.routing` proxy to access all routers
-- `obj.routing.configure()` for global configuration
-- Automatic router registry management
+- `obj.route` — the instance's single router, created lazily (read-only property)
+- `obj.routing` — proxy for configuration and lookup (`configure()`, `get_router()`, `instance()`)
+- `obj.attach_instance(child, name=...)` — connects child instances into a hierarchy
+- `obj.ctx` — execution context with parent-chain lookup
 
-**Without RoutingClass** you can still use `Router` directly, but you lose the unified proxy.
+A `Router` can only be owned by a `RoutingClass` instance.
 
 ## Hierarchies and Child Routers
 
@@ -134,18 +131,25 @@ def handle_create(self): ...  # Registered as "create" (strips prefix)
 ```python
 class Dashboard(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")
         self.sales = SalesModule()
         self.finance = FinanceModule()
 
-        # Attach child instances (1:1 shortcut — each child has a single router)
+        # Attach child instances — each child's router is linked under the alias
         self.attach_instance(self.sales, name="sales")
         self.attach_instance(self.finance, name="finance")
 
 dashboard = Dashboard()
 # Access with path separator
-dashboard.api.node("sales/report")()
-dashboard.api.node("finance/summary")()
+dashboard.route.node("sales/report")()
+dashboard.route.node("finance/summary")()
+```
+
+For a pure grouping level without a dedicated class, attach a `Section`:
+
+```python
+from genro_routes import Section
+
+dashboard.attach_instance(Section("Admin area"), name="admin")
 ```
 
 ### How do I access child routers?
@@ -155,13 +159,13 @@ dashboard.api.node("finance/summary")()
 **Answer**: Use **path separator** `/`:
 ```python
 # Path separator
-dashboard.api.node("sales/report")()
+dashboard.route.node("sales/report")()
 
 # Or direct access
-dashboard.sales.api.node("report")()
+dashboard.sales.route.node("report")()
 
 # Introspection
-nodes = dashboard.api.nodes()
+nodes = dashboard.route.nodes()
 # {
 #   "entries": {...},
 #   "routers": {
@@ -180,13 +184,13 @@ nodes = dashboard.api.nodes()
 ```python
 class Parent(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("logging", level="debug")
+        self.route.plug("logging")
         self.child_obj = Child()
         self.attach_instance(self.child_obj, name="child")
 
 # Child automatically inherits logging plugin
 parent = Parent()
-parent.api.node("child/method")()  # Logs with level=debug
+parent.route.node("child/method")()  # Logged via inherited plugin
 ```
 
 ## Plugin System
@@ -216,57 +220,61 @@ parent.api.node("child/method")()  # Logs with level=debug
 
 **1. LoggingPlugin** - Automatic logging
 ```python
-router = Router(self, name="api").plug("logging")
-router.node("method")()  # Auto-logs the call
+self.route.plug("logging")     # in __init__
+svc.route.node("method")()     # Auto-logs the call
 ```
 
 **2. PydanticPlugin** - Input validation + response schemas
 <!-- test: test_pydantic_plugin.py::test_pydantic_plugin_accepts_valid_input -->
 
 ```python
-@route("api")
+self.route.plug("pydantic")    # in __init__
+
+@route()
 def concat(self, text: str, number: int = 1) -> str:
     return f"{text}:{number}"
 
-router.plug("pydantic")
-router.node("concat")("hello", 3)    # OK → "hello:3"
-router.node("concat")(123, "oops")   # ValidationError
+svc.route.node("concat")("hello", 3)    # OK → "hello:3"
+svc.route.node("concat")(123, "oops")   # ValidationError
 
 # Response schema auto-generated from return type annotation
-router._entries["concat"].metadata["pydantic"]["response_schema"]
+svc.route._entries["concat"].metadata["pydantic"]["response_schema"]
 # {"type": "string"}
 ```
 
 **3. AuthPlugin** - Role-based access control
 ```python
-@route("api", auth_rule="admin")
+self.route.plug("auth")        # in __init__
+
+@route(auth_rule="admin")
 def admin_action(self):
     return "secret"
 
-router.plug("auth")
-router.node("admin_action", auth_tags="admin")()  # OK
-router.node("admin_action", auth_tags="guest")()  # NotAuthorized
+svc.route.node("admin_action", auth_tags="admin")()  # OK
+svc.route.node("admin_action", auth_tags="guest")()  # NotAuthorized
 ```
 
 **4. EnvPlugin** - Capability-based filtering
 
 ```python
-@route("api", env_requires="redis")
+self.route.plug("env")         # in __init__
+
+@route(env_requires="redis")
 def cached_action(self):
     return "cached"
 
-router.plug("env")
 # Entry only visible if instance has "redis" capability
 ```
 
 **5. OpenAPIPlugin** - Schema metadata and response schemas
 
 ```python
-@route("api", openapi_method="post", openapi_tags="users")
+self.route.plug("openapi")     # in __init__
+
+@route(openapi_method="post", openapi_tags="users")
 def create_user(self, name: str) -> dict:
     return {"name": name}
 
-router.plug("openapi")
 # Provides metadata for OpenAPI schema generation
 # Response schemas auto-included from return type annotations
 ```
@@ -281,15 +289,16 @@ router.plug("openapi")
 
 ```python
 # Global for all handlers
-obj.routing.configure("api:logging/_all_", level="warning")
+obj.routing.configure("logging/_all_", before=False)
 
 # For specific handler
-obj.routing.configure("api:logging/create", enabled=False)
+obj.routing.configure("logging/create", enabled=False)
 
 # With glob patterns
-obj.routing.configure("api:logging/admin_*", level="debug")
+obj.routing.configure("logging/admin_*", enabled=False)
 
-# Query configuration
+# Query configuration — returns the router description dict
+# (keys: name, plugins, entries, routers)
 report = obj.routing.configure("?")
 ```
 
@@ -316,9 +325,9 @@ class AuditPlugin(BasePlugin):
             return result
         return wrapper
 
-# Register and use
+# Register globally, then attach in __init__
 Router.register_plugin(AuditPlugin)
-router = Router(self, name="api").plug("audit")
+self.route.plug("audit")
 ```
 
 ## Advanced Use Cases
@@ -413,7 +422,7 @@ node()            # raises NotFound
 # Structure snapshot
 nodes = router.nodes()
 # {
-#   "name": "api",
+#   "name": "route",
 #   "router": <Router>,
 #   "instance": <owner>,
 #   "plugin_info": {...},
@@ -460,7 +469,7 @@ Different use cases: `singledispatch` for typed polymorphism, Genro Routes for d
 
 **Solution**: The plugin wasn't attached. Use `.plug()`:
 ```python
-router.plug("logging")  # Now router.logging exists
+self.route.plug("logging")  # Now self.route.logging exists
 ```
 
 ### "Handler name collision"
@@ -469,10 +478,10 @@ router.plug("logging")  # Now router.logging exists
 
 **Solution**: Use explicit names or prefixes:
 ```python
-@route("api", name="create_user")
+@route(name="create_user")
 def handle_create_user(self): ...
 
-@route("api", name="create_order")
+@route(name="create_order")
 def handle_create_order(self): ...
 ```
 
@@ -483,12 +492,12 @@ def handle_create_order(self): ...
 **Solution**: Make sure to attach plugins to the parent router **before** connecting children:
 ```python
 # CORRECT
-self.api = Router(self, name="api").plug("logging")
+self.route.plug("logging")
 self.attach_instance(child, name="child")  # Child inherits logging
 
 # WRONG
 self.attach_instance(child, name="child")
-self.api.plug("logging")  # Child does NOT inherit
+self.route.plug("logging")  # Child does NOT inherit
 ```
 
 ### ValidationError with Pydantic
@@ -497,9 +506,9 @@ self.api.plug("logging")  # Child does NOT inherit
 
 **Solution**: Verify:
 
-1. PydanticPlugin attached: `router.plug("pydantic")`
+1. PydanticPlugin attached: `self.route.plug("pydantic")`
 2. Type hint correct: `def method(self, req: MyModel)`
-3. Input is dict or model instance: `router.node("method")({"field": "value"})`
+3. Input is dict or model instance: `svc.route.node("method")({"field": "value"})`
 
 ## Best Practices
 
@@ -523,7 +532,7 @@ self.api.plug("logging")  # Child does NOT inherit
 
 **Answer**: **Yes**. Plugins are applied **in attachment order**:
 ```python
-router.plug("logging").plug("pydantic")
+self.route.plug("logging").plug("pydantic")
 # Execution: logging → pydantic → handler → pydantic → logging
 ```
 
@@ -543,7 +552,7 @@ def test_handler_logic():
 # Test via router
 def test_router_integration():
     obj = MyClass()
-    node = obj.api.node("my_handler")
+    node = obj.route.node("my_handler")
     assert node({"input": "test"}) == expected
 ```
 
@@ -556,13 +565,10 @@ def test_router_integration():
 **Answer**: Use `RoutingContext`. The adapter creates a context, attaches what it needs, and sets it on any `RoutingClass` instance. All handlers read it via `self.ctx`:
 
 ```python
-from genro_routes import RoutingClass, RoutingContext, Router, route
+from genro_routes import RoutingClass, RoutingContext, route
 
 class OrderService(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def list_orders(self):
         return self.ctx.db.query("SELECT * FROM orders")
 

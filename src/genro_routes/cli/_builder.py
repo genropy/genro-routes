@@ -28,31 +28,14 @@ class CliBuilder:
         self._converter = ParamConverter()
 
     def build(self, name: str | None = None) -> click.Group:
-        """Build the root click.Group from all registered routers."""
-        routers = dict(self._instance._iter_registered_routers())
+        """Build the root click.Group from the instance's router."""
         root_name = name or self._instance.__class__.__name__.lower()
         root_doc = inspect.getdoc(self._instance) or ""
 
         root = click.Group(name=root_name, help=root_doc)
-
-        if len(routers) == 1:
-            # Single router: entries become direct commands on root
-            router = next(iter(routers.values()))
-            nodes_data = router.nodes()
+        nodes_data = self._instance.route.nodes()
+        if nodes_data:
             self._populate_group(root, nodes_data)
-        else:
-            # Multiple routers: each becomes a sub-group
-            for router_name, router in routers.items():
-                nodes_data = router.nodes()
-                if not nodes_data:
-                    continue
-                sub_group = click.Group(
-                    name=router_name,
-                    help=nodes_data.get("description") or "",
-                )
-                self._populate_group(sub_group, nodes_data)
-                root.add_command(sub_group)
-
         return root
 
     def _populate_group(self, group: click.Group, nodes_data: dict[str, Any]) -> None:

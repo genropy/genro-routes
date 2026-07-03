@@ -3,14 +3,17 @@
 This module contains only marker helpers; no router mutation happens at
 decoration time.
 
-``route(router, *, name=None, **kwargs)``
-    Returns a decorator storing metadata on the function under ``_route_decorator_kw``
-    as a list of dicts. Each payload starts with ``{"name": router}``.
+``route(*, name=None, endpoint_id=None, **kwargs)``
+    Returns a decorator storing metadata on the function under
+    ``_route_decorator_kw`` as a list of dicts. All markers belong to the
+    class's single router (one router per RoutingClass).
 
-    - Explicit logical name: if ``name`` is provided, the payload sets ``entry_name``
-      to that value. Otherwise the handler name defaults to the function name.
+    - Explicit logical name: if ``name`` is provided, the payload sets
+      ``entry_name`` to that value. Otherwise the handler name defaults to
+      the function name.
     - Extra ``**kwargs`` are copied verbatim into the payload (e.g. plugin flags).
-    - Multiple routers can target the same function by stacking decorators.
+    - Stacking the decorator registers the same function under multiple
+      entry names (aliases).
     - The decorator returns the original function unchanged aside from the marker.
 
 Re-exports
@@ -31,58 +34,37 @@ __all__ = ["route", "RoutingClass", "Router"]
 
 
 def route(
-    router: str | None = None,
     *,
     name: str | None = None,
     endpoint_id: str | None = None,
     **kwargs: Any,
 ) -> Callable[[Callable], Callable]:
-    """Mark a bound method for inclusion in the given router.
+    """Mark a bound method for inclusion in the class's router.
 
     Args:
-        router: Router identifier (e.g. ``"api"``). If None, uses the default
-            router (only works if the class has exactly one router).
         name: Optional explicit entry name (overrides function name/prefix stripping).
         endpoint_id: Optional globally unique identifier for reverse lookup.
             When set, the handler can be resolved via ``router.node("@endpoint_id")``.
         **kwargs: Extra metadata merged into handler entry (e.g. plugin flags).
 
     Returns:
-        Decorator that marks the function for the specified router.
+        Decorator that marks the function for the router.
 
     Example::
 
-        @route("api")
-        def list_users(self):
-            return ["alice", "bob"]
-
-        @route("api", name="custom_name", logging_enabled=False)
-        def get_user(self, user_id):
-            return {"id": user_id}
-
-        # With single router - @route() works without arguments:
         class Table(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")  # single router
+            @route()
+            def list_users(self):
+                return ["alice", "bob"]
 
-            @route()  # Uses the only router automatically
-            def add(self, data):
-                ...
-
-        # With multiple routers - must specify:
-        class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.admin = Router(self, name="admin")
-
-            @route("api")  # Must specify router name
-            def public(self):
-                ...
+            @route(name="custom_name", logging_enabled=False)
+            def get_user(self, user_id):
+                return {"id": user_id}
     """
 
     def decorator(func: Callable) -> Callable:
         markers = list(getattr(func, "_route_decorator_kw", []))
-        payload: dict[str, Any] = {"name": router}  # None means "use default_router"
+        payload: dict[str, Any] = {}
         if name is not None:
             payload["entry_name"] = name
         if endpoint_id is not None:

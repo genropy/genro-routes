@@ -16,7 +16,7 @@
 
 import pytest
 
-from genro_routes import RoutingClass, Router, route
+from genro_routes import Router, RoutingClass, route
 from genro_routes.plugins._base_plugin import BasePlugin  # Not public API
 
 
@@ -24,34 +24,32 @@ def test_orders_quick_example():
     class OrdersAPI(RoutingClass):
         def __init__(self, label: str):
             self.label = label
-            self.api = Router(self, name="orders")
 
-        @route("orders")
+        @route()
         def list(self):
             return ["order-1", "order-2"]
 
-        @route("orders")
+        @route()
         def retrieve(self, ident: str):
             return f"{self.label}:{ident}"
 
-        @route("orders")
+        @route()
         def create(self, payload: dict):
             return {"status": "created", **payload}
 
     orders = OrdersAPI("acme")
     # Use node() and call it
-    assert orders.api.node("list")() == ["order-1", "order-2"]
-    assert orders.api.node("retrieve")("42") == "acme:42"
-    overview = orders.api.nodes()
+    assert orders.route.node("list")() == ["order-1", "order-2"]
+    assert orders.route.node("retrieve")("42") == "acme:42"
+    overview = orders.route.nodes()
     assert set(overview["entries"].keys()) == {"list", "retrieve", "create"}
 
 
 class Service(RoutingClass):
     def __init__(self, label: str):
         self.label = label
-        self.api = Router(self, name="api")
 
-    @route("api")
+    @route()
     def describe(self):
         return f"service:{self.label}"
 
@@ -59,13 +57,13 @@ class Service(RoutingClass):
 class SubService(RoutingClass):
     def __init__(self, prefix: str):
         self.prefix = prefix
-        self.routes = Router(self, name="routes", prefix="handle_")
+        self.route.prefix = "handle_"
 
-    @route("routes")
+    @route()
     def handle_list(self):
         return f"{self.prefix}:list"
 
-    @route("routes", name="detail")
+    @route(name="detail")
     def handle_detail(self, ident: int):
         return f"{self.prefix}:detail:{ident}"
 
@@ -73,7 +71,6 @@ class SubService(RoutingClass):
 class RootAPI(RoutingClass):
     def __init__(self):
         self.services: list[Service] = []
-        self.api = Router(self, name="api")
 
 
 class CapturePlugin(BasePlugin):
@@ -84,10 +81,10 @@ class CapturePlugin(BasePlugin):
         super().__init__(router, **config)
         self.calls = []
 
-    def on_decore(self, route, func, entry):
+    def on_decore(self, router, func, entry):
         entry.metadata["capture"] = True
 
-    def wrap_handler(self, route, entry, call_next):
+    def wrap_handler(self, router, entry, call_next):
         def wrapper(*args, **kwargs):
             self.calls.append("wrap")
             return call_next(*args, **kwargs)
@@ -102,9 +99,9 @@ Router.register_plugin(CapturePlugin)
 class PluginService(RoutingClass):
     def __init__(self):
         self.touched = False
-        self.api = Router(self, name="api").plug("capture")
+        self.route.plug("capture")
 
-    @route("api")
+    @route()
     def do_work(self):
         self.touched = True
         return "ok"
@@ -117,9 +114,9 @@ class TogglePlugin(BasePlugin):
     def __init__(self, router, **config):
         super().__init__(router, **config)
 
-    def wrap_handler(self, route, entry, call_next):
+    def wrap_handler(self, router, entry, call_next):
         def wrapper(*args, **kwargs):
-            route.set_runtime_data(entry.name, self.name, "last", True)
+            router.set_runtime_data(entry.name, self.name, "last", True)
             return call_next(*args, **kwargs)
 
         return wrapper
@@ -131,18 +128,17 @@ Router.register_plugin(TogglePlugin)
 
 class ToggleService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("toggle")
+        self.route.plug("toggle")
 
-    @route("api")
+    @route()
     def touch(self):
         return "done"
 
 
 class DynamicRouterService(RoutingClass):
     def __init__(self):
-        self.dynamic = Router(self, name="dynamic")
-        self.dynamic.add_entry(self.dynamic_alpha)
-        self.dynamic.add_entry("dynamic_beta")
+        self.route.add_entry(self.dynamic_alpha)
+        self.route.add_entry("dynamic_beta")
 
     def dynamic_alpha(self):
         return "alpha"
@@ -154,65 +150,61 @@ class DynamicRouterService(RoutingClass):
 def test_prefix_and_name_override():
     sub = SubService("users")
 
-    assert sub.routes.node("list")() == "users:list"
-    assert sub.routes.node("detail")(10) == "users:detail:10"
+    assert sub.route.node("list")() == "users:list"
+    assert sub.route.node("detail")(10) == "users:detail:10"
 
 
 def test_plugins_are_per_instance_and_accessible():
     svc = PluginService()
-    assert svc.api.capture.calls == []
-    result = svc.api.node("do_work")()
+    assert svc.route.capture.calls == []
+    result = svc.route.node("do_work")()
     assert result == "ok"
     assert svc.touched is True
-    assert svc.api.capture.calls == ["wrap"]
+    assert svc.route.capture.calls == ["wrap"]
     other = PluginService()
-    assert other.api.capture.calls == []
+    assert other.route.capture.calls == []
 
 
 def test_dynamic_router_add_entry_runtime():
     svc = DynamicRouterService()
-    assert svc.dynamic.node("dynamic_alpha")() == "alpha"
-    assert svc.dynamic.node("dynamic_beta")() == "beta"
+    assert svc.route.node("dynamic_alpha")() == "alpha"
+    assert svc.route.node("dynamic_beta")() == "beta"
     # Adding via string
-    svc.dynamic.add_entry("dynamic_alpha", name="alpha_alias")
-    assert svc.dynamic.node("alpha_alias")() == "alpha"
+    svc.route.add_entry("dynamic_alpha", name="alpha_alias")
+    assert svc.route.node("alpha_alias")() == "alpha"
 
 
 def test_plugin_enable_disable_runtime_data():
     svc = ToggleService()
-    node = svc.api.node("touch")
+    node = svc.route.node("touch")
     # Initially enabled
     node()
-    assert svc.api.get_runtime_data("touch", "toggle", "last") is True
+    assert svc.route.get_runtime_data("touch", "toggle", "last") is True
     # Disable and verify
-    svc.api.set_plugin_enabled("touch", "toggle", False)
-    svc.api.set_runtime_data("touch", "toggle", "last", None)
+    svc.route.set_plugin_enabled("touch", "toggle", False)
+    svc.route.set_runtime_data("touch", "toggle", "last", None)
     node()
-    assert svc.api.get_runtime_data("touch", "toggle", "last") is None
+    assert svc.route.get_runtime_data("touch", "toggle", "last") is None
     # Re-enable
-    svc.api.set_plugin_enabled("touch", "toggle", True)
+    svc.route.set_plugin_enabled("touch", "toggle", True)
     node()
-    assert svc.api.get_runtime_data("touch", "toggle", "last") is True
+    assert svc.route.get_runtime_data("touch", "toggle", "last") is True
 
 
 def test_dotted_path_and_nodes_with_attached_child():
     class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def ping(self):
             return "pong"
 
     class Parent(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.child = Child()
             self.attach_instance(self.child, name="child")
 
     parent = Parent()
-    assert parent.api.node("child/ping")() == "pong"
-    tree = parent.api.nodes()
+    assert parent.route.node("child/ping")() == "pong"
+    tree = parent.route.nodes()
     assert "child" in tree["routers"]
 
 
@@ -222,15 +214,12 @@ def test_dotted_path_and_nodes_with_attached_child():
 
 
 class TestSingleRouterDefault:
-    """Test @route() without arguments when class has a single router."""
+    """Test @route() without arguments on the class's single router."""
 
     def test_route_without_args_uses_single_router(self):
         """@route() without arguments uses the single router."""
 
         class Table(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="table")
-
             @route()
             def add(self, data):
                 return f"added:{data}"
@@ -240,28 +229,25 @@ class TestSingleRouterDefault:
                 return f"got:{key}"
 
         t = Table()
-        assert t.api.node("add")("x") == "added:x"
-        assert t.api.node("get")("y") == "got:y"
-        assert set(t.api.nodes()["entries"].keys()) == {"add", "get"}
+        assert t.route.node("add")("x") == "added:x"
+        assert t.route.node("get")("y") == "got:y"
+        assert set(t.route.nodes()["entries"].keys()) == {"add", "get"}
 
     def test_route_with_custom_entry_name(self):
-        """@route(name='custom') works with single router."""
+        """@route(name='custom') works with the single router."""
 
         class Table(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="table")
-
             @route(name="custom_add")
             def add_record(self, data):
                 return f"added:{data}"
 
         t = Table()
-        assert t.api.node("custom_add")("x") == "added:x"
-        assert "custom_add" in t.api.nodes()["entries"]
-        assert "add_record" not in t.api.nodes()["entries"]
+        assert t.route.node("custom_add")("x") == "added:x"
+        assert "custom_add" in t.route.nodes()["entries"]
+        assert "add_record" not in t.route.nodes()["entries"]
 
     def test_route_inheritance_with_single_router(self):
-        """Subclass with single router inherits @route() methods."""
+        """Subclass inherits @route() methods."""
 
         class BaseTable(RoutingClass):
             @route()
@@ -269,26 +255,23 @@ class TestSingleRouterDefault:
                 return "base_list"
 
         class ExtendedTable(BaseTable):
-            def __init__(self):
-                self.api = Router(self, name="table")
-
             @route()
             def add(self):
                 return "extended_add"
 
         t = ExtendedTable()
-        assert t.api.node("list")() == "base_list"
-        assert t.api.node("add")() == "extended_add"
-        entries = t.api.nodes()["entries"]
+        assert t.route.node("list")() == "base_list"
+        assert t.route.node("add")() == "extended_add"
+        entries = t.route.nodes()["entries"]
         assert "list" in entries
         assert "add" in entries
 
     def test_route_with_plugin_kwargs(self):
-        """@route() with kwargs works with single router."""
+        """@route() with kwargs works with the single router."""
 
         class TaggedTable(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="table").plug("auth")
+                self.route.plug("auth")
 
             @route(auth_rule="admin")
             def admin_only(self):
@@ -299,13 +282,13 @@ class TestSingleRouterDefault:
                 return "public"
 
         t = TaggedTable()
-        entries = t.api.nodes(auth_tags="admin")["entries"]
+        entries = t.route.nodes(auth_tags="admin")["entries"]
         assert "admin_only" in entries
         assert "public_action" not in entries
 
 
 # ============================================================================
-# RoutingClass requirement and default_router tests
+# RoutingClass requirement tests
 # ============================================================================
 
 
@@ -319,7 +302,12 @@ class TestRoutingClassRequirement:
             pass
 
         with pytest.raises(TypeError, match="must be a RoutingClass"):
-            Router(PlainClass(), name="api")
+            Router(PlainClass())
+
+    def test_router_requires_owner(self):
+        """Router raises ValueError if owner is None."""
+        with pytest.raises(ValueError, match="requires a parent instance"):
+            Router(None)
 
     def test_router_accepts_routed_class(self):
         """Router accepts RoutingClass instances."""
@@ -328,42 +316,19 @@ class TestRoutingClassRequirement:
             pass
 
         svc = MyService()
-        router = Router(svc, name="api")
+        router = Router(svc)
         assert router.instance is svc
 
+    def test_second_router_on_same_owner_raises(self):
+        """Creating a second Router on the same owner raises ValueError."""
 
-class TestDefaultRouter:
-    """Test default_router property on RoutingClass."""
-
-    def test_default_router_single_router(self):
-        """default_router returns the only router when there's exactly one."""
-
-        class SingleRouter(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-        svc = SingleRouter()
-        assert svc.default_router is svc.api
-
-    def test_default_router_multiple_routers(self):
-        """default_router returns None when multiple routers exist."""
-
-        class MultiRouter(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-                self.admin = Router(self, name="admin")
-
-        svc = MultiRouter()
-        assert svc.default_router is None
-
-    def test_default_router_no_routers(self):
-        """default_router returns None when no routers registered."""
-
-        class NoRouters(RoutingClass):
+        class MyService(RoutingClass):
             pass
 
-        svc = NoRouters()
-        assert svc.default_router is None
+        svc = MyService()
+        _ = svc.route  # auto-created router occupies the single slot
+        with pytest.raises(ValueError, match="already has a router"):
+            Router(svc)
 
 
 # -----------------------------------------------------------------------------
@@ -378,66 +343,56 @@ class TestDefaultEntry:
         """Router default_entry is 'index' by default."""
 
         class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
+            @route()
             def action(self):
                 return "action"
 
         svc = Service()
-        assert svc.api.default_entry == "index"
+        assert svc.route.default_entry == "index"
 
     def test_default_entry_can_be_customized(self):
         """Router default_entry can be set to a custom value."""
 
         class Service(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api", default_entry="handle")
+                self.route.default_entry = "handle"
 
-            @route("api")
+            @route()
             def handle(self):
                 return "handle"
 
         svc = Service()
-        assert svc.api.default_entry == "handle"
+        assert svc.route.default_entry == "handle"
 
     def test_leading_slash_is_stripped(self):
         """node() strips leading slash from path."""
 
         class Service(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
+            @route()
             def action(self):
                 return "action result"
 
         svc = Service()
 
         # Both should work identically
-        assert svc.api.node("action")() == "action result"
-        assert svc.api.node("/action")() == "action result"
+        assert svc.route.node("action")() == "action result"
+        assert svc.route.node("/action")() == "action result"
 
     def test_leading_slash_with_hierarchy(self):
         """node() strips leading slash in hierarchical paths."""
 
         class Child(RoutingClass):
-            def __init__(self):
-                self.api = Router(self, name="api")
-
-            @route("api")
+            @route()
             def handler(self):
                 return "child handler"
 
         class Root(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api")
                 self.child = Child()
                 self.attach_instance(self.child, name="child")
 
         root = Root()
 
         # Both should work identically
-        assert root.api.node("child/handler")() == "child handler"
-        assert root.api.node("/child/handler")() == "child handler"
+        assert root.route.node("child/handler")() == "child handler"
+        assert root.route.node("/child/handler")() == "child handler"
