@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from faker import Faker
+
 from genro_routes import RoutingClass, route
 
 # -----------------------------------------------------------------------------
@@ -43,7 +45,7 @@ class FakerService(RoutingClass):
         # Mount child services as branches of the main router
         self.person = PersonService(self.fake)
         self.address = AddressService(self.fake)
-        
+
         # Different instances are mounted under the main router
         self.attach_instance(self.person, name="person")
         self.attach_instance(self.address, name="address")

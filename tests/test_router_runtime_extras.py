@@ -19,10 +19,10 @@ from typing import TypedDict
 
 import pytest
 
-from genro_routes import RoutingClass, Router, route
+from genro_routes import Router, RoutingClass, route
 from genro_routes.core.routing import is_routing_class
 from genro_routes.plugins._base_plugin import BasePlugin, MethodEntry
-
+from genro_routes.plugins.openapi import OpenAPITranslator
 
 # TypedDict classes at module level for cross-Python-version compatibility
 # (pydantic handles TypedDict differently when defined inside functions
@@ -1016,7 +1016,6 @@ def test_h_openapi_includes_description_and_owner_doc():
 
 def test_guess_http_method_no_params_with_return_is_get():
     """Test guess_http_method returns GET for no-param functions with return."""
-    from genro_routes.plugins.openapi import OpenAPITranslator
 
     def no_params() -> str:
         return "ok"
@@ -1026,7 +1025,6 @@ def test_guess_http_method_no_params_with_return_is_get():
 
 def test_guess_http_method_no_params_no_return_is_get():
     """Test guess_http_method returns GET for no-param functions (regardless of return)."""
-    from genro_routes.plugins.openapi import OpenAPITranslator
 
     def no_params_no_return():
         pass
@@ -1041,7 +1039,6 @@ def test_guess_http_method_no_params_no_return_is_get():
 
 def test_guess_http_method_scalar_params_is_get():
     """Test guess_http_method returns GET for functions with scalar params."""
-    from genro_routes.plugins.openapi import OpenAPITranslator
 
     def scalar_params(name: str, count: int) -> str:
         return "ok"
@@ -1052,7 +1049,6 @@ def test_guess_http_method_scalar_params_is_get():
 
 def test_guess_http_method_complex_params_is_post():
     """Test guess_http_method returns POST for functions with complex params."""
-    from genro_routes.plugins.openapi import OpenAPITranslator
 
     def complex_params(items: list) -> list:
         return items
@@ -1067,7 +1063,6 @@ def test_guess_http_method_complex_params_is_post():
 
 def test_guess_http_method_broken_hints_is_post():
     """Test guess_http_method returns POST when hints can't be resolved."""
-    from genro_routes.plugins.openapi import OpenAPITranslator
 
     def broken():
         return "ok"

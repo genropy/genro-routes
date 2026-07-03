@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from genro_routes import RoutingClass
+from genro_routes import RoutingClass, route
 
 
 class Owner(RoutingClass):
@@ -149,7 +149,6 @@ class TestAuthPluginIntegration:
 
     def test_auth_with_child_routers(self):
         """Test that authorization works with hierarchical routers."""
-        from genro_routes import RoutingClass, route
 
         class Parent(RoutingClass):
             def __init__(self):
@@ -183,7 +182,6 @@ class TestAuthPluginIntegration:
 
     def test_auth_removes_empty_child_routers(self):
         """Child routers with no matching entries should be pruned."""
-        from genro_routes import RoutingClass, route
 
         class Parent(RoutingClass):
             def __init__(self):
@@ -211,7 +209,6 @@ class TestAuth401vs403:
 
     def test_nodes_filters_out_both_401_and_403(self):
         """nodes() silently filters out entries that would be 401 or 403."""
-        from genro_routes import RoutingClass, route
 
         class Svc(RoutingClass):
             def __init__(self):
@@ -251,7 +248,6 @@ class TestAuth401vs403:
 
     def test_custom_exception_classes(self):
         """Test that custom exception classes are used for 401 and 403."""
-        from genro_routes import RoutingClass, route
 
         class Custom401(Exception):
             def __init__(self, path):
@@ -293,7 +289,6 @@ class TestAuthRuleValidation:
 
     def test_comma_in_auth_rule_raises_error(self):
         """Using comma in auth_rule should raise ValueError in configure()."""
-        from genro_routes import RoutingClass, route
 
         class MyService(RoutingClass):
             def __init__(self):
@@ -309,7 +304,6 @@ class TestAuthRuleValidation:
 
     def test_pipe_in_auth_rule_works(self):
         """Using pipe for OR in auth_rule should work."""
-        from genro_routes import RoutingClass, route
 
         class GoodService(RoutingClass):
             def __init__(self):
@@ -331,7 +325,6 @@ class TestAuthRuleValidation:
 
     def test_comma_in_auth_tags_still_works(self):
         """Comma in auth_tags (user credentials) should still work."""
-        from genro_routes import RoutingClass, route
 
         class StrictService(RoutingClass):
             def __init__(self):

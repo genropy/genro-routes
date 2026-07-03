@@ -18,11 +18,24 @@ import sys
 from typing import TypedDict
 
 import pytest
+from pydantic import BaseModel
 
 import genro_routes.plugins.logging  # noqa: F401
 import genro_routes.plugins.pydantic  # noqa: F401
 from genro_routes import Router, RoutingClass, route
+from genro_routes.core.base_router import BaseRouter
+from genro_routes.core.context import RoutingContext
+from genro_routes.core.router import _PluginSpec
+from genro_routes.core.router_node import RouterNode
+from genro_routes.core.routing import ResultWrapper, is_result_wrapper
+from genro_routes.exceptions import (
+    NotAuthenticated,
+    NotAuthorized,
+    NotAvailable,
+    NotFound,
+)
 from genro_routes.plugins._base_plugin import BasePlugin
+from genro_routes.plugins.openapi import OpenAPITranslator
 
 # TypedDict classes at module level for cross-Python-version compatibility
 # (pydantic handles nested TypedDict differently when defined inside functions
@@ -71,7 +84,6 @@ def test_nodes_with_plugin_returns_extra_info():
 
 def test_plugin_spec_clone():
     """Test _PluginSpec.clone() method."""
-    from genro_routes.core.router import _PluginSpec
 
     class DummyPlugin(BasePlugin):
         plugin_code = "dummy_clone"
@@ -633,7 +645,6 @@ def test_child_ignores_parent_config_no_cascade():
 
 def test_not_found_selector():
     """Test NotFound exception with selector."""
-    from genro_routes.exceptions import NotFound
 
     exc = NotFound("my_router:my_path")
     assert exc.selector == "my_router:my_path"
@@ -642,7 +653,6 @@ def test_not_found_selector():
 
 def test_not_authorized_selector():
     """Test NotAuthorized exception with selector."""
-    from genro_routes.exceptions import NotAuthorized
 
     exc = NotAuthorized("my_router:my_path")
     assert exc.selector == "my_router:my_path"
@@ -651,7 +661,6 @@ def test_not_authorized_selector():
 
 def test_not_authenticated_selector():
     """Test NotAuthenticated exception with selector."""
-    from genro_routes.exceptions import NotAuthenticated
 
     exc = NotAuthenticated("my_router:my_path")
     assert exc.selector == "my_router:my_path"
@@ -660,7 +669,6 @@ def test_not_authenticated_selector():
 
 def test_not_available_selector():
     """Test NotAvailable exception with selector."""
-    from genro_routes.exceptions import NotAvailable
 
     exc = NotAvailable("my_router:my_path")
     assert exc.selector == "my_router:my_path"
@@ -740,7 +748,6 @@ def test_auth_deny_reason_router_empty():
 
 def test_openapi_translator_schema_to_parameters_empty():
     """Test schema_to_parameters with empty schema."""
-    from genro_routes.plugins.openapi import OpenAPITranslator
 
     result = OpenAPITranslator.schema_to_parameters({})
     assert result == []
@@ -751,7 +758,6 @@ def test_openapi_translator_schema_to_parameters_empty():
 
 def test_openapi_translator_entry_without_callable():
     """Test entry_info_to_openapi when callable is None."""
-    from genro_routes.plugins.openapi import OpenAPITranslator
 
     entry_info = {
         "callable": None,
@@ -767,7 +773,6 @@ def test_openapi_translator_entry_without_callable():
 
 def test_openapi_translator_create_model_no_fields():
     """Test create_pydantic_model_for_func returns None when no fields."""
-    from genro_routes.plugins.openapi import OpenAPITranslator
 
     def no_params() -> str:
         return "ok"
@@ -779,7 +784,6 @@ def test_openapi_translator_create_model_no_fields():
 
 def test_openapi_h_openapi_child_included():
     """Test h_openapi includes child routers with metadata."""
-    from genro_routes.plugins.openapi import OpenAPITranslator
 
     nodes_data = {
         "entries": {},
@@ -812,7 +816,6 @@ def test_openapi_nested_typeddict_defs_at_root():
 
     Fixes: https://github.com/softwellsrl/genro-routes/issues/15
     """
-    from genro_routes.plugins.openapi import OpenAPITranslator
 
     class Svc(RoutingClass):
         @route()
@@ -839,7 +842,6 @@ def test_openapi_nested_typeddict_defs_at_root():
 )
 def test_openapi_nested_typeddict_h_openapi_defs_at_root():
     """Test that h_openapi also collects $defs at root level."""
-    from genro_routes.plugins.openapi import OpenAPITranslator
 
     class Svc(RoutingClass):
         @route()
@@ -925,7 +927,6 @@ def test_base_router_entry_invalid_reason():
     BaseRouter provides a default implementation that returns "not_found"
     for None entries. Router overrides this, so we test BaseRouter directly.
     """
-    from genro_routes.core.base_router import BaseRouter
 
     class Svc(RoutingClass):
         @route()
@@ -1027,7 +1028,6 @@ def test_add_entry_unknown_plugin_option_as_metadata():
 
 def test_router_node_custom_exceptions_in_init():
     """Test RouterNode with custom exceptions passed to constructor."""
-    from genro_routes.core.router_node import RouterNode
 
     class CustomNotFound(Exception):
         pass
@@ -1053,7 +1053,6 @@ def test_router_node_custom_exceptions_in_init():
 
 def test_router_node_doc_and_metadata_when_entry_none():
     """Test doc and metadata properties return empty when entry is None."""
-    from genro_routes.core.router_node import RouterNode
 
     class Svc(RoutingClass):
         @route()
@@ -1080,7 +1079,6 @@ def test_router_node_custom_validation_error_exception():
         @route()
         def handler(self):
             # Raise a pydantic ValidationError
-            from pydantic import BaseModel
 
             class Model(BaseModel):
                 value: int
@@ -1100,7 +1098,6 @@ def test_router_node_custom_validation_error_exception():
 
 def test_auth_deny_reason_router_with_accessible_child():
     """Test auth deny_reason returns empty when at least one child is accessible."""
-    import genro_routes.plugins.auth  # noqa: F401
 
     class Child(RoutingClass):
         @route(auth_rule="public")
@@ -1133,7 +1130,6 @@ def test_auth_deny_reason_router_with_accessible_child():
 
 def test_result_wrapper():
     """Test ResultWrapper class."""
-    from genro_routes.core.routing import ResultWrapper, is_result_wrapper
 
     wrapper = ResultWrapper("test_value", {"mime": "text/plain"})
     assert wrapper.value == "test_value"
@@ -1151,7 +1147,6 @@ def test_routing_class_result_wrapper_method():
     svc = Svc()
     result = svc.result_wrapper("content", mime_type="application/json")
 
-    from genro_routes.core.routing import ResultWrapper
 
     assert isinstance(result, ResultWrapper)
     assert result.value == "content"
@@ -1160,7 +1155,6 @@ def test_routing_class_result_wrapper_method():
 
 def test_routing_class_ctx_property():
     """Test RoutingClass.ctx getter and setter via slot + parent chain."""
-    from genro_routes.core.context import RoutingContext
 
     class Svc(RoutingClass):
         pass
@@ -1184,7 +1178,6 @@ def test_routing_class_ctx_property():
 
 def test_routing_class_ctx_parent_chain():
     """Child walks up _routing_parent chain for ctx."""
-    from genro_routes.core.context import RoutingContext
 
     class Parent(RoutingClass):
         pass
@@ -1615,7 +1608,6 @@ def test_describe_entry_extra_with_plugin_data():
 
 def test_router_node_default_exceptions_without_pydantic():
     """Test DEFAULT_EXCEPTIONS when ValidationError import fails."""
-    from genro_routes.core.router_node import RouterNode
 
     # Just verify the class loads correctly and has default exceptions
     assert "not_found" in RouterNode.DEFAULT_EXCEPTIONS
@@ -1650,7 +1642,6 @@ def test_add_entry_star_with_plugin_options():
     passed to add_entry (e.g., logging_before=False) and merged in
     _register_marked.
     """
-    from genro_routes.core.base_router import BaseRouter
 
     # Create a fresh class for this test
     class SvcForPluginOpts(RoutingClass):
@@ -1686,7 +1677,6 @@ def test_bind_when_already_bound():
 
     Covers the early-return statement when self._bound is True.
     """
-    from genro_routes.core.base_router import BaseRouter
 
     class Svc(RoutingClass):
         @route()

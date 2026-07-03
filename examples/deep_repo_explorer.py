@@ -1,8 +1,11 @@
 from __future__ import annotations
-import os
-import inspect
+
 import importlib.util
+import inspect
+import os
+
 from genro_routes import Router, RoutingClass, Section
+
 
 class MagicClassRouter(RoutingClass):
     """Maps all public methods of a class as routes."""
@@ -55,10 +58,9 @@ class PythonModuleService(RoutingClass):
                         self.route.add_entry(attr, name=attr_name)
                 except (TypeError, ValueError, OSError):
                     pass
-            elif inspect.isclass(attr):
-                # Check if class belongs to this module via __module__
-                if getattr(attr, "__module__", None) == self._module_name:
-                    self.route.include(MagicClassRouter(attr).route, name=attr_name)
+            elif inspect.isclass(attr) and getattr(attr, "__module__", None) == self._module_name:
+                # Class belongs to this module via __module__
+                self.route.include(MagicClassRouter(attr).route, name=attr_name)
 
 class CodeInspector(RoutingClass):
     """Orchestrates the discovery of Python modules as functional routers."""
@@ -95,7 +97,7 @@ if __name__ == "__main__":
     target = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_bridge")
     inspector = CodeInspector(target)
 
-    print(f"--- Deep Repo Explorer (Enhanced) ---")
+    print("--- Deep Repo Explorer (Enhanced) ---")
 
     # Introspect result
     info = inspector.route.nodes()
@@ -106,7 +108,7 @@ if __name__ == "__main__":
     # Check bridge.py (containing classes)
     if "bridge" in routers:
         content = routers["bridge"]
-        print(f"\nContents of 'bridge.py':")
+        print("\nContents of 'bridge.py':")
         # Now we should see classes as child routers
         classes = content.get("routers", {})
         print(f" - Classes discovered: {list(classes.keys())}")

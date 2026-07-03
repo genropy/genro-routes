@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from genro_routes import RoutingClass, route
 from genro_routes.plugins.env import CapabilitiesSet, capability
 

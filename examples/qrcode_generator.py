@@ -1,6 +1,8 @@
 from __future__ import annotations
-import io
+
 import base64
+import io
+
 try:
     import qrcode
 except ImportError:
@@ -8,9 +10,10 @@ except ImportError:
 
 from genro_routes import RoutingClass, route
 
+
 class QRCodeService(RoutingClass):
     """Wraps the qrcode library to generate QR code assets."""
-    
+
     def __init__(self):
         self.route.plug("pydantic")
 
@@ -19,13 +22,13 @@ class QRCodeService(RoutingClass):
         """Generates a QR code and returns it as a Base64 encoded PNG string."""
         if qrcode is None:
             return "Error: 'qrcode' library not installed. Run 'pip install qrcode[pil]'"
-            
+
         qr = qrcode.QRCode(version=1, box_size=box_size, border=border)
         qr.add_data(data)
         qr.make(fit=True)
 
         img = qr.make_image(fill_color="black", back_color="white")
-        
+
         buffered = io.BytesIO()
         img.save(buffered, format="PNG")
         return base64.b64encode(buffered.getvalue()).decode()
@@ -36,7 +39,7 @@ if __name__ == "__main__":
     print("--- Generating QR Code ---")
     # Path resolution
     node = service.route.node("generate_base64")
-    
+
     try:
         b64_result = node(data="https://genropy.org", box_size=5)
         print(f"Success! Base64 length: {len(b64_result)}")

@@ -10,7 +10,6 @@ import pytest
 from genro_routes import NotAvailable, RoutingClass, route
 from genro_routes.plugins.env import CapabilitiesSet, capability
 
-
 # ---------------------------------------------------------------------------
 # CapabilitiesSet helper classes for tests
 # ---------------------------------------------------------------------------

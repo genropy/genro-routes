@@ -1,12 +1,15 @@
 from __future__ import annotations
+
 from pygments import highlight
-from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter, TerminalFormatter
+from pygments.lexers import get_lexer_by_name
+
 from genro_routes import RoutingClass, route
+
 
 class HighlightingService(RoutingClass):
     """Wraps the Pygments library to provide syntax highlighting as a service."""
-    
+
     def __init__(self):
         # We use Pydantic for robust input validation of code and options
         self.route.plug("pydantic")
@@ -27,7 +30,7 @@ class HighlightingService(RoutingClass):
 
 if __name__ == "__main__":
     service = HighlightingService()
-    
+
     sample_code = "def hello(): print('Hello Genro!')"
 
     print("--- 1. Terminal Highlighting ---")

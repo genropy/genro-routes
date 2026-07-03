@@ -16,13 +16,12 @@
 
 import json
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal
 
 from click.testing import CliRunner
 
 from genro_routes import RoutingClass, route
 from genro_routes.cli import RoutingCli
-
 
 # ---------------------------------------------------------------------------
 # Test fixtures: RoutingClass examples
@@ -58,7 +57,7 @@ class TypedService(RoutingClass):
         return f"verbose={verbose}"
 
     @route()
-    def with_optional(self, name: Optional[str] = None):
+    def with_optional(self, name: str | None = None):
         return f"name={name}"
 
     @route()

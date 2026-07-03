@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 from genro_routes import RoutingClass, route
 from genro_routes.exceptions import NotAuthenticated, NotAuthorized
+
 
 class SecureService(RoutingClass):
     def __init__(self):

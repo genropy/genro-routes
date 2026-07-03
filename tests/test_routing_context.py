@@ -14,8 +14,11 @@
 
 """Tests for RoutingContext and slot-based ctx property on RoutingClass."""
 
+from pathlib import Path
+
 import pytest
 
+import genro_routes.core.routing
 from genro_routes import RoutingClass, RoutingContext
 
 
@@ -206,7 +209,6 @@ class TestCtxSlot:
 
     def test_no_contextvar_import(self):
         """Verify ContextVar is not imported in routing.py."""
-        import genro_routes.core.routing as mod
-        source = open(mod.__file__).read()
+        source = Path(genro_routes.core.routing.__file__).read_text()
         assert "from contextvars" not in source
         assert "ContextVar" not in source

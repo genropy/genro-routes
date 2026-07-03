@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from genro_routes import RoutingClass, route
+
 
 class BillingModule(RoutingClass):
     @route()
@@ -17,7 +19,7 @@ class EnterpriseApp(RoutingClass):
         # Instantiate separate modules
         self.billing = BillingModule()
         self.inventory = InventoryModule()
-        
+
         # COMPOSITION: attach their routers to our main API
         self.attach_instance(self.billing, name="billing")
         self.attach_instance(self.inventory, name="inventory")
@@ -26,17 +28,17 @@ if __name__ == "__main__":
     app = EnterpriseApp()
 
     print("--- Service Composition Demo ---")
-    
+
     # Accessing Billing via the main app
     print(f"Invoices: {app.route.node('billing/invoice_list')()}")
-    
+
     # Accessing Inventory via the main app
     print(f"Stock: {app.route.node('inventory/stock_level')(item_id='part-123')}")
-    
+
     # Introspection shows the merged structure
     nodes = app.route.nodes()
     print(f"\nMain API contains {len(nodes['routers'])} child routers: {list(nodes['routers'].keys())}")
-    
+
     print("\nFull paths discovered:")
     openapi = app.route.nodes(mode="openapi")
     for path in openapi['paths']:

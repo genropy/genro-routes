@@ -1,6 +1,7 @@
 """Tests for node() path resolution with nested routers."""
 
 import pytest
+
 from genro_routes import RoutingClass, route
 from genro_routes.exceptions import NotFound
 

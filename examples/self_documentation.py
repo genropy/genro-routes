@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import inspect
 from typing import Any
+
 from genro_routes import RoutingClass
 
 # -----------------------------------------------------------------------------
@@ -16,7 +18,7 @@ class MagicRouter(RoutingClass):
         for attr_name in dir(target):
             if attr_name.startswith("_"):
                 continue
-            
+
             attr = getattr(target, attr_name)
             if inspect.ismethod(attr) or inspect.isfunction(attr):
                 # Dynamically register the entry
@@ -43,7 +45,7 @@ if __name__ == "__main__":
     service = GenroInternalService()
 
     print("--- Genro-Routes Self-Documentation Demo ---")
-    
+
     # We can now call 'nodes()' on the router, THROUGH the router itself!
     # Path: router_inspector/nodes
     print("\n1. Querying the router's nodes via the API:")
@@ -54,7 +56,7 @@ if __name__ == "__main__":
     # We can see the OpenAPI schema of the Router class itself
     print("\n2. Generating OpenAPI for the internal Router API:")
     openapi = service.route.node("router_inspector/nodes")(mode="openapi")
-    
+
     print("\nAvailable internal 'Router' methods in OpenAPI:")
     for path in openapi['paths']:
         if "router_inspector" in path:

@@ -1,7 +1,11 @@
 from __future__ import annotations
+
 import json
-from genro_routes import RoutingClass, route
+
 from bridge import GenroMCPBridge
+
+from genro_routes import RoutingClass, route
+
 
 # 1. Define a sample library (e.g., a simple calculator)
 class MathService(RoutingClass):
@@ -28,14 +32,14 @@ class RootApp(RoutingClass):
 if __name__ == "__main__":
     app = RootApp()
     bridge = GenroMCPBridge(app.route)
-    
+
     print("--- Genro-Routes to MCP Bridge Demo ---")
-    
+
     # Generate the MCP tools
     tools = bridge.get_mcp_tools()
-    
+
     print(f"\nDiscovered {len(tools)} tools for the LLM:")
-    
+
     for tool in tools:
         print(f"\n[Tool: {tool['name']}]")
         print(f"Description: {tool['description']}")

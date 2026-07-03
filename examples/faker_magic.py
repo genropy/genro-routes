@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import inspect
 from typing import Any
+
 from faker import Faker
+
 from genro_routes import RoutingClass
 
 # -----------------------------------------------------------------------------
@@ -12,12 +15,12 @@ class MagicFakerRouter(RoutingClass):
     def __init__(self, provider_obj: Any):
         self.route.plug("pydantic")
         self._provider = provider_obj
-        
+
         # Magic introspection: map all public methods of the provider
         for attr_name in dir(provider_obj):
             if attr_name.startswith("_"):
                 continue
-            
+
             attr = getattr(provider_obj, attr_name)
             if inspect.ismethod(attr) or inspect.isfunction(attr):
                 # Dynamically register the entry in the router
@@ -37,7 +40,7 @@ class FullFakerService(RoutingClass):
         self.person = MagicFakerRouter(self.fake)
         self.address = MagicFakerRouter(self.fake)
         self.company = MagicFakerRouter(self.fake)
-        
+
         self.attach_instance(self.person, name="person")
         self.attach_instance(self.address, name="address")
         self.attach_instance(self.company, name="company")
@@ -45,8 +48,8 @@ class FullFakerService(RoutingClass):
 if __name__ == "__main__":
     service = FullFakerService()
 
-    print(f"--- FULL DYNAMIC MAPPING ACTIVE ---")
-    
+    print("--- FULL DYNAMIC MAPPING ACTIVE ---")
+
     # Now we can call ANYTHING, even if not explicitly defined!
     print(f"Name: {service.route.node('person/name')()}")
     print(f"Last Name: {service.route.node('person/last_name')()}")
