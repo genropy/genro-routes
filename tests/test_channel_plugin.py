@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from genro_routes import Router, RoutingClass, route
+from genro_routes import RoutingClass, route
 from genro_routes.exceptions import NotAvailable
 
 
@@ -16,7 +16,7 @@ class Owner(RoutingClass):
 
 
 def _make_router():
-    return Router(Owner(), name="api").plug("channel")
+    return Owner().route.plug("channel")
 
 
 class TestChannelPluginBasic:
@@ -95,23 +95,23 @@ class TestChannelPluginWithDecorator:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("channel")
-                self.api.channel.configure(channels="*")
+                self.route.plug("channel")
+                self.route.channel.configure(channels="*")
 
-            @route("api", channel_channels="mcp")
+            @route(channel_channels="mcp")
             def mcp_only(self):
                 return "mcp"
 
-            @route("api")
+            @route()
             def everywhere(self):
                 return "all"
 
         svc = Svc()
-        entries = svc.api.nodes(channel_channel="mcp").get("entries", {})
+        entries = svc.route.nodes(channel_channel="mcp").get("entries", {})
         assert "mcp_only" in entries
         assert "everywhere" in entries
 
-        entries = svc.api.nodes(channel_channel="rest").get("entries", {})
+        entries = svc.route.nodes(channel_channel="rest").get("entries", {})
         assert "mcp_only" not in entries
         assert "everywhere" in entries
 
@@ -120,16 +120,16 @@ class TestChannelPluginWithDecorator:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("channel")
+                self.route.plug("channel")
 
-            @route("api", channel="mcp")
+            @route(channel="mcp")
             def mcp_only(self):
                 return "mcp"
 
         svc = Svc()
-        entries = svc.api.nodes(channel_channel="mcp").get("entries", {})
+        entries = svc.route.nodes(channel_channel="mcp").get("entries", {})
         assert "mcp_only" in entries
-        entries = svc.api.nodes(channel_channel="rest").get("entries", {})
+        entries = svc.route.nodes(channel_channel="rest").get("entries", {})
         assert "mcp_only" not in entries
 
 
@@ -162,19 +162,19 @@ class TestChannelPluginGlobalConfig:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("channel")
-                self.api.channel.configure(channels="*")
+                self.route.plug("channel")
+                self.route.channel.configure(channels="*")
 
-            @route("api")
+            @route()
             def open_handler(self):
                 return "open"
 
-            @route("api", channel_channels="mcp")
+            @route(channel_channels="mcp")
             def restricted(self):
                 return "mcp only"
 
         svc = Svc()
-        entries = svc.api.nodes(channel_channel="rest").get("entries", {})
+        entries = svc.route.nodes(channel_channel="rest").get("entries", {})
         assert "open_handler" in entries
         assert "restricted" not in entries
 
@@ -199,21 +199,21 @@ class TestChannelWithAuthPlugin:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("channel").plug("auth")
+                self.route.plug("channel").plug("auth")
 
-            @route("api", channel_channels="mcp", auth_rule="admin")
+            @route(channel_channels="mcp", auth_rule="admin")
             def admin_mcp(self):
                 return "admin via mcp"
 
         svc = Svc()
         # Both match
-        entries = svc.api.nodes(channel_channel="mcp", auth_tags="admin").get("entries", {})
+        entries = svc.route.nodes(channel_channel="mcp", auth_tags="admin").get("entries", {})
         assert "admin_mcp" in entries
 
         # Channel matches, auth doesn't
-        entries = svc.api.nodes(channel_channel="mcp", auth_tags="guest").get("entries", {})
+        entries = svc.route.nodes(channel_channel="mcp", auth_tags="guest").get("entries", {})
         assert "admin_mcp" not in entries
 
         # Auth matches, channel doesn't
-        entries = svc.api.nodes(channel_channel="rest", auth_tags="admin").get("entries", {})
+        entries = svc.route.nodes(channel_channel="rest", auth_tags="admin").get("entries", {})
         assert "admin_mcp" not in entries

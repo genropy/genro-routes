@@ -19,15 +19,15 @@ from pydantic import ValidationError
 
 # Import to trigger plugin registration
 import genro_routes.plugins.pydantic  # noqa: F401
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 
 class ValidateService(RoutingClass):
     def __init__(self):
         self.calls = 0
-        self.api = Router(self, name="api").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("api")
+    @route()
     def concat(self, text: str, number: int = 1) -> str:
         self.calls += 1
         return f"{text}:{number}"
@@ -35,16 +35,16 @@ class ValidateService(RoutingClass):
 
 def test_pydantic_plugin_accepts_valid_input():
     svc = ValidateService()
-    assert svc.api.node("concat")("hello", 3) == "hello:3"
+    assert svc.route.node("concat")("hello", 3) == "hello:3"
     # default value still works
-    assert svc.api.node("concat")("hi") == "hi:1"
+    assert svc.route.node("concat")("hi") == "hi:1"
     assert svc.calls == 2
 
 
 def test_pydantic_plugin_rejects_invalid_input():
     svc = ValidateService()
     with pytest.raises(ValidationError):
-        svc.api.node("concat")(123, "oops")
+        svc.route.node("concat")(123, "oops")
 
 
 def test_pydantic_plugin_disabled_at_runtime():
@@ -53,13 +53,13 @@ def test_pydantic_plugin_disabled_at_runtime():
 
     # First verify validation is active
     with pytest.raises(ValidationError):
-        svc.api.node("concat")(123, "oops")
+        svc.route.node("concat")(123, "oops")
 
     # Disable validation at runtime
-    svc.api.pydantic.configure(disabled=True)
+    svc.route.pydantic.configure(disabled=True)
 
     # Now invalid input passes through (no validation)
-    result = svc.api.node("concat")(123, "oops")
+    result = svc.route.node("concat")(123, "oops")
     assert result == "123:oops"
 
 
@@ -68,27 +68,27 @@ def test_pydantic_plugin_disabled_per_handler():
 
     class MultiService(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("pydantic")
+            self.route.plug("pydantic")
 
-        @route("api")
+        @route()
         def strict(self, text: str, number: int) -> str:
             return f"{text}:{number}"
 
-        @route("api")
+        @route()
         def lenient(self, text: str, number: int) -> str:
             return f"{text}:{number}"
 
     svc = MultiService()
 
     # Disable only for "lenient" handler
-    svc.api.pydantic.configure(_target="lenient", disabled=True)
+    svc.route.pydantic.configure(_target="lenient", disabled=True)
 
     # "strict" still validates
     with pytest.raises(ValidationError):
-        svc.api.node("strict")(123, "oops")
+        svc.route.node("strict")(123, "oops")
 
     # "lenient" bypasses validation
-    result = svc.api.node("lenient")(123, "oops")
+    result = svc.route.node("lenient")(123, "oops")
     assert result == "123:oops"
 
 
@@ -97,30 +97,30 @@ def test_pydantic_plugin_config_merge_base_and_handler():
 
     class MergeService(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("pydantic")
+            self.route.plug("pydantic")
 
-        @route("api")
+        @route()
         def handler_a(self, text: str, number: int) -> str:
             return f"{text}:{number}"
 
-        @route("api")
+        @route()
         def handler_b(self, text: str, number: int) -> str:
             return f"{text}:{number}"
 
     svc = MergeService()
 
     # Disable validation globally (base config)
-    svc.api.pydantic.configure(disabled=True)
+    svc.route.pydantic.configure(disabled=True)
 
     # Both handlers should bypass validation now
-    assert svc.api.node("handler_a")(123, "oops") == "123:oops"
-    assert svc.api.node("handler_b")(123, "oops") == "123:oops"
+    assert svc.route.node("handler_a")(123, "oops") == "123:oops"
+    assert svc.route.node("handler_b")(123, "oops") == "123:oops"
 
     # Re-enable validation only for handler_a (per-handler overrides base)
-    svc.api.pydantic.configure(_target="handler_a", disabled=False)
+    svc.route.pydantic.configure(_target="handler_a", disabled=False)
 
     # handler_a validates again, handler_b still disabled
     with pytest.raises(ValidationError):
-        svc.api.node("handler_a")(123, "oops")
+        svc.route.node("handler_a")(123, "oops")
 
-    assert svc.api.node("handler_b")(123, "oops") == "123:oops"
+    assert svc.route.node("handler_b")(123, "oops") == "123:oops"

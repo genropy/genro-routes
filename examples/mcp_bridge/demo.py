@@ -1,34 +1,33 @@
 from __future__ import annotations
 import json
-from genro_routes import Router, RoutingClass, route
+from genro_routes import RoutingClass, route
 from bridge import GenroMCPBridge
 
 # 1. Define a sample library (e.g., a simple calculator)
 class MathService(RoutingClass):
     def __init__(self):
         # We use Pydantic for the bridge to see the type hints
-        self.router = Router(self, name="math").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("math")
+    @route()
     def add(self, a: int, b: int) -> int:
         """Adds two integers together."""
         return a + b
 
-    @route("math")
+    @route()
     def multiply(self, a: float, b: float) -> float:
         """Multiplies two floating point numbers."""
         return a * b
 
 class RootApp(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")
         self.math = MathService()
         self.attach_instance(self.math, name="math")
 
 # 2. Run the Demo
 if __name__ == "__main__":
     app = RootApp()
-    bridge = GenroMCPBridge(app.api)
+    bridge = GenroMCPBridge(app.route)
     
     print("--- Genro-Routes to MCP Bridge Demo ---")
     

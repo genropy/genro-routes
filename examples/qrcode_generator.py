@@ -6,15 +6,15 @@ try:
 except ImportError:
     qrcode = None
 
-from genro_routes import Router, RoutingClass, route
+from genro_routes import RoutingClass, route
 
 class QRCodeService(RoutingClass):
     """Wraps the qrcode library to generate QR code assets."""
     
     def __init__(self):
-        self.api = Router(self, name="qrcode").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("qrcode")
+    @route()
     def generate_base64(self, data: str, box_size: int = 10, border: int = 4) -> str:
         """Generates a QR code and returns it as a Base64 encoded PNG string."""
         if qrcode is None:
@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     print("--- Generating QR Code ---")
     # Path resolution
-    node = service.api.node("generate_base64")
+    node = service.route.node("generate_base64")
     
     try:
         b64_result = node(data="https://genropy.org", box_size=5)
@@ -47,6 +47,6 @@ if __name__ == "__main__":
     print("\n--- Automatic Validation ---")
     try:
         # box_size must be an integer
-        service.api.node("generate_base64")(data="test", box_size="extra-large")
+        service.route.node("generate_base64")(data="test", box_size="extra-large")
     except Exception as e:
         print(f"Caught validation error: {e}")

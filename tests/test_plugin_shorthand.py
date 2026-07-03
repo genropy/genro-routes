@@ -64,7 +64,7 @@ class Owner(RoutingClass):
 
 
 def _make_router():
-    return Router(Owner(), name="api").plug("shorthand").plug("nodefault")
+    return Owner().route.plug("shorthand").plug("nodefault")
 
 
 def _get_plugin_config(router, entry_name):
@@ -115,33 +115,33 @@ class TestShorthandViaDecorator:
     """Test shorthand syntax through @route decorator."""
 
     def test_shorthand_via_route_decorator(self):
-        """@route('api', shorthand='admin') resolves to shorthand_rule='admin'."""
+        """@route(shorthand='admin') resolves to shorthand_rule='admin'."""
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("shorthand").plug("nodefault")
+                self.route.plug("shorthand").plug("nodefault")
 
-            @route("api", shorthand="admin")
+            @route(shorthand="admin")
             def action(self):
                 return "ok"
 
         svc = Svc()
-        cfg = _get_plugin_config(svc.api, "action")
+        cfg = _get_plugin_config(svc.route, "action")
         assert cfg.get("shorthand") == {"rule": "admin"}
 
     def test_longform_via_route_decorator(self):
-        """@route('api', shorthand_rule='admin') still works."""
+        """@route(shorthand_rule='admin') still works."""
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("shorthand").plug("nodefault")
+                self.route.plug("shorthand").plug("nodefault")
 
-            @route("api", shorthand_rule="admin")
+            @route(shorthand_rule="admin")
             def action(self):
                 return "ok"
 
         svc = Svc()
-        cfg = _get_plugin_config(svc.api, "action")
+        cfg = _get_plugin_config(svc.route, "action")
         assert cfg.get("shorthand") == {"rule": "admin"}
 
     def test_mixed_shorthand_and_longform_in_decorator(self):
@@ -149,13 +149,13 @@ class TestShorthandViaDecorator:
 
         class Svc(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("shorthand").plug("nodefault")
+                self.route.plug("shorthand").plug("nodefault")
 
-            @route("api", shorthand="admin", nodefault_value="test")
+            @route(shorthand="admin", nodefault_value="test")
             def action(self):
                 return "ok"
 
         svc = Svc()
-        cfg = _get_plugin_config(svc.api, "action")
+        cfg = _get_plugin_config(svc.route, "action")
         assert cfg.get("shorthand") == {"rule": "admin"}
         assert cfg.get("nodefault") == {"value": "test"}

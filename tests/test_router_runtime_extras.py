@@ -45,10 +45,7 @@ class _FullUser(TypedDict):
 
 
 class ManualService(RoutingClass):
-    """Service with manual router registration."""
-
-    def __init__(self):
-        self.api = Router(self, name="api")
+    """Service using the auto-created single router."""
 
     def first(self):
         return "first"
@@ -56,40 +53,20 @@ class ManualService(RoutingClass):
     def second(self):
         return "second"
 
-    @route("api", marker="yes")
+    @route(marker="yes")
     def auto(self):
         return "auto"
-
-
-class DualRoutes(RoutingClass):
-    def __init__(self):
-        self.one = Router(self, name="one")
-        self.two = Router(self, name="two")
-
-    @route("one")
-    @route("two", name="two_alias")
-    def shared(self):
-        return "shared"
-
-
-class MultiChild(RoutingClass):
-    def __init__(self):
-        self.router_a = Router(self, name="router_a")
-        self.router_b = Router(self, name="router_b")
 
 
 class SlotRouted(RoutingClass):
     __slots__ = ("slot_router",)
 
     def __init__(self):
-        self.slot_router = Router(self, name="slot")
+        self.slot_router = Router(self)
 
 
 class DuplicateMarkers(RoutingClass):
-    def __init__(self):
-        self.api = Router(self, name="api")
-
-    @route("api")
+    @route()
     def original(self):
         return "ok"
 
@@ -110,9 +87,9 @@ if "stamp_extra" not in Router.available_plugins():
 
 class LoggingService(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api").plug("logging")
+        self.route.plug("logging")
 
-    @route("api")
+    @route()
     def hello(self):
         return "ok"
 
@@ -120,6 +97,14 @@ class LoggingService(RoutingClass):
 def test_router_requires_owner():
     with pytest.raises(ValueError):
         Router(None)  # type: ignore[arg-type]
+
+
+def test_router_rejects_second_router():
+    """Creating a Router on an owner whose router already exists raises."""
+    svc = ManualService()
+    _ = svc.route  # ensure router exists
+    with pytest.raises(ValueError, match="already has a router"):
+        Router(svc)
 
 
 def test_register_plugin_requires_plugin_code():
@@ -133,53 +118,53 @@ def test_register_plugin_requires_plugin_code():
 def test_plug_validates_type_and_known_plugin():
     svc = ManualService()
     with pytest.raises(TypeError):
-        svc.api.plug(object())  # type: ignore[arg-type]
+        svc.route.plug(object())  # type: ignore[arg-type]
     with pytest.raises(ValueError):
-        svc.api.plug("missing_plugin")
+        svc.route.plug("missing_plugin")
 
 
 def test_plug_rejects_duplicate_plugin():
     """Plugging the same plugin twice should raise ValueError."""
     svc = ManualService()
-    svc.api.plug("logging")
+    svc.route.plug("logging")
     with pytest.raises(ValueError, match="already attached"):
-        svc.api.plug("logging")
+        svc.route.plug("logging")
 
 
 def test_add_entry_variants_and_wildcards():
     svc = ManualService()
-    svc.api.add_entry(["first", "second"])
-    assert "first" in svc.api._entries
-    assert "second" in svc.api._entries
+    svc.route.add_entry(["first", "second"])
+    assert "first" in svc.route._entries
+    assert "second" in svc.route._entries
 
-    svc.api.add_entry("first, second", replace=True)
-    before = set(svc.api._entries.keys())
-    assert svc.api.add_entry("   ") is svc.api
-    assert set(svc.api._entries.keys()) == before
+    svc.route.add_entry("first, second", replace=True)
+    before = set(svc.route._entries.keys())
+    assert svc.route.add_entry("   ") is svc.route
+    assert set(svc.route._entries.keys()) == before
 
     with pytest.raises(TypeError):
-        svc.api.add_entry(123)
+        svc.route.add_entry(123)
 
     # Use replace=True since "auto" was already registered by lazy binding
-    svc.api.add_entry("*", metadata={"source": "wild"}, replace=True)
-    entry = svc.api._entries["auto"]
+    svc.route.add_entry("*", metadata={"source": "wild"}, replace=True)
+    entry = svc.route._entries["auto"]
     assert entry.metadata["marker"] == "yes"
     assert entry.metadata["source"] == "wild"
 
 
 def test_plugin_on_decore_runs_for_existing_entries():
     svc = ManualService()
-    svc.api.plug("stamp_extra")
-    svc.api.add_entry(svc.first, name="alias_first")
-    assert svc.api._entries["alias_first"].metadata["stamped"] is True
+    svc.route.plug("stamp_extra")
+    svc.route.add_entry(svc.first, name="alias_first")
+    assert svc.route._entries["alias_first"].metadata["stamped"] is True
 
 
 def test_iter_marked_methods_deduplicate_same_function():
     """Test that duplicate markers on same function don't cause double registration."""
     svc = DuplicateMarkers()
-    assert svc.api.node("original")() == "ok"
+    assert svc.route.node("original")() == "ok"
     # Verify only one entry via nodes()
-    info = svc.api.nodes()
+    info = svc.route.nodes()
     assert len(info.get("entries", {})) == 1
 
 
@@ -192,9 +177,6 @@ def test_mro_override_derived_wins():
     """
 
     class Base(RoutingClass):
-        def __init__(self):
-            self.main = Router(self, name="main")
-
         @route()
         def index(self):
             return "BASE"
@@ -207,9 +189,9 @@ def test_mro_override_derived_wins():
     # Should not raise ValueError: Handler name collision
     d = Derived()
     # Derived.index should be used, not Base.index
-    assert d.main.node("index")() == "DERIVED"
+    assert d.route.node("index")() == "DERIVED"
     # Verify only one entry registered
-    info = d.main.nodes()
+    info = d.route.nodes()
     assert len(info.get("entries", {})) == 1
 
 
@@ -217,8 +199,8 @@ def test_router_node_and_nodes_structure():
     """Test node() and nodes() work correctly."""
     svc = ManualService()
     # auto is marked with @route, so it's available
-    assert svc.api.node("auto")() == "auto"
-    tree = svc.api.nodes()
+    assert svc.route.node("auto")() == "auto"
+    tree = svc.route.nodes()
     assert tree["entries"]
     assert "routers" not in tree
 
@@ -226,38 +208,38 @@ def test_router_node_and_nodes_structure():
 def test_inherit_plugins_branches():
     parent = ManualService()
     child = ManualService()
-    parent.api.plug("stamp_extra")
-    before = len(child.api._plugins_by_name)
-    child.api._on_attached_to_parent(parent.api)
-    after = len(child.api._plugins_by_name)
+    parent.route.plug("stamp_extra")
+    before = len(child.route._plugins_by_name)
+    child.route._on_attached_to_parent(parent.route)
+    after = len(child.route._plugins_by_name)
     assert after > before
-    child.api._on_attached_to_parent(parent.api)
-    assert len(child.api._plugins_by_name) == after
+    child.route._on_attached_to_parent(parent.route)
+    assert len(child.route._plugins_by_name) == after
     # Force missing plugin bucket to exercise seed path
-    parent.api._plugin_info.pop("stamp_extra", None)
-    child.api._on_attached_to_parent(parent.api)
+    parent.route._plugin_info.pop("stamp_extra", None)
+    child.route._on_attached_to_parent(parent.route)
 
     orphan = ManualService()
     plain = ManualService()
-    plain_before = len(orphan.api._plugins_by_name)
-    orphan.api._on_attached_to_parent(plain.api)
-    assert len(orphan.api._plugins_by_name) == plain_before
+    plain_before = len(orphan.route._plugins_by_name)
+    orphan.route._on_attached_to_parent(plain.route)
+    assert len(orphan.route._plugins_by_name) == plain_before
 
 
 def test_inherit_plugins_seed_from_empty_parent_bucket():
     parent = ManualService()
-    parent.api.plug("stamp_extra")
-    parent.api._plugin_info.pop("stamp_extra", None)
+    parent.route.plug("stamp_extra")
+    parent.route._plugin_info.pop("stamp_extra", None)
     child = ManualService()
-    child.api._on_attached_to_parent(parent.api)
+    child.route._on_attached_to_parent(parent.route)
     # Config is now a callable lookup, verify plugin is accessible
-    assert "stamp_extra" in child.api._plugins_by_name
+    assert "stamp_extra" in child.route._plugins_by_name
 
 
 def test_router_nodes_include_metadata_tree():
     parent = ManualService()
-    parent.api.add_entry(parent.first)
-    info = parent.api.nodes()
+    parent.route.add_entry(parent.first)
+    info = parent.route.nodes()
     assert "entries" in info
 
 
@@ -265,59 +247,52 @@ def test_router_nodes_with_basepath():
     """Test nodes() with basepath navigates to child router."""
 
     class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def child_action(self):
             return "child"
 
     class Grandchild(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def grandchild_action(self):
             return "grandchild"
 
     class Root(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.child = Child()
             self.child.grandchild = Grandchild()
             self.attach_instance(self.child, name="child")
             self.child.attach_instance(self.child.grandchild, name="grandchild")
 
-        @route("api")
+        @route()
         def root_action(self):
             return "root"
 
     root = Root()
 
     # Without basepath - returns full tree
-    full = root.api.nodes()
+    full = root.route.nodes()
     assert "root_action" in full["entries"]
     assert "child" in full["routers"]
 
     # With basepath="child" - returns child subtree
-    child_nodes = root.api.nodes(basepath="child")
-    assert child_nodes["name"] == "api"
+    child_nodes = root.route.nodes(basepath="child")
+    assert child_nodes["name"] == "route"
     assert "child_action" in child_nodes["entries"]
     assert "grandchild" in child_nodes["routers"]
     assert "root_action" not in child_nodes.get("entries", {})
 
     # With basepath="child/grandchild" - returns grandchild subtree
-    grandchild_nodes = root.api.nodes(basepath="child/grandchild")
-    assert grandchild_nodes["name"] == "api"
+    grandchild_nodes = root.route.nodes(basepath="child/grandchild")
+    assert grandchild_nodes["name"] == "route"
     assert "grandchild_action" in grandchild_nodes["entries"]
     assert "routers" not in grandchild_nodes  # no children
 
     # With basepath pointing to a handler - returns empty dict
-    handler_nodes = root.api.nodes(basepath="root_action")
+    handler_nodes = root.route.nodes(basepath="root_action")
     assert handler_nodes == {}
 
     # With basepath pointing to non-existent path - returns empty dict
-    missing_nodes = root.api.nodes(basepath="nonexistent")
+    missing_nodes = root.route.nodes(basepath="nonexistent")
     assert missing_nodes == {}
 
 
@@ -325,32 +300,28 @@ def test_nodes_lazy_returns_router_references():
     """Test nodes(lazy=True) returns router references for child routers."""
 
     class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def child_action(self):
             return "child"
 
     class Root(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.child = Child()
             self.attach_instance(self.child, name="child")
 
-        @route("api")
+        @route()
         def root_action(self):
             return "root"
 
     root = Root()
 
     # Without lazy - routers dict contains expanded nodes
-    full = root.api.nodes()
+    full = root.route.nodes()
     assert isinstance(full["routers"]["child"], dict)
     assert "child_action" in full["routers"]["child"]["entries"]
 
     # With lazy=True - routers dict contains router references (not expanded)
-    lazy_nodes = root.api.nodes(lazy=True)
+    lazy_nodes = root.route.nodes(lazy=True)
     child_router = lazy_nodes["routers"]["child"]
     assert isinstance(child_router, Router)
 
@@ -360,7 +331,7 @@ def test_nodes_lazy_returns_router_references():
     assert "child_action" in child_nodes["entries"]
 
     # Or use basepath from parent
-    child_via_basepath = root.api.nodes(basepath="child")
+    child_via_basepath = root.route.nodes(basepath="child")
     assert "child_action" in child_via_basepath["entries"]
 
 
@@ -368,21 +339,17 @@ def test_openapi_returns_schema():
     """Test openapi() returns OpenAPI-compatible schema."""
 
     class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def get_user(self, user_id: int, name: str = "default") -> dict:
             """Get a user by ID."""
             return {"id": user_id, "name": name}
 
     class Root(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.child = Child()
             self.attach_instance(self.child, name="users")
 
-        @route("api")
+        @route()
         def health(self) -> str:
             """Health check endpoint."""
             return "ok"
@@ -390,7 +357,7 @@ def test_openapi_returns_schema():
     root = Root()
 
     # Full schema (non-lazy)
-    schema = root.api.nodes(mode="openapi")
+    schema = root.route.nodes(mode="openapi")
     assert "paths" in schema
     assert "/health" in schema["paths"]
     assert "/users/get_user" in schema["paths"]
@@ -410,33 +377,29 @@ def test_openapi_lazy_returns_router_references():
     """Test openapi(lazy=True) returns router references for child routers."""
 
     class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def action(self):
             return "child"
 
     class Root(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.child = Child()
             self.attach_instance(self.child, name="child")
 
-        @route("api")
+        @route()
         def root_action(self):
             return "root"
 
     root = Root()
 
     # Lazy mode - returns router references
-    lazy_schema = root.api.nodes(mode="openapi", lazy=True)
+    lazy_schema = root.route.nodes(mode="openapi", lazy=True)
     assert "/root_action" in lazy_schema["paths"]
     assert "routers" in lazy_schema
     assert isinstance(lazy_schema["routers"]["child"], Router)
 
     # Expand child via basepath - paths are absolute from root
-    child_schema = root.api.nodes(basepath="child", mode="openapi")
+    child_schema = root.route.nodes(basepath="child", mode="openapi")
     assert "/child/action" in child_schema["paths"]
 
 
@@ -444,27 +407,23 @@ def test_openapi_with_basepath():
     """Test openapi(basepath=...) navigates to child with absolute paths."""
 
     class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def child_action(self):
             return "child"
 
     class Root(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.child = Child()
             self.attach_instance(self.child, name="child")
 
-        @route("api")
+        @route()
         def root_action(self):
             return "root"
 
     root = Root()
 
     # Get schema starting from child - paths include basepath prefix (issue #16)
-    child_schema = root.api.nodes(mode="openapi", basepath="child")
+    child_schema = root.route.nodes(mode="openapi", basepath="child")
     assert "/child/child_action" in child_schema["paths"]
     assert "/root_action" not in child_schema.get("paths", {})
 
@@ -478,26 +437,22 @@ def test_openapi_basepath_absolute_paths_issue_16():
     """
 
     class PurchaseService(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def list(self) -> list:
             """List all purchases."""
             return []
 
-        @route("api")
+        @route()
         def create(self, item: str, qty: int = 1) -> dict:
             """Create a purchase."""
             return {"item": item, "qty": qty}
 
     class Shop(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.purchase = PurchaseService()
             self.attach_instance(self.purchase, name="purchase")
 
-        @route("api")
+        @route()
         def info(self) -> dict:
             """Shop info."""
             return {"name": "My Shop"}
@@ -505,7 +460,7 @@ def test_openapi_basepath_absolute_paths_issue_16():
     shop = Shop()
 
     # Get OpenAPI for purchase subtree via basepath
-    purchase_schema = shop.api.nodes(basepath="purchase", mode="openapi")
+    purchase_schema = shop.route.nodes(basepath="purchase", mode="openapi")
 
     # Paths must be absolute from root (include /purchase prefix)
     assert "/purchase/list" in purchase_schema["paths"]
@@ -536,52 +491,41 @@ def test_configure_validates_inputs_and_targets():
     with pytest.raises(ValueError):
         svc.routing.configure("?", foo="bar")
     with pytest.raises(ValueError):
-        svc.routing.configure("missingcolon", mode="x")
-    with pytest.raises(ValueError):
-        svc.routing.configure(":logging/_all_", mode="x")
-    with pytest.raises(ValueError):
-        svc.routing.configure("api:/_all_", mode="x")
+        svc.routing.configure("/_all_", mode="x")
     with pytest.raises(AttributeError):
-        svc.routing.configure("api:ghost/_all_", flags="on")
+        svc.routing.configure("ghost/_all_", flags="on")
     with pytest.raises(ValueError):
-        svc.routing.configure("api:logging/_all_")
+        svc.routing.configure("logging/_all_")
     with pytest.raises(KeyError):
-        svc.routing.configure("api:logging/missing*", flags="before")
-    result = svc.routing.configure("api:logging", flags="before")
+        svc.routing.configure("logging/missing*", flags="before")
+    result = svc.routing.configure("logging", flags="before")
     assert result["updated"] == ["_all_"]
 
 
 def test_configure_question_success_and_router_proxy_errors():
     svc = LoggingService()
-    tree = svc.routing.configure("?")
-    assert "api" in tree
-    with pytest.raises(AttributeError):
+    description = svc.routing.configure("?")
+    assert description["name"] == "route"
+    assert "hello" in description["entries"]
+    assert any(plugin["name"] == "logging" for plugin in description["plugins"])
+    with pytest.raises(KeyError):
         svc.routing.get_router("missing")
-    svc._routers.pop("api")
-    router = svc.routing.get_router("api")
-    assert router is svc.api
-
-
-def test_iter_registered_routers_lists_entries():
-    svc = ManualService()
-    pairs = list(svc._iter_registered_routers())
-    assert pairs and pairs[0][0] == "api"
+    router = svc.routing.get_router()
+    assert router is svc.route
 
 
 def test_get_router_skips_empty_segments():
     class Leaf(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="leaf")
+        pass
 
     class Parent(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.child = Leaf()
-            self.api._children["child"] = self.child.api  # direct attach for test
+            self.route._children["child"] = self.child.route  # direct attach for test
 
     svc = Parent()
-    router = svc.routing.get_router("api/child//")
-    assert router.name == "leaf"
+    router = svc.routing.get_router("child//")
+    assert router is svc.child.route
 
 
 def test_is_routing_class_helper():
@@ -594,21 +538,18 @@ def test_openapi_basepath_to_handler_returns_empty():
     """Test openapi(basepath=...) returns empty when pointing to handler."""
 
     class Root(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def action(self):
             return "ok"
 
     root = Root()
 
     # basepath pointing to handler returns empty (handler is not a router)
-    result = root.api.nodes(mode="openapi", basepath="action")
+    result = root.route.nodes(mode="openapi", basepath="action")
     assert result == {}
 
     # basepath pointing to non-existent path also returns empty
-    result = root.api.nodes(mode="openapi", basepath="nonexistent")
+    result = root.route.nodes(mode="openapi", basepath="nonexistent")
     assert result == {}
 
 
@@ -617,15 +558,15 @@ def test_openapi_with_pydantic_model():
 
     class Service(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("pydantic")
+            self.route.plug("pydantic")
 
-        @route("api")
+        @route()
         def get_user(self, user_id: int, name: str = "default") -> dict:
             """Get a user by ID."""
             return {"id": user_id, "name": name}
 
     svc = Service()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # Should have parameters with pydantic schema
     # Method is GET because all params are scalar
@@ -643,16 +584,13 @@ def test_openapi_handler_without_type_hints():
     """Test openapi() handles handlers without type hints."""
 
     class Service(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def no_hints(self, arg):
             """No type hints here."""
             return arg
 
     svc = Service()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     path_item = schema["paths"]["/no_hints"]
     # Without type hints, get_type_hints returns empty → no typed params → GET
@@ -666,15 +604,12 @@ def test_openapi_type_conversion():
     """Test pydantic schema handles various types in requestBody."""
 
     class Service(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def typed_params(self, s: str, i: int, f: float, b: bool, items: list, data: dict) -> str:
             return "ok"
 
     svc = Service()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # POST uses requestBody with pydantic schema
     operation = schema["paths"]["/typed_params"]["post"]
@@ -694,15 +629,12 @@ def test_openapi_generic_types():
     """Test pydantic schema handles generic types like list[str]."""
 
     class Service(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def generic_params(self, items: list[str], data: dict[str, int]) -> list[str]:
             return items
 
     svc = Service()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # POST uses requestBody with pydantic schema
     operation = schema["paths"]["/generic_params"]["post"]
@@ -721,15 +653,12 @@ def test_openapi_unknown_type_graceful_fallback():
         pass
 
     class Service(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def custom_param(self, obj: CustomType) -> CustomType:
             return obj
 
     svc = Service()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # Pydantic can't handle arbitrary types without special config
     # So operation won't have requestBody, but should still work
@@ -743,15 +672,12 @@ def test_openapi_required_vs_optional_params():
     """Test openapi correctly marks required vs optional in query parameters."""
 
     class Service(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def mixed_params(self, required: int, optional: str = "default"):
             return "ok"
 
     svc = Service()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # Scalar params → GET with query parameters
     operation = schema["paths"]["/mixed_params"]["get"]
@@ -770,17 +696,14 @@ def test_openapi_handles_broken_type_hints():
     """Test openapi() gracefully handles functions with unresolvable type hints."""
 
     class Service(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def handler(self):
             return "ok"
 
     svc = Service()
 
     # Manually break the function's type hints by adding unresolvable annotation
-    entry = svc.api._entries["handler"]
+    entry = svc.route._entries["handler"]
     original_func = entry.func
 
     # Create a wrapper with broken annotations
@@ -791,7 +714,7 @@ def test_openapi_handles_broken_type_hints():
     entry.func = broken_hints
 
     # Should not raise, should fall back gracefully
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
     assert "/handler" in schema["paths"]
 
     # Restore
@@ -802,17 +725,14 @@ def test_openapi_handles_hint_param_mismatch():
     """Test openapi() when type hint references non-existent parameter."""
 
     class Service(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def handler(self, real_param: int):
             return "ok"
 
     svc = Service()
 
     # Manually modify the entry's func annotations to have a mismatch
-    entry = svc.api._entries["handler"]
+    entry = svc.route._entries["handler"]
     original_func = entry.func
 
     # Create a function with mismatched hint/signature
@@ -824,7 +744,7 @@ def test_openapi_handles_hint_param_mismatch():
     entry.func = mismatched
 
     # Should not raise, should skip the mismatched param
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
     # Scalar param hint → GET (even if mismatched)
     operation = schema["paths"]["/handler"]["get"]
     # No parameters should be added since ghost_param isn't in signature
@@ -838,17 +758,14 @@ def test_nodes_unknown_mode_raises():
     """Test that nodes(mode='unknown') raises ValueError."""
 
     class Svc(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def handler(self):
             pass
 
     svc = Svc()
 
     with pytest.raises(ValueError, match="Unknown mode: unknown"):
-        svc.api.nodes(mode="unknown")
+        svc.route.nodes(mode="unknown")
 
 
 # -----------------------------------------------------------------------------
@@ -860,21 +777,17 @@ def test_h_openapi_returns_hierarchical_schema():
     """Test h_openapi mode returns nested OpenAPI structure."""
 
     class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def get_user(self, user_id: int) -> dict:
             """Get a user by ID."""
             return {"id": user_id}
 
     class Root(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.child = Child()
             self.attach_instance(self.child, name="users")
 
-        @route("api")
+        @route()
         def health(self) -> str:
             """Health check endpoint."""
             return "ok"
@@ -882,7 +795,7 @@ def test_h_openapi_returns_hierarchical_schema():
     root = Root()
 
     # Hierarchical schema
-    schema = root.api.nodes(mode="h_openapi")
+    schema = root.route.nodes(mode="h_openapi")
 
     # Root level has paths for its own entries
     assert "paths" in schema
@@ -904,44 +817,39 @@ def test_h_openapi_vs_openapi_comparison():
     """Test difference between h_openapi (hierarchical) and openapi (flat)."""
 
     class GrandChild(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def deep_action(self):
             return "deep"
 
     class Child(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.grandchild = GrandChild()
             self.attach_instance(self.grandchild, name="grand")
 
-        @route("api")
+        @route()
         def child_action(self):
             return "child"
 
     class Root(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.child = Child()
             self.attach_instance(self.child, name="child")
 
-        @route("api")
+        @route()
         def root_action(self):
             return "root"
 
     root = Root()
 
     # Flat openapi - all paths at top level
-    flat = root.api.nodes(mode="openapi")
+    flat = root.route.nodes(mode="openapi")
     assert "/root_action" in flat["paths"]
     assert "/child/child_action" in flat["paths"]
     assert "/child/grand/deep_action" in flat["paths"]
     assert "routers" not in flat  # No routers in eager flat mode
 
     # Hierarchical h_openapi - paths nested
-    hier = root.api.nodes(mode="h_openapi")
+    hier = root.route.nodes(mode="h_openapi")
     assert "/root_action" in hier["paths"]
     assert "/child/child_action" not in hier["paths"]  # Not at root level
     assert "routers" in hier
@@ -960,34 +868,30 @@ def test_h_openapi_lazy_returns_router_references():
     """Test h_openapi lazy=True returns router references."""
 
     class Child(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def action(self):
             return "child"
 
     class Root(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
             self.child = Child()
             self.attach_instance(self.child, name="child")
 
-        @route("api")
+        @route()
         def root_action(self):
             return "root"
 
     root = Root()
 
     # Lazy h_openapi
-    lazy = root.api.nodes(mode="h_openapi", lazy=True)
+    lazy = root.route.nodes(mode="h_openapi", lazy=True)
     assert "/root_action" in lazy["paths"]
     assert "routers" in lazy
     # In lazy mode, child is a Router reference
     assert isinstance(lazy["routers"]["child"], Router)
 
     # Can expand via basepath - paths are absolute from root
-    child_schema = root.api.nodes(basepath="child", mode="h_openapi")
+    child_schema = root.route.nodes(basepath="child", mode="h_openapi")
     assert "/child/action" in child_schema["paths"]
 
 
@@ -995,16 +899,13 @@ def test_h_openapi_preserves_openapi_format():
     """Test h_openapi produces valid OpenAPI format for entries."""
 
     class Svc(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def create_item(self, name: str, count: int = 1) -> dict:
             """Create a new item."""
             return {"name": name, "count": count}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="h_openapi")
+    schema = svc.route.nodes(mode="h_openapi")
 
     # Check OpenAPI structure - scalar params means GET with query parameters
     path_item = schema["paths"]["/create_item"]
@@ -1019,15 +920,12 @@ def test_h_openapi_empty_routers_excluded():
     """Test h_openapi excludes empty routers dict."""
 
     class Svc(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def action(self):
             return "ok"
 
     svc = Svc()
-    schema = svc.api.nodes(mode="h_openapi")
+    schema = svc.route.nodes(mode="h_openapi")
 
     # No children, so no routers key
     assert "paths" in schema
@@ -1041,14 +939,14 @@ def test_nodes_includes_description_and_owner_doc():
         """Service for managing articles."""
 
         def __init__(self):
-            self.api = Router(self, name="api", description="API for articles")
+            self.route.description = "API for articles"
 
-        @route("api")
+        @route()
         def list_articles(self):
             return []
 
     svc = ArticleService()
-    nodes = svc.api.nodes()
+    nodes = svc.route.nodes()
 
     assert nodes["description"] == "API for articles"
     assert nodes["owner_doc"] == "Service for managing articles."
@@ -1058,15 +956,12 @@ def test_nodes_description_none_when_not_set():
     """Test nodes() returns None for description when not set."""
 
     class SimpleService(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def action(self):
             pass
 
     svc = SimpleService()
-    nodes = svc.api.nodes()
+    nodes = svc.route.nodes()
 
     assert nodes["description"] is None
     assert nodes["owner_doc"] is None  # No docstring on class
@@ -1079,9 +974,9 @@ def test_h_openapi_includes_description_and_owner_doc():
         """Child service for users."""
 
         def __init__(self):
-            self.api = Router(self, name="api", description="User management")
+            self.route.description = "User management"
 
-        @route("api")
+        @route()
         def get_user(self):
             return {}
 
@@ -1089,16 +984,16 @@ def test_h_openapi_includes_description_and_owner_doc():
         """Main API service."""
 
         def __init__(self):
-            self.api = Router(self, name="api", description="Main API")
+            self.route.description = "Main API"
             self.users = ChildService()
             self.attach_instance(self.users, name="users")
 
-        @route("api")
+        @route()
         def health(self):
             return "ok"
 
     root = RootService()
-    schema = root.api.nodes(mode="h_openapi")
+    schema = root.route.nodes(mode="h_openapi")
 
     # Root level
     assert schema["description"] == "Main API"
@@ -1188,31 +1083,28 @@ def test_openapi_uses_guessed_http_method():
     """Test openapi output uses guessed HTTP method from signature."""
 
     class Svc(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def get_item(self, item_id: int) -> dict:
             """Get an item - GET (scalar param)."""
             return {"id": item_id}
 
-        @route("api")
+        @route()
         def create_item(self, data: dict) -> dict:
             """Create an item - POST (complex param)."""
             return data
 
-        @route("api")
+        @route()
         def list_items(self) -> list:
             """List items - GET (no params)."""
             return []
 
-        @route("api")
+        @route()
         def reset_cache(self):
             """Reset cache - GET (no typed params)."""
             pass
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # GET for scalar params
     assert "get" in schema["paths"]["/get_item"]
@@ -1241,20 +1133,20 @@ def test_openapi_plugin_method_override():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi")
+            self.route.plug("openapi")
 
-        @route("api", openapi_method="delete")
+        @route(openapi_method="delete")
         def remove_item(self, item_id: int) -> dict:
             """Delete an item - explicitly DELETE despite scalar params."""
             return {"deleted": item_id}
 
-        @route("api", openapi_method="PUT")
+        @route(openapi_method="PUT")
         def update_item(self, item_id: int, name: str) -> dict:
             """Update an item - explicitly PUT."""
             return {"id": item_id, "name": name}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # Override to DELETE
     assert "delete" in schema["paths"]["/remove_item"]
@@ -1269,18 +1161,18 @@ def test_openapi_plugin_tags():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi")
+            self.route.plug("openapi")
 
-        @route("api", openapi_tags=["users", "admin"])
+        @route(openapi_tags=["users", "admin"])
         def admin_action(self) -> str:
             return "ok"
 
-        @route("api", openapi_tags="public")
+        @route(openapi_tags="public")
         def public_action(self) -> str:
             return "ok"
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # List of tags
     admin_op = schema["paths"]["/admin_action"]["get"]
@@ -1296,15 +1188,15 @@ def test_openapi_plugin_no_effect_without_config():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi")
+            self.route.plug("openapi")
 
-        @route("api")
+        @route()
         def get_item(self, item_id: int) -> dict:
             """Should still use guessed method (GET because scalar param)."""
             return {"id": item_id}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # Method should be guessed as GET (scalar param, not overridden)
     assert "get" in schema["paths"]["/get_item"]
@@ -1324,16 +1216,13 @@ def test_node_returns_entry_info():
     """Test node() returns RouterNode for a single entry."""
 
     class Svc(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def get_item(self, item_id: int) -> dict:
             """Get an item by ID."""
             return {"id": item_id}
 
     svc = Svc()
-    node = svc.api.node("get_item")
+    node = svc.route.node("get_item")
 
     assert node.path == "get_item"
     assert node.doc == "Get an item by ID."
@@ -1353,16 +1242,13 @@ def test_openapi_typeddict_response_schema():
     """Test openapi generates schema from TypedDict return type."""
 
     class Svc(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def get_user(self) -> _UserResponse:
             """Get user info."""
             return {"id": 1, "name": "test", "active": True}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # No params + return = GET
     operation = schema["paths"]["/get_user"]["get"]
@@ -1384,21 +1270,18 @@ def test_openapi_typeddict_with_required_keys():
     """Test openapi includes required keys from TypedDict."""
 
     class Svc(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def get_full_user(self) -> _FullUser:
             """All fields required."""
             return {"id": 1, "name": "test"}
 
-        @route("api")
+        @route()
         def get_partial_user(self) -> _PartialUser:
             """No fields required (total=False)."""
             return {}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # Full user has required keys
     full_schema = schema["paths"]["/get_full_user"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
@@ -1414,23 +1297,20 @@ def test_openapi_non_typeddict_still_works():
     """Test openapi still works for non-TypedDict return types."""
 
     class Svc(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def get_string(self) -> str:
             return "ok"
 
-        @route("api")
+        @route()
         def get_list(self) -> list:
             return []
 
-        @route("api")
+        @route()
         def get_dict(self) -> dict:
             return {}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
 
     # Simple types still work
     str_schema = schema["paths"]["/get_string"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
@@ -1453,15 +1333,15 @@ def test_openapi_summary_override():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi")
+            self.route.plug("openapi")
 
-        @route("api", openapi_summary="Custom summary")
+        @route(openapi_summary="Custom summary")
         def action(self) -> dict:
             """Original docstring."""
             return {}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
     op = schema["paths"]["/action"]["get"]
     assert op["summary"] == "Custom summary"
 
@@ -1471,20 +1351,20 @@ def test_openapi_deprecated_flag():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi")
+            self.route.plug("openapi")
 
-        @route("api", openapi_deprecated=True)
+        @route(openapi_deprecated=True)
         def old_action(self) -> dict:
             """Deprecated endpoint."""
             return {}
 
-        @route("api")
+        @route()
         def new_action(self) -> dict:
             """Active endpoint."""
             return {}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
     old_op = schema["paths"]["/old_action"]["get"]
     new_op = schema["paths"]["/new_action"]["get"]
     assert old_op.get("deprecated") is True
@@ -1496,15 +1376,15 @@ def test_openapi_description_override():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi")
+            self.route.plug("openapi")
 
-        @route("api", openapi_description="Custom description")
+        @route(openapi_description="Custom description")
         def action(self) -> dict:
             """Original docstring."""
             return {}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
     op = schema["paths"]["/action"]["get"]
     assert op["description"] == "Custom description"
 
@@ -1519,14 +1399,14 @@ def test_openapi_security_from_auth_rule():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi").plug("auth")
+            self.route.plug("openapi").plug("auth")
 
-        @route("api", auth_rule="admin")
+        @route(auth_rule="admin")
         def admin_action(self) -> dict:
             return {}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi", forbidden=True)
+    schema = svc.route.nodes(mode="openapi", forbidden=True)
     op = schema["paths"]["/admin_action"]["get"]
     assert "security" in op
     assert op["security"] == [{"BearerAuth": []}]
@@ -1537,14 +1417,14 @@ def test_openapi_security_empty_for_public():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi").plug("auth")
+            self.route.plug("openapi").plug("auth")
 
-        @route("api")
+        @route()
         def public_action(self) -> dict:
             return {}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
     op = schema["paths"]["/public_action"]["get"]
     assert "security" in op
     assert op["security"] == []
@@ -1555,14 +1435,14 @@ def test_openapi_security_absent_without_auth_plugin():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi")
+            self.route.plug("openapi")
 
-        @route("api")
+        @route()
         def action(self) -> dict:
             return {}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
     op = schema["paths"]["/action"]["get"]
     assert "security" not in op
 
@@ -1572,14 +1452,14 @@ def test_openapi_security_scheme_configurable():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi").plug("auth")
+            self.route.plug("openapi").plug("auth")
 
-        @route("api", auth_rule="admin", openapi_security_scheme="OAuth2")
+        @route(auth_rule="admin", openapi_security_scheme="OAuth2")
         def admin_action(self) -> dict:
             return {}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi", forbidden=True)
+    schema = svc.route.nodes(mode="openapi", forbidden=True)
     op = schema["paths"]["/admin_action"]["get"]
     assert op["security"] == [{"OAuth2": []}]
 
@@ -1594,18 +1474,18 @@ def test_openapi_x_requires_from_env():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi").plug("env")
+            self.route.plug("openapi").plug("env")
 
-        @route("api", env_requires="redis&pyjwt")
+        @route(env_requires="redis&pyjwt")
         def cached_action(self) -> dict:
             return {}
 
-        @route("api")
+        @route()
         def simple_action(self) -> dict:
             return {}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi", forbidden=True)
+    schema = svc.route.nodes(mode="openapi", forbidden=True)
     cached_op = schema["paths"]["/cached_action"]["get"]
     simple_op = schema["paths"]["/simple_action"]["get"]
     assert cached_op.get("x-requires") == "redis&pyjwt"
@@ -1622,18 +1502,18 @@ def test_openapi_security_explicit_override():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi").plug("auth")
+            self.route.plug("openapi").plug("auth")
 
-        @route("api", auth_rule="admin", openapi_security=[{"OAuth2": ["read"]}])
+        @route(auth_rule="admin", openapi_security=[{"OAuth2": ["read"]}])
         def custom_auth(self) -> dict:
             return {}
 
-        @route("api", auth_rule="admin", openapi_security=[])
+        @route(auth_rule="admin", openapi_security=[])
         def force_public(self) -> dict:
             return {}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi", forbidden=True)
+    schema = svc.route.nodes(mode="openapi", forbidden=True)
     custom_op = schema["paths"]["/custom_auth"]["get"]
     public_op = schema["paths"]["/force_public"]["get"]
     # Explicit override takes precedence over auth-derived security
@@ -1651,15 +1531,15 @@ def test_pydantic_captures_response_schema():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("pydantic")
+            self.route.plug("pydantic")
 
-        @route("api")
+        @route()
         def get_data(self) -> dict[str, int]:
             """Return data."""
             return {"a": 1}
 
     svc = Svc()
-    entry = svc.api._entries["get_data"]
+    entry = svc.route._entries["get_data"]
     meta = entry.metadata.get("pydantic", {})
     assert "response_schema" in meta
     schema = meta["response_schema"]
@@ -1671,14 +1551,14 @@ def test_pydantic_no_response_schema_without_annotation():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("pydantic")
+            self.route.plug("pydantic")
 
-        @route("api")
+        @route()
         def no_return(self):
             return {}
 
     svc = Svc()
-    entry = svc.api._entries["no_return"]
+    entry = svc.route._entries["no_return"]
     meta = entry.metadata.get("pydantic", {})
     assert "response_schema" not in meta
 
@@ -1692,14 +1572,14 @@ def test_pydantic_captures_typeddict_response_schema():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("pydantic")
+            self.route.plug("pydantic")
 
-        @route("api")
+        @route()
         def get_user(self) -> _UserResponse:
             return {"id": 1, "name": "test", "active": True}
 
     svc = Svc()
-    entry = svc.api._entries["get_user"]
+    entry = svc.route._entries["get_user"]
     schema = entry.metadata["pydantic"]["response_schema"]
     assert schema["type"] == "object"
     assert "properties" in schema
@@ -1713,15 +1593,15 @@ def test_response_schema_in_nodes_metadata():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("pydantic")
+            self.route.plug("pydantic")
 
-        @route("api")
+        @route()
         def get_data(self) -> dict[str, int]:
             """Return data."""
             return {"a": 1}
 
     svc = Svc()
-    nodes = svc.api.nodes()
+    nodes = svc.route.nodes()
     entry_info = nodes["entries"]["get_data"]
     pydantic_meta = entry_info["plugins"]["pydantic"]["metadata"]
     assert "response_schema" in pydantic_meta
@@ -1733,15 +1613,15 @@ def test_openapi_uses_precomputed_response_schema():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("pydantic").plug("openapi")
+            self.route.plug("pydantic").plug("openapi")
 
-        @route("api")
+        @route()
         def get_data(self) -> dict[str, int]:
             """Return data."""
             return {"a": 1}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
     response = schema["paths"]["/get_data"]["get"]["responses"]["200"]
     response_schema = response["content"]["application/json"]["schema"]
     assert response_schema["type"] == "object"
@@ -1751,16 +1631,13 @@ def test_openapi_fallback_without_pydantic():
     """OpenAPI generates response schema even without pydantic plugin."""
 
     class Svc(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def get_data(self) -> dict[str, int]:
             """Return data."""
             return {"a": 1}
 
     svc = Svc()
-    schema = svc.api.nodes(mode="openapi")
+    schema = svc.route.nodes(mode="openapi")
     response = schema["paths"]["/get_data"]["get"]["responses"]["200"]
     response_schema = response["content"]["application/json"]["schema"]
     assert response_schema["type"] == "object"
@@ -1775,14 +1652,14 @@ def test_list_typeddict_response_schema():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("pydantic")
+            self.route.plug("pydantic")
 
-        @route("api")
+        @route()
         def list_users(self) -> list[_UserResponse]:
             return []
 
     svc = Svc()
-    entry = svc.api._entries["list_users"]
+    entry = svc.route._entries["list_users"]
     schema = entry.metadata["pydantic"]["response_schema"]
     assert schema["type"] == "array"
 
@@ -1792,20 +1669,20 @@ def test_response_schema_not_mutated_by_openapi():
 
     class Svc(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("pydantic").plug("openapi")
+            self.route.plug("pydantic").plug("openapi")
 
-        @route("api")
+        @route()
         def get_data(self) -> dict[str, int]:
             """Return data."""
             return {"a": 1}
 
     svc = Svc()
-    entry = svc.api._entries["get_data"]
+    entry = svc.route._entries["get_data"]
     original_schema = entry.metadata["pydantic"]["response_schema"].copy()
 
     # Call nodes(mode="openapi") twice
-    svc.api.nodes(mode="openapi")
-    svc.api.nodes(mode="openapi")
+    svc.route.nodes(mode="openapi")
+    svc.route.nodes(mode="openapi")
 
     # Original schema in metadata should be unchanged
     assert entry.metadata["pydantic"]["response_schema"] == original_schema

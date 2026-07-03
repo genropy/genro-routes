@@ -16,15 +16,15 @@
 
 # Import to trigger plugin registration
 import genro_routes.plugins.logging  # noqa: F401
-from genro_routes import RoutingClass, Router, route
+from genro_routes import RoutingClass, route
 
 
 class LoggedService(RoutingClass):
     def __init__(self):
         self.calls = 0
-        self.routes = Router(self, name="routes").plug("logging")
+        self.route.plug("logging")
 
-    @route("routes")
+    @route()
     def hello(self):
         self.calls += 1
         return "ok"
@@ -47,9 +47,9 @@ def test_logging_plugin_runs_per_instance(monkeypatch):
             records.append(message)
 
     svc = LoggedService()
-    svc.routes.logging._logger = DummyLogger()  # type: ignore[attr-defined]
+    svc.route.logging._logger = DummyLogger()  # type: ignore[attr-defined]
 
-    assert svc.routes.node("hello")() == "ok"
+    assert svc.route.node("hello")() == "ok"
     assert svc.calls == 1
     assert records and "hello" in records[0]
 
@@ -69,16 +69,16 @@ def test_logging_plugin_respects_route_plugin_flags():
 
     class Service(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("logging")
+            self.route.plug("logging")
             # Inject dummy logger so we can see if logging fires.
-            self.api.logging._logger = DummyLogger()  # type: ignore[attr-defined]
+            self.route.logging._logger = DummyLogger()  # type: ignore[attr-defined]
 
-        @route("api", logging_flags="enabled:off")
+        @route(logging_flags="enabled:off")
         def hello(self):
             return "hi"
 
     svc = Service()
-    svc.api.node("hello")()
+    svc.route.node("hello")()
     assert records == []
 
 
@@ -94,17 +94,17 @@ def test_logging_plugin_respects_runtime_config_toggle():
 
     class Service(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("logging")
-            self.api.logging._logger = DummyLogger()  # type: ignore[attr-defined]
+            self.route.plug("logging")
+            self.route.logging._logger = DummyLogger()  # type: ignore[attr-defined]
 
-        @route("api")
+        @route()
         def ping(self):
             return "pong"
 
     svc = Service()
     # Disable "before" and keep "after" via flags.
-    svc.api.logging.configure(flags="before:off,after:on")
-    svc.api.node("ping")()
+    svc.route.logging.configure(flags="before:off,after:on")
+    svc.route.node("ping")()
     # Check format: "ping end (X.XX ms)" - timing varies so we check pattern
     assert len(records) == 1
     assert records[0].startswith("ping end (") and records[0].endswith(" ms)")
@@ -122,15 +122,15 @@ def test_logging_plugin_print_sink_overrides_logger(capsys):
 
     class Service(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("logging")
-            self.api.logging._logger = DummyLogger()  # type: ignore[attr-defined]
+            self.route.plug("logging")
+            self.route.logging._logger = DummyLogger()  # type: ignore[attr-defined]
 
-        @route("api", logging_log=False, logging_print=True)
+        @route(logging_log=False, logging_print=True)
         def hello(self):
             return "hi"
 
     svc = Service()
-    svc.api.node("hello")()
+    svc.route.node("hello")()
     # Should bypass logger and print instead.
     captured = capsys.readouterr()
     assert records == []
@@ -150,25 +150,25 @@ def test_configure_enabled_false_disables_plugin():
 
     class Service(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("logging")
-            self.api.logging._logger = DummyLogger()  # type: ignore[attr-defined]
+            self.route.plug("logging")
+            self.route.logging._logger = DummyLogger()  # type: ignore[attr-defined]
 
-        @route("api")
+        @route()
         def hello(self):
             return "hi"
 
     svc = Service()
 
     # First call - logging should fire
-    svc.api.node("hello")()
+    svc.route.node("hello")()
     assert len(records) == 2  # start + end
 
     # Disable via configure
-    svc.api.logging.configure(enabled=False)
+    svc.route.logging.configure(enabled=False)
 
     # Second call - logging should be disabled
     records.clear()
-    svc.api.node("hello")()
+    svc.route.node("hello")()
     assert records == []  # No logging because plugin is disabled
 
 
@@ -185,28 +185,28 @@ def test_configure_enabled_per_handler():
 
     class Service(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("logging")
-            self.api.logging._logger = DummyLogger()  # type: ignore[attr-defined]
+            self.route.plug("logging")
+            self.route.logging._logger = DummyLogger()  # type: ignore[attr-defined]
 
-        @route("api")
+        @route()
         def hello(self):
             return "hi"
 
-        @route("api")
+        @route()
         def world(self):
             return "world"
 
     svc = Service()
 
     # Disable only 'hello' via configure
-    svc.api.logging.configure(_target="hello", enabled=False)
+    svc.route.logging.configure(_target="hello", enabled=False)
 
     # Call hello - should NOT log
-    svc.api.node("hello")()
+    svc.route.node("hello")()
     assert records == []
 
     # Call world - SHOULD log
-    svc.api.node("world")()
+    svc.route.node("world")()
     assert len(records) == 2  # start + end
 
 
@@ -223,20 +223,20 @@ def test_set_plugin_enabled_overrides_configure():
 
     class Service(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("logging")
-            self.api.logging._logger = DummyLogger()  # type: ignore[attr-defined]
+            self.route.plug("logging")
+            self.route.logging._logger = DummyLogger()  # type: ignore[attr-defined]
 
-        @route("api")
+        @route()
         def hello(self):
             return "hi"
 
     svc = Service()
 
     # Disable via configure (config)
-    svc.api.logging.configure(enabled=False)
+    svc.route.logging.configure(enabled=False)
 
     # But re-enable via set_plugin_enabled (locals) - should take precedence
-    svc.api.set_plugin_enabled("hello", "logging", True)
+    svc.route.set_plugin_enabled("hello", "logging", True)
 
-    svc.api.node("hello")()
+    svc.route.node("hello")()
     assert len(records) == 2  # Logging fires because locals override config

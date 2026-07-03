@@ -22,25 +22,25 @@ Example::
 
     class MyService(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("pydantic")
+            self.route.plug("pydantic")
 
-        @route("api")
+        @route()
         def get_user(self, user_id: int) -> UserResponse:
             return {"id": user_id, "name": "alice"}
 
     svc = MyService()
-    svc.api.node("get_user")(user_id=123)  # OK, validated
-    svc.api.node("get_user")(user_id="not_an_int")  # ValidationError
+    svc.route.node("get_user")(user_id=123)  # OK, validated
+    svc.route.node("get_user")(user_id="not_an_int")  # ValidationError
 
     # Response schema available in metadata
-    entry = svc.api._entries["get_user"]
+    entry = svc.route._entries["get_user"]
     entry.metadata["pydantic"]["response_schema"]
     # {"type": "object", "properties": {"id": ..., "name": ...}, ...}
 
 Configuration::
 
     # Disable validation for a specific handler
-    @route("api", pydantic_disabled=True)
+    @route(pydantic_disabled=True)
     def unvalidated_handler(self):
         pass
 """
@@ -91,22 +91,22 @@ class PydanticPlugin(BasePlugin):
 
             class MyService(RoutingClass):
                 def __init__(self):
-                    self.api = Router(self, name="api").plug("pydantic")
+                    self.route.plug("pydantic")
 
-                @route("api")
+                @route()
                 def get_user(self, user_id: int) -> dict[str, int]:
                     return {"id": user_id}
 
             svc = MyService()
-            svc.api.node("get_user")(user_id=123)           # OK
-            svc.api.node("get_user")(user_id="not_an_int")  # ValidationError
+            svc.route.node("get_user")(user_id=123)           # OK
+            svc.route.node("get_user")(user_id="not_an_int")  # ValidationError
 
             # Response schema in metadata
-            svc.api._entries["get_user"].metadata["pydantic"]["response_schema"]
+            svc.route._entries["get_user"].metadata["pydantic"]["response_schema"]
 
         Disable validation::
 
-            @route("api", pydantic_disabled=True)
+            @route(pydantic_disabled=True)
             def unvalidated(self, data):
                 return data  # no validation
     """

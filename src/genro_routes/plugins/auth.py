@@ -8,25 +8,25 @@ authorization rules defined on endpoints against user tags.
 
 Usage::
 
-    from genro_routes import Router, RoutingClass, route
+    from genro_routes import RoutingClass, route
 
     class MyAPI(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api")
+            self.route.plug("auth")
 
-        @route("api", auth_rule="admin&internal")
+        @route(auth_rule="admin&internal")
         def admin_action(self):
             return "admin only"
 
-        @route("api", auth_rule="public")
+        @route(auth_rule="public")
         def public_action(self):
             return "public"
 
     # Query with user's tags (comma-separated list of tags the user has)
     obj = MyAPI()
-    obj.api.node("admin_action", auth_tags="admin,internal")  # user has both tags
-    obj.api.nodes(auth_tags="admin")           # user has admin tag
-    obj.api.nodes(auth_tags="admin,public")    # user has admin AND public tags
+    obj.route.node("admin_action", auth_tags="admin,internal")  # user has both tags
+    obj.route.nodes(auth_tags="admin")           # user has admin tag
+    obj.route.nodes(auth_tags="admin,public")    # user has admin AND public tags
 
 Rule syntax (on entry auth_rule):
     - ``|`` : OR (user must have at least one)
@@ -79,10 +79,10 @@ class AuthPlugin(BasePlugin):
     Example:
         Entry definition::
 
-            @route("api", auth_rule="admin|manager")  # OR
+            @route(auth_rule="admin|manager")  # OR
             def sensitive_action(self): ...
 
-            @route("api", auth_rule="admin&!guest")   # AND + NOT
+            @route(auth_rule="admin&!guest")   # AND + NOT
             def admin_only(self): ...
 
         Query with user tags::

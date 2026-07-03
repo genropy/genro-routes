@@ -17,14 +17,14 @@ Example::
 
     class MyService(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("logging")
+            self.route.plug("logging")
 
-        @route("api")
+        @route()
         def hello(self):
             return "Hello!"
 
     # Or configure per-handler:
-    @route("api", logging_after=False)
+    @route(logging_after=False)
     def fast_handler(self):
         return "fast"
 """
@@ -66,22 +66,22 @@ class LoggingPlugin(BasePlugin):
 
             class MyService(RoutingClass):
                 def __init__(self):
-                    self.api = Router(self, name="api").plug("logging")
+                    self.route.plug("logging")
 
-                @route("api")
+                @route()
                 def hello(self):
                     return "Hello!"
 
         Per-handler configuration::
 
-            @route("api", logging_after=False)  # disable end message
+            @route(logging_after=False)  # disable end message
             def fast_handler(self):
                 return "fast"
 
         Runtime configuration::
 
-            svc.api.logging.configure(before=False)  # disable globally
-            svc.api.logging.configure(_target="slow_handler", after=True)
+            svc.route.logging.configure(before=False)  # disable globally
+            svc.route.logging.configure(_target="slow_handler", after=True)
     """
 
     plugin_code = "logging"

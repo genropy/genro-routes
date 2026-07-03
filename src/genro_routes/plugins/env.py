@@ -32,21 +32,21 @@ Usage::
 
     class MyAPI(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("env")
+            self.route.plug("env")
             self.capabilities = MyCapabilities()
 
-        @route("api", env_requires="pyjwt&redis")
+        @route(env_requires="pyjwt&redis")
         def create_jwt(self):
             return "jwt created"
 
-        @route("api", env_requires="paypal|stripe")
+        @route(env_requires="paypal|stripe")
         def process_payment(self):
             return "payment processed"
 
     # Query with additional request capabilities
     obj = MyAPI()
-    obj.api.node("create_jwt", env_capabilities="pyjwt")  # OK: pyjwt from request + redis from instance
-    obj.api.node("create_jwt")  # not_available: only redis from instance, missing pyjwt
+    obj.route.node("create_jwt", env_capabilities="pyjwt")  # OK: pyjwt from request + redis from instance
+    obj.route.node("create_jwt")  # not_available: only redis from instance, missing pyjwt
 
     # Dynamic capabilities via CapabilitiesSet
     class PaymentCapabilities(CapabilitiesSet):
@@ -63,7 +63,7 @@ Usage::
 
     class PaymentService(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("env")
+            self.route.plug("env")
             self._stripe_configured = True
             self._paypal_configured = False
             self.capabilities = PaymentCapabilities(self)
@@ -118,10 +118,10 @@ class EnvPlugin(BasePlugin):
     Example:
         Entry definition::
 
-            @route("api", env_requires="redis&pyjwt")  # requires both
+            @route(env_requires="redis&pyjwt")  # requires both
             def create_session(self): ...
 
-            @route("api", env_requires="stripe|paypal")  # requires one
+            @route(env_requires="stripe|paypal")  # requires one
             def process_payment(self): ...
 
         Dynamic capabilities via CapabilitiesSet::
@@ -133,7 +133,7 @@ class EnvPlugin(BasePlugin):
 
             class MyService(RoutingClass):
                 def __init__(self):
-                    self.api = Router(self, name="api").plug("env")
+                    self.route.plug("env")
                     self.capabilities = ServerCaps()
 
         Query with additional request capabilities::
@@ -279,7 +279,7 @@ class CapabilitiesSet:
 
         class MyService(RoutingClass):
             def __init__(self):
-                self.api = Router(self, name="api").plug("env")
+                self.route.plug("env")
                 self.capabilities = ServerCapabilities()
     """
 

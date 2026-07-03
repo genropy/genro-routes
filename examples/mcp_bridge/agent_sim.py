@@ -2,21 +2,21 @@ from __future__ import annotations
 import os
 import json
 import anthropic
-from genro_routes import Router, RoutingClass, route
+from genro_routes import RoutingClass, route
 from bridge import GenroMCPBridge
 
 # 1. Define the Services (Tools for the LLM)
 class MathService(RoutingClass):
     def __init__(self):
-        self.router = Router(self, name="math").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("math")
+    @route()
     def add(self, a: int, b: int) -> int:
         """Adds two integers together."""
         print(f"[EXECUTING] math/add({a}, {b})")
         return a + b
 
-    @route("math")
+    @route()
     def multiply(self, a: float, b: float) -> float:
         """Multiplies two floating point numbers."""
         print(f"[EXECUTING] math/multiply({a}, {b})")
@@ -24,7 +24,6 @@ class MathService(RoutingClass):
 
 class RootApp(RoutingClass):
     def __init__(self):
-        self.api = Router(self, name="api")
         self.math = MathService()
         self.attach_instance(self.math, name="math")
 
@@ -38,7 +37,7 @@ def run_agent_demo():
 
     client = anthropic.Anthropic(api_key=api_key)
     app = RootApp()
-    bridge = GenroMCPBridge(app.api)
+    bridge = GenroMCPBridge(app.route)
     
     # Get tools from Genro-Routes
     mcp_tools = bridge.get_mcp_tools()
@@ -81,7 +80,7 @@ def run_agent_demo():
                 genro_path = tool_map[tool_name]
                 print(f"[AGENT] Calling {genro_path} with {tool_input}")
                 
-                result = app.api.node(genro_path)(**tool_input)
+                result = app.route.node(genro_path)(**tool_input)
                 
                 tool_results.append({
                     "type": "tool_result",

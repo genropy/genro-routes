@@ -28,21 +28,21 @@ Example::
 
     class MyService(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("openapi").plug("auth")
+            self.route.plug("openapi").plug("auth")
 
-        @route("api", openapi_method="delete")
+        @route(openapi_method="delete")
         def delete_item(self, item_id: int) -> dict:
             return {"deleted": item_id}
 
-        @route("api", openapi_tags=["users"], openapi_deprecated=True)
+        @route(openapi_tags=["users"], openapi_deprecated=True)
         def old_list(self) -> list:
             return []
 
-        @route("api", auth_rule="admin")
+        @route(auth_rule="admin")
         def admin_only(self) -> dict:
             return {}
 
-        @route("api", openapi_security=[])
+        @route(openapi_security=[])
         def force_public(self) -> dict:
             return {}
 """
@@ -91,13 +91,13 @@ class OpenAPIPlugin(BasePlugin):
     Example:
         Override HTTP method::
 
-            @route("api", openapi_method="delete")
+            @route(openapi_method="delete")
             def remove_item(self, item_id: int) -> dict:
                 return {"deleted": item_id}
 
         Add tags and mark deprecated::
 
-            @route("api", openapi_tags=["users", "admin"], openapi_deprecated=True)
+            @route(openapi_tags=["users", "admin"], openapi_deprecated=True)
             def old_list_users(self) -> list:
                 return []
 

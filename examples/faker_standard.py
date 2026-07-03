@@ -1,7 +1,6 @@
 from __future__ import annotations
-from typing import Any
 from faker import Faker
-from genro_routes import Router, RoutingClass, route
+from genro_routes import RoutingClass, route
 
 # -----------------------------------------------------------------------------
 # 1. Child routers focused on specific domains
@@ -11,14 +10,14 @@ class PersonService(RoutingClass):
     def __init__(self, fake: Faker):
         self.fake = fake
         # Plug the pydantic plugin for automatic validation
-        self.router = Router(self, name="person").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("person")
+    @route()
     def name(self) -> str:
         """Returns a full name."""
         return self.fake.name()
 
-    @route("person")
+    @route()
     def email(self, domain: str | None = None) -> str:
         """Returns an email address, optionally for a specific domain."""
         return self.fake.email(domain=domain)
@@ -26,9 +25,9 @@ class PersonService(RoutingClass):
 class AddressService(RoutingClass):
     def __init__(self, fake: Faker):
         self.fake = fake
-        self.router = Router(self, name="address").plug("pydantic")
+        self.route.plug("pydantic")
 
-    @route("address")
+    @route()
     def city(self) -> str:
         """Returns a city name."""
         return self.fake.city()
@@ -40,10 +39,7 @@ class AddressService(RoutingClass):
 class FakerService(RoutingClass):
     def __init__(self, locale: str = "en_US"):
         self.fake = Faker(locale=locale)
-        
-        # Main router
-        self.api = Router(self, name="api")
-        
+
         # Mount child services as branches of the main router
         self.person = PersonService(self.fake)
         self.address = AddressService(self.fake)
@@ -60,17 +56,17 @@ if __name__ == "__main__":
     service = FakerService()
 
     # 1. Access via hierarchical path
-    print(f"English Name: {service.api.node('person/name')()}")
+    print(f"English Name: {service.route.node('person/name')()}")
 
     # 2. Introspection (OpenAPI)
     # genro-routes automatically generates schema for all children
-    openapi = service.api.nodes(mode="openapi")
+    openapi = service.route.nodes(mode="openapi")
     print(f"Generated Endpoints: {list(openapi['paths'].keys())}")
 
     # 3. Automatic Pydantic Validation
     # If we pass a domain that is not a string, the pydantic plugin
     # intercepts the error before even calling Faker.
     try:
-        service.api.node('person/email')(domain=123)
+        service.route.node('person/email')(domain=123)
     except Exception as e:
         print(f"Validation failed as expected: {e}")

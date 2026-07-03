@@ -41,9 +41,9 @@ Example::
 
     class MyService(RoutingClass):
         def __init__(self):
-            self.api = Router(self, name="api").plug("logging")
+            self.route.plug("logging")
 
-        @route("api")
+        @route()
         def hello(self):
             return "Hello!"
 """

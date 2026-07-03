@@ -1,13 +1,21 @@
 """Genro Routes - Instance-scoped routing engine for Python.
 
 Public API surface providing hierarchical handler organization, per-instance
-plugin application, and complex service composition through descriptors.
+plugin application, and service composition by attaching instances. Every
+``RoutingClass`` owns exactly one ``Router``, exposed as the lazy ``route``
+property.
 
 Public exports:
-    - ``Router``: Main router class for binding methods to selectors
+    - ``Router``: Router class (created by RoutingClass, not by user code)
+    - ``RouterInterface``: Abstract interface shared by routers
     - ``RouterNode``: Wrapper returned by node() for handler access
-    - ``RoutingClass``: Mixin for classes that expose routers
+    - ``RoutingClass``: Mixin binding a class to its single router
+    - ``RoutingContext``: Execution context with parent-chain lookup
+    - ``Section``: Empty RoutingClass used as grouping node
     - ``route``: Decorator for marking methods as route handlers
+    - ``is_result_wrapper``: Predicate for ResultWrapper instances
+    - Exceptions: ``NotFound``, ``NotAuthorized``, ``NotAuthenticated``,
+      ``NotAvailable``
 
 Plugin registration happens lazily via ``import_module`` to avoid cycles.
 Built-in plugins (logging, pydantic, auth, env, openapi, channel) are
@@ -15,13 +23,10 @@ auto-registered on first import.
 
 Example::
 
-    from genro_routes import Router, RoutingClass, route
+    from genro_routes import RoutingClass, route
 
     class MyService(RoutingClass):
-        def __init__(self):
-            self.api = Router(self, name="api")
-
-        @route("api")
+        @route()
         def hello(self):
             return "Hello, World!"
 """
@@ -36,6 +41,7 @@ from .core import (
     RouterInterface,
     RoutingClass,
     RoutingContext,
+    Section,
     is_result_wrapper,
     route,
 )
@@ -58,6 +64,7 @@ __all__ = [
     "RouterNode",
     "RoutingClass",
     "RoutingContext",
+    "Section",
     "is_result_wrapper",
     "route",
     "NotFound",
