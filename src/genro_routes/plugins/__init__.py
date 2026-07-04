@@ -6,8 +6,11 @@ Available Plugins:
     - ``auth``: Tag-based authorization (AuthPlugin)
     - ``env``: Environment capability-based filtering (EnvPlugin)
     - ``logging``: Handler call logging with timing (LoggingPlugin)
-    - ``pydantic``: Input validation via type hints (PydanticPlugin)
-    - ``openapi``: OpenAPI schema control (OpenAPIPlugin)
+    - ``pydantic``: Input validation and response schema (PydanticPlugin)
+    - ``channel``: Channel-based visibility (ChannelPlugin)
+
+Dialect plugins (OpenAPI, MCP) live in the transport layer (e.g. genro-asgi),
+not here: they read the neutral ``nodes()`` output rather than the core.
 
 Plugin Registration:
     Plugins self-register when imported. The main ``genro_routes`` package

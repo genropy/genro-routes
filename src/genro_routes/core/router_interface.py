@@ -57,27 +57,22 @@ class RouterInterface(ABC):
         self,
         basepath: str | None = None,
         lazy: bool = False,
-        mode: str | None = None,
         pattern: str | None = None,
         forbidden: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Return introspection data for this router.
+        """Return dialect-neutral introspection data for this router.
 
         Args:
             basepath: Optional path to start from.
             lazy: If True, child routers returned as references.
-            mode: Output format mode (e.g., "openapi"). If None, returns
-                  standard introspection format.
             pattern: Regex pattern to filter entry names.
             forbidden: If True, include forbidden entries with reason.
             **kwargs: Implementation-specific filters.
 
         Returns:
-            Dict with router info, entries, and child routers.
+            Dict with router info, entries (each optionally carrying a
+            ``result`` block), and child routers. Dialect translators
+            (OpenAPI, MCP) read this output; they are not part of the core.
         """
         ...
-
-
-if __name__ == "__main__":
-    pass

@@ -80,7 +80,6 @@ class RouterNode:
         "_partial",
         "_partial_kwargs",
         "_extra_args",
-        "openapi",
     )
 
     def __init__(
@@ -119,7 +118,6 @@ class RouterNode:
             self._exceptions.update(errors)
 
         self.error: str | None = None
-        self.openapi: dict[str, Any] | None = None
 
         self.path: str | None = path
         self._partial: list[str] = partial if partial is not None else []

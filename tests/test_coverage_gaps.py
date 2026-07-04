@@ -14,9 +14,6 @@
 
 """Tests to cover remaining coverage gaps."""
 
-import sys
-from typing import TypedDict
-
 import pytest
 from pydantic import BaseModel
 
@@ -35,28 +32,6 @@ from genro_routes.exceptions import (
     NotFound,
 )
 from genro_routes.plugins._base_plugin import BasePlugin
-from genro_routes.plugins.openapi import OpenAPITranslator
-
-# TypedDict classes at module level for cross-Python-version compatibility
-# (pydantic handles nested TypedDict differently when defined inside functions
-# on Python <3.12)
-
-class _Address(TypedDict):
-    street: str
-    city: str
-
-
-class _Person(TypedDict):
-    name: str
-    address: _Address
-
-
-class _Inner(TypedDict):
-    value: int
-
-
-class _Outer(TypedDict):
-    inner: _Inner
 
 # --- base_router.py - _describe_entry_extra returns extra ---
 
@@ -743,120 +718,6 @@ def test_auth_deny_reason_router_empty():
     assert result == ""
 
 
-# --- openapi.py: edge cases ---
-
-
-def test_openapi_translator_schema_to_parameters_empty():
-    """Test schema_to_parameters with empty schema."""
-
-    result = OpenAPITranslator.schema_to_parameters({})
-    assert result == []
-
-    result = OpenAPITranslator.schema_to_parameters({"properties": {}})
-    assert result == []
-
-
-def test_openapi_translator_entry_without_callable():
-    """Test entry_info_to_openapi when callable is None."""
-
-    entry_info = {
-        "callable": None,
-        "doc": "Some documentation",
-    }
-    path_item, defs = OpenAPITranslator.entry_info_to_openapi("test_entry", entry_info)
-
-    # Should default to POST when no callable
-    assert "post" in path_item
-    assert path_item["post"]["operationId"] == "test_entry"
-    assert defs == {}  # No $defs when no callable
-
-
-def test_openapi_translator_create_model_no_fields():
-    """Test create_pydantic_model_for_func returns None when no fields."""
-
-    def no_params() -> str:
-        return "ok"
-
-    # No params except return → no model
-    result = OpenAPITranslator.create_pydantic_model_for_func(no_params)
-    assert result is None
-
-
-def test_openapi_h_openapi_child_included():
-    """Test h_openapi includes child routers with metadata."""
-
-    nodes_data = {
-        "entries": {},
-        "routers": {
-            "child": {
-                "entries": {},
-                "routers": {},
-                "description": "A child router",
-            }
-        },
-    }
-    result = OpenAPITranslator.translate_h_openapi(nodes_data, lazy=False)
-
-    # Child is included (has description metadata)
-    assert "routers" in result
-    assert "child" in result["routers"]
-    assert result["routers"]["child"]["description"] == "A child router"
-
-
-@pytest.mark.skipif(
-    sys.version_info < (3, 12),
-    reason="TypedDict type hints not resolved by pydantic on Python <3.12",
-)
-def test_openapi_nested_typeddict_defs_at_root():
-    """Test that nested TypedDict $defs are collected at the root level.
-
-    When a return type uses nested TypedDict, pydantic generates $defs
-    for the inner types. These should be collected at the OpenAPI doc root,
-    not embedded in each response schema.
-
-    Fixes: https://github.com/softwellsrl/genro-routes/issues/15
-    """
-
-    class Svc(RoutingClass):
-        @route()
-        def get_person(self) -> _Person:
-            return {"name": "John", "address": {"street": "123 Main", "city": "NYC"}}
-
-    svc = Svc()
-    nodes = svc.route.nodes()
-    result = OpenAPITranslator.translate_openapi(nodes)
-
-    # $defs should be at the root level
-    assert "$defs" in result, "Expected $defs at root level for nested TypedDict"
-    assert "_Address" in result["$defs"], "Expected _Address in $defs"
-
-    # Response schema should reference $defs, not embed them
-    path_item = result["paths"]["/get_person"]
-    response_schema = path_item["get"]["responses"]["200"]["content"]["application/json"]["schema"]
-    assert "$defs" not in response_schema, "$defs should not be in response schema"
-
-
-@pytest.mark.skipif(
-    sys.version_info < (3, 12),
-    reason="TypedDict type hints not resolved by pydantic on Python <3.12",
-)
-def test_openapi_nested_typeddict_h_openapi_defs_at_root():
-    """Test that h_openapi also collects $defs at root level."""
-
-    class Svc(RoutingClass):
-        @route()
-        def get_outer(self) -> _Outer:
-            return {"inner": {"value": 42}}
-
-    svc = Svc()
-    nodes = svc.route.nodes()
-    result = OpenAPITranslator.translate_h_openapi(nodes)
-
-    # $defs should be at the root level
-    assert "$defs" in result, "Expected $defs at root level for nested TypedDict"
-    assert "_Inner" in result["$defs"], "Expected _Inner in $defs"
-
-
 # --- base_router.py: additional coverage ---
 
 
@@ -1380,47 +1241,6 @@ def test_detach_instance_cleans_plugin_children():
     assert not any(r.instance is parent.child for r in parent.route._plugin_children["logging"])
 
 
-# --- base_router.py - nodes with basepath and unknown mode ---
-
-
-def test_nodes_basepath_with_unknown_mode_raises():
-    """Test nodes() with basepath and unknown mode raises ValueError."""
-
-    class Child(RoutingClass):
-        @route()
-        def handler(self):
-            return "ok"
-
-    class Parent(RoutingClass):
-        def __init__(self):
-            self.child = Child()
-            self.attach_instance(self.child, name="child")
-
-    parent = Parent()
-    with pytest.raises(ValueError, match="Unknown mode"):
-        parent.route.nodes(basepath="child", mode="invalid_mode")
-
-
-# --- base_router.py - node() with openapi=True but entry is None ---
-
-
-def test_node_openapi_with_not_found_entry():
-    """Test node() with openapi=True when entry doesn't exist."""
-
-    class Svc(RoutingClass):
-        @route()
-        def handler(self):
-            return "ok"
-
-    svc = Svc()
-    # Request non-existent entry with openapi=True
-    node = svc.route.node("nonexistent", openapi=True)
-
-    # openapi should not be populated when entry is None
-    assert node.error == "not_found"
-    assert node.openapi is None
-
-
 # --- router.py - _get_plugin_bucket initializing _all_ ---
 
 
@@ -1692,32 +1512,6 @@ def test_bind_when_already_bound():
     # Call _bind directly - should return early (no error, no-op)
     api._bind()
     assert api._bound is True
-
-
-# --- base_router.py - node() with openapi=True and existing entry ---
-
-
-def test_node_openapi_with_existing_entry():
-    """Test node() with openapi=True when entry exists.
-
-    Covers openapi population when entry is not None.
-    """
-
-    class Svc(RoutingClass):
-        @route()
-        def handler(self, value: int) -> str:
-            """A documented handler."""
-            return str(value)
-
-    svc = Svc()
-    # Request existing entry with openapi=True
-    node = svc.route.node("handler", openapi=True)
-
-    # openapi should be populated when entry exists
-    assert node.error is None
-    assert node.openapi is not None
-    # Should have operation info
-    assert "operationId" in str(node.openapi) or node.openapi.get("get") or node.openapi.get("post")
 
 
 # --- router.py - is_plugin_enabled returns True when no enabled config ---

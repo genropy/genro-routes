@@ -18,8 +18,9 @@ Public exports:
       ``NotAvailable``
 
 Plugin registration happens lazily via ``import_module`` to avoid cycles.
-Built-in plugins (logging, pydantic, auth, env, openapi, channel) are
-auto-registered on first import.
+Built-in plugins (logging, pydantic, auth, env, channel) are
+auto-registered on first import. Dialect layers (OpenAPI, MCP) live in the
+transport packages (e.g. genro-asgi) and read the neutral ``nodes()`` output.
 
 Example::
 
@@ -54,7 +55,7 @@ from .exceptions import (
 )
 
 # Import plugins to trigger auto-registration (lazy to avoid cycles)
-for _plugin in ("logging", "pydantic", "auth", "env", "openapi", "channel"):
+for _plugin in ("logging", "pydantic", "auth", "env", "channel"):
     import_module(f"{__name__}.plugins.{_plugin}")
 del _plugin
 
