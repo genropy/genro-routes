@@ -181,12 +181,26 @@ class PydanticPlugin(BasePlugin):
             request_schema = model.model_json_schema()
             props = request_schema.get("properties", {})
             pydantic_meta["request_schema"] = request_schema
+        # fields is the complete parameter description, in declaration order,
+        # including the var-parameters (*args -> var_positional, **kwargs ->
+        # var_keyword) so a consumer knows the handler accepts arbitrary
+        # positional/keyword arguments without re-inspecting the callable.
+        var_kinds = (
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        )
         param_fields = []
         for param_name, param in sig.parameters.items():
-            if param.kind in (
-                inspect.Parameter.VAR_POSITIONAL,
-                inspect.Parameter.VAR_KEYWORD,
-            ):
+            if param.kind in var_kinds:
+                param_fields.append(
+                    {
+                        "name": param_name,
+                        "schema": None,
+                        "required": False,
+                        "default": None,
+                        "kind": param.kind.name.lower(),
+                    }
+                )
                 continue
             required = param.default is inspect.Parameter.empty
             param_fields.append(
