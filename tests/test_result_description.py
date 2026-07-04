@@ -10,12 +10,12 @@ only when a return schema and/or a media type exist.
 
 from __future__ import annotations
 
-from typing import TypedDict
+from pydantic import BaseModel
 
 from genro_routes import RoutingClass, route
 
 
-class _Row(TypedDict):
+class _Row(BaseModel):
     id: int
     name: str
 
@@ -72,9 +72,10 @@ def test_list_return_schema():
 def test_typed_list_return_schema_has_defs():
     schema = _entries()["typed_rows"]["result"]["schema"]
     assert schema["type"] == "array"
-    # pydantic emits $defs inline for the TypedDict item
+    # pydantic emits $defs inline for the model item, referenced from items
     assert "$defs" in schema
     assert "_Row" in schema["$defs"]
+    assert "$ref" in schema["items"]
 
 
 def test_union_return_schema_is_anyof():
