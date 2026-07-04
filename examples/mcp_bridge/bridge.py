@@ -24,21 +24,20 @@ class GenroMCPBridge:
         entries = nodes.get("entries", {})
         for name, info in entries.items():
             tool_name = f"{path_prefix}{name}"
-            metadata = info.get("metadata", {})
-            pydantic_meta = metadata.get("pydantic", {})
-            model = pydantic_meta.get("model")
 
-            # Build MCP tool definition
+            # Build MCP tool definition. Both schemas come from the neutral
+            # node blocks (params/result), fetched once by genro-routes; the
+            # bridge never re-inspects the handler callable.
             tool = {
                 "name": tool_name.replace("/", "_"), # MCP likes flat names with underscores
                 "description": info.get("doc", "No description provided"),
-                "inputSchema": self._get_schema_from_model(model),
+                "inputSchema": self._input_schema(info),
             }
 
             # Add response schema if available
-            response_schema = pydantic_meta.get("response_schema")
-            if response_schema:
-                tool["outputSchema"] = response_schema
+            output_schema = (info.get("result") or {}).get("schema")
+            if output_schema:
+                tool["outputSchema"] = output_schema
 
             tools.append(tool)
 
@@ -49,10 +48,11 @@ class GenroMCPBridge:
 
         return tools
 
-    def _get_schema_from_model(self, model: Any) -> dict[str, Any]:
-        """Extracts JSON Schema from a Pydantic model (if available)."""
-        if model and hasattr(model, "model_json_schema"):
-            return model.model_json_schema()
+    def _input_schema(self, info: dict[str, Any]) -> dict[str, Any]:
+        """Extract the input JSON Schema from the neutral params block."""
+        schema = (info.get("params") or {}).get("schema")
+        if schema:
+            return schema
         return {
             "type": "object",
             "properties": {},

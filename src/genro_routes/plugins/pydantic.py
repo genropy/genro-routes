@@ -173,6 +173,33 @@ class PydanticPlugin(BasePlugin):
 
             pydantic_meta["model"] = create_model(f"{func.__name__}_Model", **fields)  # type: ignore
 
+        # Cache the neutral input-params description once (read by nodes()/node().
+        # params). The heavy model_json_schema() must never run per-call.
+        model = pydantic_meta.get("model")
+        props: dict[str, Any] = {}
+        if model is not None:
+            request_schema = model.model_json_schema()
+            props = request_schema.get("properties", {})
+            pydantic_meta["request_schema"] = request_schema
+        param_fields = []
+        for param_name, param in sig.parameters.items():
+            if param.kind in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                continue
+            required = param.default is inspect.Parameter.empty
+            param_fields.append(
+                {
+                    "name": param_name,
+                    "schema": props.get(param_name),
+                    "required": required,
+                    "default": None if required else param.default,
+                    "kind": param.kind.name.lower(),
+                }
+            )
+        pydantic_meta["param_fields"] = param_fields
+
         entry.metadata["pydantic"] = pydantic_meta
 
     def wrap_handler(self, route: Router, entry: MethodEntry, call_next: Callable):
