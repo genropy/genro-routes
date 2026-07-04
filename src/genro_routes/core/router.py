@@ -552,6 +552,9 @@ class Router(BaseRouter):
         result = self._describe_result(entry)
         if result:
             extra["result"] = result
+        params = self._describe_params(entry)
+        if params:
+            extra["params"] = params
         return extra
 
     def _describe_result(self, entry: MethodEntry) -> dict[str, Any]:
@@ -571,3 +574,26 @@ class Router(BaseRouter):
         if schema is None and media_type is None:
             return {}
         return {"schema": schema, "media_type": media_type}
+
+    def _describe_params(self, entry: MethodEntry) -> dict[str, Any]:
+        """Build the dialect-neutral input-params block for a handler.
+
+        Twin of the result block, for the input side: exposes the aggregate
+        input JSON Schema plus a per-parameter list (name, schema, required,
+        default, kind). Both are cached by the pydantic plugin at decoration
+        time; this only reads them, so nodes() never re-serializes a schema.
+        Present only when the pydantic plugin captured params for this entry.
+
+        Returns:
+            ``{"schema": <json schema | None>, "fields": [...],
+            "accepts_varargs": <bool>}`` when the plugin captured params,
+            else an empty dict.
+        """
+        pydantic_meta = entry.metadata.get("pydantic", {})
+        if "param_fields" not in pydantic_meta:
+            return {}
+        return {
+            "schema": pydantic_meta.get("request_schema"),
+            "fields": pydantic_meta["param_fields"],
+            "accepts_varargs": pydantic_meta.get("accepts_varargs", False),
+        }

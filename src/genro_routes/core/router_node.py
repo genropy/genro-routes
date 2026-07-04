@@ -149,6 +149,34 @@ class RouterNode:
             return {}
         return dict(self._entry.metadata.get("meta", {}))
 
+    @property
+    def params(self) -> dict[str, Any]:
+        """Return the neutral input-params block for this entry.
+
+        Twin of the nodes() ``params`` block: the input JSON Schema plus a
+        per-parameter list. Delegates to the router's ``_describe_params`` so
+        the two stay in sync. Empty dict if there is no entry or the router
+        has no plugin pipeline (e.g. a plain BaseRouter). Never touches func.
+        """
+        if self._entry is None:
+            return {}
+        describe = getattr(self._router, "_describe_params", None)
+        return describe(self._entry) if describe is not None else {}
+
+    def accepts(self, name: str) -> bool:
+        """Return True if the handler declares a parameter named ``name``.
+
+        Reads parameter names from the pydantic-captured signature; falls back
+        to inspecting func only when no signature info is available (no
+        pydantic plugin). Bound methods never expose ``self``.
+        """
+        if self._entry is None:
+            return False
+        sig = self._entry.metadata.get("pydantic", {}).get("signature")
+        if sig is None:
+            sig = inspect.signature(self._entry.func)
+        return name in sig.parameters
+
     def _assign_partial(self, entry: Any) -> bool:
         """Assign partial path values to kwargs and extra_args.
 
@@ -158,7 +186,8 @@ class RouterNode:
         if not self._partial:
             return True
 
-        sig = inspect.signature(entry.func)
+        pydantic_meta = entry.metadata.get("pydantic", {})
+        sig = pydantic_meta.get("signature") or inspect.signature(entry.func)
 
         param_names = [
             name
@@ -166,10 +195,12 @@ class RouterNode:
             if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
         ]
 
-        has_var_positional = any(
-            p.kind == inspect.Parameter.VAR_POSITIONAL
-            for p in sig.parameters.values()
-        )
+        has_var_positional = pydantic_meta.get("accepts_varargs")
+        if has_var_positional is None:
+            has_var_positional = any(
+                p.kind == inspect.Parameter.VAR_POSITIONAL
+                for p in sig.parameters.values()
+            )
 
         for i, value in enumerate(self._partial):
             if i < len(param_names):
