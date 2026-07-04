@@ -5,10 +5,11 @@
 
 The params block is the input-side twin of the result block. Per entry it
 exposes the aggregate input JSON Schema plus a per-parameter list (name,
-schema, required, default, kind) and an accepts_varargs flag. It is produced
-once by the pydantic plugin at decoration time and only read at runtime, so
-nodes()/node().params never re-serialize a schema. It is present only when the
-pydantic plugin captured params for the entry.
+schema, required, default, kind) in declaration order. fields is complete: it
+includes the var-parameters with kind var_positional (*args) and var_keyword
+(**kwargs). It is produced once by the pydantic plugin at decoration time and
+only read at runtime, so nodes()/node().params never re-serialize a schema. It
+is present only when the pydantic plugin captured params for the entry.
 """
 
 from __future__ import annotations
@@ -80,16 +81,26 @@ def test_unannotated_param_has_no_schema():
     assert "note" not in params["schema"]["properties"]
 
 
-def test_varargs_excluded_and_flagged():
+def test_var_parameters_included_with_kind():
     params = _entries()["mixed"]["params"]
-    names = {f["name"] for f in params["fields"]}
-    assert names == {"user_id", "note", "flag"}  # *tags / **opts excluded
-    assert params["accepts_varargs"] is True
+    # fields is complete and in declaration order, var-params included
+    ordered = [(f["name"], f["kind"]) for f in params["fields"]]
+    assert ordered == [
+        ("user_id", "positional_or_keyword"),
+        ("note", "positional_or_keyword"),
+        ("tags", "var_positional"),
+        ("flag", "keyword_only"),
+        ("opts", "var_keyword"),
+    ]
 
 
-def test_keyword_only_kind():
+def test_var_parameters_shape():
     params = _entries()["mixed"]["params"]
-    assert _field(params, "flag")["kind"] == "keyword_only"
+    for name in ("tags", "opts"):
+        field = _field(params, name)
+        assert field["schema"] is None
+        assert field["required"] is False
+        assert field["default"] is None
 
 
 def test_nested_model_param_has_defs():
@@ -111,7 +122,6 @@ def test_noargs_block_present_but_empty():
     params = _entries()["noargs"]["params"]
     assert params["fields"] == []
     assert params["schema"] is None
-    assert params["accepts_varargs"] is False
 
 
 def test_no_params_block_without_pydantic_plugin():

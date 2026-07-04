@@ -579,15 +579,19 @@ class Router(BaseRouter):
         """Build the dialect-neutral input-params block for a handler.
 
         Twin of the result block, for the input side: exposes the aggregate
-        input JSON Schema plus a per-parameter list (name, schema, required,
-        default, kind). Both are cached by the pydantic plugin at decoration
-        time; this only reads them, so nodes() never re-serializes a schema.
-        Present only when the pydantic plugin captured params for this entry.
+        input JSON Schema plus a per-parameter list. ``fields`` is the complete
+        parameter description in declaration order, each entry being
+        ``{name, schema, required, default, kind}``; the var-parameters are
+        included with kind ``var_positional`` (``*args``) and ``var_keyword``
+        (``**kwargs``), so a consumer knows the handler accepts arbitrary
+        arguments from ``fields`` alone. Both are cached by the pydantic plugin
+        at decoration time; this only reads them, so nodes() never
+        re-serializes a schema. Present only when the pydantic plugin captured
+        params for this entry.
 
         Returns:
-            ``{"schema": <json schema | None>, "fields": [...],
-            "accepts_varargs": <bool>}`` when the plugin captured params,
-            else an empty dict.
+            ``{"schema": <json schema | None>, "fields": [...]}`` when the
+            plugin captured params, else an empty dict.
         """
         pydantic_meta = entry.metadata.get("pydantic", {})
         if "param_fields" not in pydantic_meta:
@@ -595,5 +599,4 @@ class Router(BaseRouter):
         return {
             "schema": pydantic_meta.get("request_schema"),
             "fields": pydantic_meta["param_fields"],
-            "accepts_varargs": pydantic_meta.get("accepts_varargs", False),
         }
