@@ -16,9 +16,9 @@ The utility of `genro-routes` emerges when you look at the **system architecture
 *   **Pure Library**: You have no built-in way to track who is using it or to restrict access.
 *   **With Genro-Routes**: You can add the **Auth** plugin in seconds. Want to limit expensive operations (like generating huge QR codes) to `admin` users? Just add `auth_tags="admin"` to the method. You gain professional-grade access control without polluting your business logic.
 
-## 4. Automatic Documentation (OpenAPI)
+## 4. Automatic Documentation (dialect-neutral)
 *   **Pure Library**: To know what the library does, developers must read its source code or external documentation.
-*   **With Genro-Routes**: Calling `service.route.nodes(mode="openapi")` instantly generates technical documentation (Swagger/OpenAPI). Your colleagues will know exactly which methods are available and what parameters they require without ever seeing your Python code.
+*   **With Genro-Routes**: Calling `service.route.nodes()` yields a neutral description of every endpoint — including a `result` block with the return-type schema and media type. A transport dialect (OpenAPI/Swagger in genro-asgi, MCP, ...) translates that description into its own format. Your colleagues know exactly which methods are available and what they return without ever seeing your Python code.
 
 ## 5. Technical Decoupling (The Contract)
 If you decide to switch the underlying implementation (e.g., swapping `Pygments` for a faster Rust-based highlighter), you only change the internal code of your handler. For everyone else in the organization, the endpoint `api/highlighter/html` remains identical. **You have created a stable contract, not just a function call.**

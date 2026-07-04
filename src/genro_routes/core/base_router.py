@@ -70,12 +70,11 @@ Introspection
   filters. Returns dict with ``entries`` and ``routers`` keys only if non-empty.
   Output includes ``description`` (router's description) and ``owner_doc``
   (owner class docstring) for documentation purposes.
-
-Output modes
-------------
-- ``nodes(mode="openapi")`` returns flat OpenAPI format with all paths merged.
-- ``nodes(mode="h_openapi")`` returns hierarchical OpenAPI format preserving
-  the router tree structure with ``description`` and ``owner_doc`` at each level.
+- Each entry may carry a dialect-neutral ``result`` block
+  ``{"schema": <json schema | None>, "media_type": <str | None>}`` describing
+  the return type and declared media type. It is produced by the plugin-enabled
+  ``Router`` (from the pydantic ``response_schema`` and ``@route(media_type=...)``)
+  so OpenAPI/MCP translators read it instead of re-deriving the output.
 
 Hooks for subclasses
 --------------------
@@ -785,12 +784,16 @@ class BaseRouter(RouterInterface):
         self,
         basepath: str | None = None,
         lazy: bool = False,
-        mode: str | None = None,
         pattern: str | None = None,
         forbidden: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Return a tree of routers/entries/metadata respecting filters.
+
+        Output is dialect-neutral: each entry carries name/doc/metadata, plugin
+        config, and (when available) a ``result`` block ``{schema, media_type}``.
+        Dialect translators (OpenAPI, MCP) are readers of this tree and live in
+        the transport layer, not in the routing core.
 
         Args:
             basepath: Optional path to start from (e.g., "child/grandchild").
@@ -799,13 +802,6 @@ class BaseRouter(RouterInterface):
             lazy: If True, child routers are returned as router references
                   instead of recursively expanded. Use basepath to navigate
                   and expand specific children on demand.
-            mode: Output format mode. Supported modes:
-
-                  - None: Standard introspection format with full metadata.
-                  - "openapi": Flat OpenAPI format with all paths merged.
-                  - "h_openapi": Hierarchical OpenAPI format preserving
-                    the router tree structure.
-
             pattern: Optional regex pattern to filter entry names.
                      Only entries whose name matches the pattern are included.
                      Applied before plugin deny_reason() checks.
@@ -826,25 +822,11 @@ class BaseRouter(RouterInterface):
             - ``plugin_info``: Plugin configuration info
             - ``entries``: Dict of entry names to entry info (if any)
             - ``routers``: Dict of child names to child nodes (if any)
-
-            When mode is specified, output is translated to that format.
         """
         if basepath:
             router = self.router_at_path(basepath)
             if router:
-                # Get nodes from child router, then apply basepath prefix for openapi modes
-                child_nodes = router.nodes(lazy=lazy, mode=None, pattern=pattern, forbidden=forbidden, **kwargs)
-                if mode and child_nodes:
-                    from genro_routes.plugins.openapi import OpenAPITranslator
-
-                    translator = getattr(OpenAPITranslator, f"translate_{mode}", None)
-                    if translator is None:
-                        raise ValueError(f"Unknown mode: {mode}")
-                    # Prepend basepath to paths so they are absolute from root
-                    path_prefix = "/" + basepath.strip("/")
-                    basepath_result: dict[str, Any] = translator(child_nodes, lazy=lazy, path_prefix=path_prefix)
-                    return basepath_result
-                return child_nodes
+                return router.nodes(lazy=lazy, pattern=pattern, forbidden=forbidden, **kwargs)
             return {}
         # Compile pattern once if provided
         pattern_re = re.compile(pattern) if pattern else None
@@ -892,23 +874,12 @@ class BaseRouter(RouterInterface):
         if routers:
             result["routers"] = routers
 
-        # Translate to requested format if mode specified
-        if mode:
-            from genro_routes.plugins.openapi import OpenAPITranslator
-
-            translator = getattr(OpenAPITranslator, f"translate_{mode}", None)
-            if translator is None:
-                raise ValueError(f"Unknown mode: {mode}")
-            translated: dict[str, Any] = translator(result, lazy=lazy)
-            return translated
-
         return result
 
     def node(
         self,
         path: str,
         errors: dict[str, type[Exception]] | None = None,
-        openapi: bool = False,
         **kwargs: Any,
     ) -> RouterNode:
         """Return info about a single node (router or entry) at the given path.
@@ -941,7 +912,6 @@ class BaseRouter(RouterInterface):
                             'not_authorized': HTTPForbidden,
                         })
 
-            openapi: If True, populate the ``openapi`` attribute with OpenAPI info.
             **kwargs: Plugin-prefixed filter kwargs (e.g., auth_tags="x").
 
         Returns:
@@ -951,7 +921,6 @@ class BaseRouter(RouterInterface):
                 - ``error``: Error code (None if ok, else "not_found", "not_authorized", etc.)
                 - ``doc``: Entry docstring
                 - ``metadata``: Entry metadata dict
-                - ``openapi``: OpenAPI info dict (if ``openapi=True`` was passed)
 
             The RouterNode is callable::
 
@@ -966,12 +935,6 @@ class BaseRouter(RouterInterface):
 
         # Set error via _entry_invalid_reason (handles both missing entry and plugin checks)
         candidate.error = candidate._router._entry_invalid_reason(candidate._entry, **kwargs) or None
-
-        # Populate openapi if requested
-        if openapi and candidate._entry is not None:
-            from genro_routes.plugins.openapi import OpenAPITranslator
-
-            candidate.openapi = OpenAPITranslator.entry_to_openapi(candidate._entry)
 
         return candidate
 

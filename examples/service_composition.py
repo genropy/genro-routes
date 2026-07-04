@@ -39,7 +39,6 @@ if __name__ == "__main__":
     nodes = app.route.nodes()
     print(f"\nMain API contains {len(nodes['routers'])} child routers: {list(nodes['routers'].keys())}")
 
-    print("\nFull paths discovered:")
-    openapi = app.route.nodes(mode="openapi")
-    for path in openapi['paths']:
-        print(f" - {path}")
+    print("\nChild routers discovered:")
+    for child_name in nodes["routers"]:
+        print(f" - {child_name}")

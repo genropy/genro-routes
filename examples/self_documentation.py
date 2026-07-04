@@ -53,14 +53,12 @@ if __name__ == "__main__":
     inspector_info = nodes_info["routers"]["router_inspector"]
     print(f"Discovered entries in the inspector: {list(inspector_info['entries'].keys())}")
 
-    # We can see the OpenAPI schema of the Router class itself
-    print("\n2. Generating OpenAPI for the internal Router API:")
-    openapi = service.route.node("router_inspector/nodes")(mode="openapi")
-
-    print("\nAvailable internal 'Router' methods in OpenAPI:")
-    for path in openapi['paths']:
-        if "router_inspector" in path:
-            print(f" - {path}")
+    # We can introspect the internal Router API through itself
+    print("\n2. Inspecting the internal Router API:")
+    tree = service.route.node("router_inspector/nodes")()
+    print("\nAvailable internal 'Router' methods:")
+    for entry_name in tree.get("entries", {}):
+        print(f" - router_inspector/{entry_name}")
 
     print("\n--- Why this is powerful ---")
     print("This demonstrates that genro-routes can act as a management layer")
