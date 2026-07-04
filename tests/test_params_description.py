@@ -137,22 +137,3 @@ def test_node_params_empty_without_plugin():
             return None
 
     assert NoPlugin().route.node("handler").params == {}
-
-
-def test_node_accepts():
-    node = ParamsService().route.node("search")
-    assert node.accepts("user_id") is True
-    assert node.accepts("limit") is True
-    assert node.accepts("nope") is False
-    assert node.accepts("self") is False
-
-
-def test_node_accepts_without_plugin_falls_back():
-    class NoPlugin(RoutingClass):
-        @route()
-        def handler(self, item_id):
-            return None
-
-    node = NoPlugin().route.node("handler")
-    assert node.accepts("item_id") is True
-    assert node.accepts("nope") is False

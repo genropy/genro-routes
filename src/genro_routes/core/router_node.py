@@ -163,20 +163,6 @@ class RouterNode:
         describe = getattr(self._router, "_describe_params", None)
         return describe(self._entry) if describe is not None else {}
 
-    def accepts(self, name: str) -> bool:
-        """Return True if the handler declares a parameter named ``name``.
-
-        Reads parameter names from the pydantic-captured signature; falls back
-        to inspecting func only when no signature info is available (no
-        pydantic plugin). Bound methods never expose ``self``.
-        """
-        if self._entry is None:
-            return False
-        sig = self._entry.metadata.get("pydantic", {}).get("signature")
-        if sig is None:
-            sig = inspect.signature(self._entry.func)
-        return name in sig.parameters
-
     def _assign_partial(self, entry: Any) -> bool:
         """Assign partial path values to kwargs and extra_args.
 
