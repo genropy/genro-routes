@@ -60,10 +60,11 @@ if __name__ == "__main__":
     # 1. Access via hierarchical path
     print(f"English Name: {service.route.node('person/name')()}")
 
-    # 2. Introspection (OpenAPI)
-    # genro-routes automatically generates schema for all children
-    openapi = service.route.nodes(mode="openapi")
-    print(f"Generated Endpoints: {list(openapi['paths'].keys())}")
+    # 2. Introspection (neutral description)
+    # nodes() exposes each child router; a transport dialect (OpenAPI, MCP)
+    # translates this neutral tree into its own format.
+    nodes = service.route.nodes()
+    print(f"Child routers: {list(nodes.get('routers', {}).keys())}")
 
     # 3. Automatic Pydantic Validation
     # If we pass a domain that is not a string, the pydantic plugin
