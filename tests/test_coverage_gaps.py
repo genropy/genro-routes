@@ -1145,12 +1145,11 @@ def test_routing_class_result_wrapper_method():
         pass
 
     svc = Svc()
-    result = svc.result_wrapper("content", mime_type="application/json")
-
+    result = svc.result_wrapper("content", media_type="application/json")
 
     assert isinstance(result, ResultWrapper)
     assert result.value == "content"
-    assert result.metadata == {"mime_type": "application/json"}
+    assert result.metadata == {"media_type": "application/json"}
 
 
 def test_routing_class_ctx_property():

@@ -89,11 +89,11 @@ __all__ = ["RoutingClass", "Section", "ResultWrapper", "is_routing_class", "is_r
 class ResultWrapper:
     """Wrapper for handler results with additional metadata.
 
-    Allows handlers to return results with metadata (e.g., mime_type)
+    Allows handlers to return results with metadata (e.g., media_type)
     that the dispatcher can use when building the response.
 
     Usage in handlers:
-        return self.result_wrapper(content, mime_type="text/html")
+        return self.result_wrapper(content, media_type="text/html")
     """
 
     __slots__ = ("value", "metadata")

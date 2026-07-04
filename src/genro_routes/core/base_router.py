@@ -70,6 +70,11 @@ Introspection
   filters. Returns dict with ``entries`` and ``routers`` keys only if non-empty.
   Output includes ``description`` (router's description) and ``owner_doc``
   (owner class docstring) for documentation purposes.
+- Each entry may carry a dialect-neutral ``result`` block
+  ``{"schema": <json schema | None>, "media_type": <str | None>}`` describing
+  the return type and declared media type. It is produced by the plugin-enabled
+  ``Router`` (from the pydantic ``response_schema`` and ``@route(media_type=...)``)
+  so OpenAPI/MCP translators read it instead of re-deriving the output.
 
 Output modes
 ------------

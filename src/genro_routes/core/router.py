@@ -526,7 +526,8 @@ class Router(BaseRouter):
     def _describe_entry_extra(  # type: ignore[override]
         self, entry: MethodEntry, base_description: dict[str, Any]
     ) -> dict[str, Any]:
-        """Gather plugin config and metadata for a handler."""
+        """Gather plugin config, plugin metadata and the neutral result block."""
+        extra: dict[str, Any] = {}
         plugins_info: dict[str, dict[str, Any]] = {}
         for plugin in self._plugins:
             plugin_data: dict[str, Any] = {}
@@ -547,5 +548,26 @@ class Router(BaseRouter):
             if plugin_data:
                 plugins_info[plugin.name] = plugin_data
         if plugins_info:
-            return {"plugins": plugins_info}
-        return {}
+            extra["plugins"] = plugins_info
+        result = self._describe_result(entry)
+        if result:
+            extra["result"] = result
+        return extra
+
+    def _describe_result(self, entry: MethodEntry) -> dict[str, Any]:
+        """Build the dialect-neutral result block for a handler.
+
+        Combines the JSON Schema of the return type (produced by the pydantic
+        plugin at decoration time) with the declared result media type. The
+        block is present only when at least one is available; OpenAPI and MCP
+        translators read it instead of re-deriving the output description.
+
+        Returns:
+            ``{"schema": <json schema | None>, "media_type": <str>}`` when a
+            return schema and/or a media type exists, else an empty dict.
+        """
+        schema = entry.metadata.get("pydantic", {}).get("response_schema")
+        media_type = entry.metadata.get("meta", {}).get("media_type")
+        if schema is None and media_type is None:
+            return {}
+        return {"schema": schema, "media_type": media_type}
