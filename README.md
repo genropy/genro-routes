@@ -46,7 +46,7 @@ This separation enables:
 3. **Simple hierarchies** - `attach_instance(child, name="alias")` (method on `RoutingClass`) connects instances with path access (`parent.route.node("child/method")`).
 4. **Plugin pipeline** - `BasePlugin` provides `on_decore`/`wrap_handler` hooks and plugins inherit from parents automatically.
 5. **Runtime configuration** - `routing.configure()` applies global or per-handler overrides with wildcards and returns reports (`"?"`).
-6. **Built-in plugins** - `logging`, `pydantic`, `auth`, `env`, `openapi`, and `channel` plugins are included out of the box.
+6. **Built-in plugins** - `logging`, `pydantic`, `auth`, `env`, and `channel` plugins are included out of the box.
 7. **Response schema generation** - Return type annotations (TypedDict, dataclass, etc.) are automatically converted to JSON Schema and exposed in route metadata for bridges to consume.
 8. **Full coverage** - The package ships with a comprehensive test suite and no hidden compatibility layers.
 
@@ -185,7 +185,7 @@ pip install -e ".[all]"
 
 ## Typed Response Schemas
 
-Annotate return types to generate response schemas automatically. Bridges (MCP, OpenAPI) can expose them without extra work:
+Annotate return types to generate response schemas automatically. genro-routes exposes them as dialect-neutral metadata (the per-entry `result` block in `nodes()`, plus `entry.metadata`); external bridges (MCP, or OpenAPI via genro-asgi) consume it without extra work — the routing core does not generate OpenAPI itself:
 
 ```python
 from typing import TypedDict
@@ -206,14 +206,14 @@ class UsersAPI(RoutingClass):
 
 api = UsersAPI()
 
-# Response schema is available in route metadata
-entry = api.route._entries["get_user"]
-schema = entry.metadata["pydantic"]["response_schema"]
-# {"type": "object", "properties": {"id": {"type": "integer"}, ...}}
+# The return schema is exposed in the neutral result block of nodes()
+entry = api.route.nodes()["entries"]["get_user"]
+result = entry["result"]
+# {"schema": {"type": "object", "properties": {"id": {"type": "integer"}, ...}},
+#  "media_type": None}
 
-# OpenAPI translation includes it automatically
-openapi = api.route.nodes(mode="openapi")
-# paths["/get_user"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+# A transport adapter (e.g. genro-asgi) reads this block to build the
+# OpenAPI/MCP output schema — genro-routes does not translate it in-core.
 ```
 
 Supported types: `TypedDict`, `dict[str, int]`, `list[...]`, `str`, `int`, `bool`, and any type Pydantic can serialize.
@@ -293,7 +293,6 @@ genro-routes/
 │       ├── pydantic.py      # PydanticPlugin
 │       ├── auth.py          # AuthPlugin
 │       ├── env.py           # EnvPlugin (+ CapabilitiesSet)
-│       ├── openapi.py       # OpenAPIPlugin (+ OpenAPITranslator)
 │       └── channel.py       # ChannelPlugin (channel-based filtering)
 ├── examples/                # Example applications
 ├── tests/                   # Comprehensive test suite

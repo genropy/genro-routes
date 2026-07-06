@@ -153,7 +153,7 @@ def on_parent_config_changed(
 By default, `BasePlugin.on_attached_to_parent()` copies parent's `_all_` config to child
 if the child only has default config (`{"enabled": True}`). This means:
 
-- **LoggingPlugin, PydanticPlugin, OpenAPIPlugin**: Inherit config from parent by default
+- **LoggingPlugin, PydanticPlugin, ChannelPlugin**: Inherit config from parent by default
 - **AuthPlugin, EnvPlugin**: Also inherit by default (they don't override `on_attached_to_parent`)
 
 Note: Rule-based plugins like AuthPlugin and EnvPlugin inherit the plugin instance,

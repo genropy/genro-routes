@@ -15,7 +15,7 @@ Plugins in Genro Routes:
 
 ## Built-in Plugins
 
-Genro Routes includes six production-ready plugins:
+Genro Routes includes five production-ready plugins:
 
 **LoggingPlugin** (`logging`):
 
@@ -132,21 +132,6 @@ class DynamicService(RoutingClass):
 ```
 
 Capabilities are evaluated dynamically on each `nodes()` call.
-
-**OpenAPIPlugin** (`openapi`):
-
-```python
-class APIService(RoutingClass):
-    def __init__(self):
-        self.route.plug("openapi")
-
-    @route(openapi_method="post", openapi_tags="users")
-    def create_user(self, name: str) -> dict:
-        return {"name": name}
-
-svc = APIService()
-# Plugin provides OpenAPI metadata for documentation generation
-```
 
 **ChannelPlugin** (`channel`):
 
@@ -493,116 +478,9 @@ pydantic_meta = nodes["entries"]["get_user"]["plugins"]["pydantic"]["metadata"]
 assert "response_schema" in pydantic_meta
 ```
 
-### OpenAPIPlugin API
+### OpenAPI generation (transport layer, not core)
 
-The OpenAPIPlugin provides **explicit control over OpenAPI schema generation**. It allows overriding automatically guessed HTTP methods and adding OpenAPI-specific metadata.
-
-**Plugin code**: `openapi`
-
-**Route decorator parameters**:
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `openapi_method` | `str` | HTTP method override (`get`, `post`, `put`, `delete`, `patch`) |
-| `openapi_tags` | `str \| list[str]` | OpenAPI tags for grouping operations |
-| `openapi_summary` | `str` | Summary text override |
-| `openapi_description` | `str` | Description text for the operation |
-| `openapi_deprecated` | `bool` | Mark operation as deprecated |
-| `openapi_security_scheme` | `str` | Security scheme name (default `"BearerAuth"`) |
-| `openapi_security` | `list` | Explicit security override (list, or `[]` for public) |
-
-**HTTP method guessing rules** (when not explicitly set):
-
-| Condition | Method |
-|-----------|--------|
-| All parameters are scalar (str, int, float, bool, Enum) | `GET` |
-| Any parameter is complex (dict, list, TypedDict, model) | `POST` |
-
-**Response schema generation**:
-
-When handlers have return type annotations, the OpenAPI translator automatically generates response schemas in the `responses` section. If the PydanticPlugin is active, the translator uses the pre-computed response schema from the pydantic metadata. Otherwise, it extracts the return type directly from the function.
-
-```python
-from typing import TypedDict
-from genro_routes import RoutingClass, route
-
-class ItemResponse(TypedDict):
-    id: int
-    name: str
-
-class ItemAPI(RoutingClass):
-    def __init__(self):
-        self.route.plug("pydantic").plug("openapi")
-
-    @route()
-    def get_item(self, item_id: int) -> ItemResponse:
-        """Get a single item."""
-        return {"id": item_id, "name": "widget"}
-
-api = ItemAPI()
-openapi = api.route.nodes(mode="openapi")
-# paths["/get_item"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
-# → {"type": "object", "properties": {"id": {"type": "integer"}, "name": {"type": "string"}}, ...}
-```
-
-**OpenAPITranslator class**:
-
-The plugin includes `OpenAPITranslator` for converting `nodes()` output to OpenAPI format:
-
-```python
-from genro_routes.plugins.openapi import OpenAPITranslator
-
-# Get nodes data
-nodes_data = api.route.nodes()
-
-# Flat OpenAPI format (all paths merged)
-openapi = OpenAPITranslator.translate_openapi(nodes_data)
-# Returns: {"paths": {"/handler1": {...}, "/child/handler2": {...}}}
-
-# Hierarchical format (preserves router structure)
-h_openapi = OpenAPITranslator.translate_h_openapi(nodes_data)
-# Returns: {"paths": {...}, "routers": {"child": {"paths": {...}}}}
-```
-
-**Complete example**:
-
-```python
-from genro_routes import RoutingClass, route
-from genro_routes.plugins.openapi import OpenAPITranslator
-
-class UserAPI(RoutingClass):
-    def __init__(self):
-        self.route.plug("openapi")
-
-    @route(openapi_tags=["users"])
-    def list_users(self) -> list:
-        """Get all users."""
-        return []
-
-    @route(openapi_method="post", openapi_tags=["users"])
-    def create_user(self, name: str, email: str) -> dict:
-        """Create a new user."""
-        return {"name": name, "email": email}
-
-    @route(openapi_method="delete", openapi_tags=["users", "admin"])
-    def delete_user(self, user_id: int) -> dict:
-        """Delete a user (admin only)."""
-        return {"deleted": user_id}
-
-    @route(openapi_deprecated=True)
-    def legacy_endpoint(self) -> str:
-        """Deprecated endpoint."""
-        return "legacy"
-
-api = UserAPI()
-nodes = api.route.nodes()
-openapi = OpenAPITranslator.translate_openapi(nodes)
-
-# openapi["paths"] contains:
-# "/list_users": {"get": {"operationId": "list_users", "tags": ["users"], ...}}
-# "/create_user": {"post": {"operationId": "create_user", "tags": ["users"], ...}}
-# "/delete_user": {"delete": {"operationId": "delete_user", "tags": ["users", "admin"], ...}}
-```
+OpenAPI translation is **not** part of genro-routes. The routing core exposes only the dialect-neutral introspection tree: each entry carries a `result` block (`{schema, media_type}`) and a `params` block, produced by the PydanticPlugin from return-type and parameter annotations. A transport adapter such as [genro-asgi](https://github.com/genropy/genro-asgi) reads that tree and builds the OpenAPI (or MCP) document — including HTTP-method inference, tags, and request/response schemas. See the genro-asgi documentation for the OpenAPI dialect.
 
 ### ChannelPlugin API
 
@@ -837,15 +715,13 @@ class Service(RoutingClass):
 ```python
 self.route.plug("logging")\
     .plug("auth")\
-    .plug("pydantic")\
-    .plug("openapi")
+    .plug("pydantic")
 ```
 
 This order means:
 1. **logging** - Log everything (including auth failures)
 2. **auth** - Check authentication/authorization
 3. **pydantic** - Validate input
-4. **openapi** - OpenAPI metadata (no wrapping, just metadata)
 
 ### Visualizing the Stack
 
@@ -863,8 +739,6 @@ This order means:
 │  └───────────────────────────┘  │
 └─────────────────────────────────┘
 ```
-
-**Note**: OpenAPIPlugin doesn't wrap handlers - it only provides metadata for introspection. It can be placed anywhere in the chain.
 
 ### configure(**kwargs)
 

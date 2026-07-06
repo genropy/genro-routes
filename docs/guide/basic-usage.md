@@ -525,23 +525,12 @@ sub_expanded = sub_router.nodes()  # Expand on demand
 
 - `basepath`: Start from a specific point in the hierarchy
 - `lazy`: Return router references instead of expanding recursively
-- `mode`: Output format mode (see below)
 - `pattern`: Regex pattern to filter entry names (only matching entries are included)
 - `forbidden`: Include blocked entries with their rejection reason (default `False`)
 
-**Output modes**:
-
-- `None` (default): Standard introspection format with entries, routers, plugin_info
-- `"openapi"`: Flat OpenAPI 3.0 schema with all paths merged across the hierarchy
-- `"h_openapi"`: Hierarchical OpenAPI format preserving the router tree structure
+`nodes()` always returns the dialect-neutral introspection tree (entries, routers, plugin metadata, and the per-entry `result` / `params` blocks). It does not produce OpenAPI or any other dialect: transport adapters (e.g. genro-asgi) read this tree to build OpenAPI/MCP output.
 
 ```python
-# Flat OpenAPI schema (all paths merged)
-schema = insp.route.nodes(mode="openapi")
-
-# Hierarchical OpenAPI schema (preserves router structure)
-h_schema = insp.route.nodes(mode="h_openapi")
-
 # Filter entries by name pattern
 admin_entries = insp.route.nodes(pattern="admin_.*")
 ```
@@ -560,7 +549,7 @@ entries = router.nodes(forbidden=True).get("entries", {})
 
 **Use `nodes()` to**:
 
-- Generate API documentation (with `mode="openapi"`)
+- Generate API documentation (feed the neutral tree to a transport-layer dialect translator)
 - Debug routing issues
 - Validate configuration
 - Build dynamic UIs that expand on demand (with `lazy=True`)
