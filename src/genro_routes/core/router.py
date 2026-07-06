@@ -186,6 +186,9 @@ class Router(BaseRouter):
         if self._bound:
             self._apply_plugin_to_entries(instance)
             self._rebuild_handlers()
+        # Propagate to already-attached children so plug() is order-independent
+        # (plug-then-attach and attach-then-plug produce the same result).
+        self._propagate_plugin_to_children(instance)
         return self
 
     def iter_plugins(self) -> list[BasePlugin]:  # type: ignore[override]
@@ -431,6 +434,45 @@ class Router(BaseRouter):
             if plugin.name not in entry.plugins:
                 entry.plugins.append(plugin.name)
             plugin.on_decore(self, entry.func, entry)
+
+    def _propagate_plugin_to_children(self, plugin: BasePlugin) -> None:
+        """Propagate a single just-added plugin to already-attached children.
+
+        Makes plug() order-independent: a plugin added after children were
+        attached reaches those children (and their children, recursively), the
+        same way _on_attached_to_parent would have at attach time. Does not go
+        through _on_attached_to_parent, so the per-parent _inherited_from guard
+        is untouched. Idempotent: a child that already has the plugin is not
+        duplicated.
+        """
+        for child in self._children.values():
+            if not isinstance(child, Router):
+                continue
+            owner = child.instance
+            # Only true (primary) children inherit; secondary links are just
+            # navigational shortcuts and keep their own parent's plugins.
+            if owner is None or getattr(owner, "_routing_parent", None) is not self.instance:
+                continue
+
+            registered = self._plugin_children.setdefault(plugin.name, [])
+            if child not in registered:
+                registered.append(child)
+
+            child_plugin = child._plugins_by_name.get(plugin.name)
+            if child_plugin is None:
+                child_plugin = plugin.__class__(child)
+                child._plugins_by_name[plugin.name] = child_plugin
+                child._plugins.append(child_plugin)
+            child_plugin.on_attached_to_parent(plugin)
+
+            # Apply to the child's own entries only if it is already bound;
+            # otherwise its lazy _bind() will run on_decore for every plugin.
+            if child._bound:
+                child._apply_plugin_to_entries(child_plugin)
+                child._rebuild_handlers()
+
+            # Recurse so grandchildren receive the plugin too.
+            child._propagate_plugin_to_children(child_plugin)
 
     def _on_attached_to_parent(self, parent: Router) -> None:  # type: ignore[override]
         """Handle plugin inheritance when this router is attached to a parent.
