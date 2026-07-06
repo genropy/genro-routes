@@ -54,6 +54,7 @@ Example::
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import wraps
@@ -220,6 +221,21 @@ class BasePlugin:
             if child_plugin:
                 child_plugin.on_parent_config_changed(old_config, new_config)
 
+    def _configure_params(self) -> set[str]:
+        """Return the parameter names this plugin's configure() accepts.
+
+        Reads the original (pre-wrap) configure signature so callers can pass
+        only the keys it understands. BasePlugin's own configure takes none.
+        """
+        configure = type(self).configure
+        original = getattr(configure, "__wrapped__", configure)
+        return {
+            name
+            for name, p in inspect.signature(original).parameters.items()
+            if name != "self"
+            and p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
+        }
+
     # =========================================================================
     # METHODS TO OVERRIDE IN CUSTOM PLUGINS
     # =========================================================================
@@ -354,7 +370,14 @@ class BasePlugin:
         # Only copy if child has just the default config
         default_config = {"enabled": True}
         if my_config == default_config and parent_config != default_config:
-            self.configure(**parent_config)
+            # configuration() always carries "enabled" (seeded in _all_), but a
+            # plugin's configure() need not accept it (e.g. PydanticPlugin only
+            # takes "disabled"). Pass only the keys its signature accepts, so
+            # inheriting a non-default parent config never raises.
+            accepted = self._configure_params()
+            copyable = {k: v for k, v in parent_config.items() if k in accepted}
+            if copyable:
+                self.configure(**copyable)
 
     def on_parent_config_changed(
         self, old_config: dict[str, Any], new_config: dict[str, Any]
@@ -377,5 +400,10 @@ class BasePlugin:
         """
         my_config = self.configuration()
         if my_config == old_config:
-            # Child was aligned with parent, update to follow
-            self.configure(**new_config)
+            # Child was aligned with parent, update to follow. Pass only the
+            # keys configure() accepts — new_config always carries "enabled",
+            # which a strict-signature configure() would reject.
+            accepted = self._configure_params()
+            copyable = {k: v for k, v in new_config.items() if k in accepted}
+            if copyable:
+                self.configure(**copyable)
