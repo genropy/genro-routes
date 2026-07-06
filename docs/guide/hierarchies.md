@@ -441,12 +441,10 @@ sub_expanded = sub_router.nodes()  # Expand on demand
 
 - `basepath`: Start from a specific point in the hierarchy (e.g., `"child/grandchild"`)
 - `lazy`: Return router references instead of expanding recursively
-- `mode`: Output format mode (e.g., `"openapi"` for OpenAPI schema generation)
+- `pattern`: Regex pattern to filter entry names
+- `forbidden`: Include blocked entries with their rejection reason
 
-```python
-# Generate OpenAPI schema for the hierarchy
-schema = insp.route.nodes(mode="openapi")
-```
+`nodes()` returns the dialect-neutral introspection tree; OpenAPI/MCP schemas are produced by transport-layer translators (e.g. genro-asgi) that read this tree, not by a `nodes()` mode parameter.
 
 **Introspection provides**:
 
@@ -455,7 +453,7 @@ schema = insp.route.nodes(mode="openapi")
 - Plugin configuration per level
 - Nested hierarchy representation
 - On-demand expansion with `lazy=True`
-- OpenAPI schema generation with `mode="openapi"`
+- Neutral `result` / `params` blocks that transport-layer translators turn into OpenAPI/MCP schemas
 
 ## Catch-All Routes with `default_entry`
 

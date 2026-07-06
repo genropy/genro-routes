@@ -89,11 +89,10 @@ src/genro_routes/
     ├── pydantic.py            ← PydanticPlugin — input validation + response schema
     ├── auth.py                ← AuthPlugin — RBAC with tag matching
     ├── env.py                 ← EnvPlugin + CapabilitiesSet — dynamic feature flags
-    ├── openapi.py             ← OpenAPIPlugin + OpenAPITranslator
     └── channel.py             ← ChannelPlugin — transport-channel filtering
 ```
 
-**Size**: ~5,200 lines of source code in total.
+**Size**: ~4,700 lines of source code in total.
 
 ---
 
@@ -152,7 +151,7 @@ An ABC with only two abstract methods:
 | Method | Purpose |
 |--------|---------|
 | `node(path, **kwargs)` | Resolve a path → callable RouterNode |
-| `nodes(basepath, lazy, mode, pattern, forbidden, **kwargs)` | Introspection: return the tree of entries and child routers |
+| `nodes(basepath, lazy, pattern, forbidden, **kwargs)` | Introspection: return the tree of entries and child routers |
 
 Any object implementing this interface can be used where a router is expected
 (duck typing). This lets external packages such as `genro-asgi` create
@@ -337,11 +336,11 @@ User code normally calls neither directly: `RoutingClass.attach_instance`
 |-----------|--------|
 | `basepath="child/grand"` | Navigate and return only that subtree |
 | `lazy=True` | Child routers stay as references (not expanded) |
-| `mode="openapi"` | Flat OpenAPI output |
-| `mode="h_openapi"` | Hierarchical OpenAPI output |
 | `pattern="^get_"` | Filter entries by regex |
 | `forbidden=True` | Include blocked entries with the reason |
 | `**kwargs` | Plugin filters (e.g. `auth_tags="admin"`) |
+
+The tree is dialect-neutral: OpenAPI/MCP output is produced by a transport adapter (e.g. `genro-asgi`) that reads `nodes()`, not by a `mode` parameter.
 
 ### 5.7 Hooks for subclasses
 
@@ -612,7 +611,7 @@ Router.register_plugin(AuthPlugin)
 The import happens in `__init__.py`:
 
 ```python
-for _plugin in ("logging", "pydantic", "auth", "env", "openapi", "channel"):
+for _plugin in ("logging", "pydantic", "auth", "env", "channel"):
     import_module(f"{__name__}.plugins.{_plugin}")
 ```
 
@@ -896,23 +895,14 @@ def mcp_and_bots_only(self): ...
 - Patterns are **full-match regexes** (`re.fullmatch`)
 - `"*"` is a special case (wildcard, everything open)
 
-### 10.6 OpenAPIPlugin + OpenAPITranslator (`plugins/openapi.py`, 593 lines)
+### 10.6 OpenAPI (out of core)
 
-**Hook**: `entry_metadata`
-
-The plugin adds explicit metadata (method override, tags, summary, deprecated,
-security). `OpenAPITranslator` is a utility class of static methods that
-translates the `nodes()` output into OpenAPI format.
-
-**HTTP method guessing**: unless explicitly forced, the HTTP method is deduced
-from the signature:
-
-- All scalar parameters (str, int, float, bool, Enum) → **GET**
-- At least one complex parameter (dict, list, BaseModel) → **POST**
-
-**Cross-plugin integration**: the OpenAPITranslator reads AuthPlugin metadata
-(→ `security`) and EnvPlugin metadata (→ `x-requires`) to generate the full
-OpenAPI output.
+OpenAPI translation is not part of genro-routes. The routing core only exposes
+the dialect-neutral introspection tree: each entry carries a `result` block
+(`{schema, media_type}`) and a `params` block, built by the PydanticPlugin from
+return-type and parameter annotations. A transport adapter such as `genro-asgi`
+reads that tree and produces the OpenAPI (or MCP) document — HTTP-method
+inference, tags, security and request/response schemas all live there, not here.
 
 ---
 

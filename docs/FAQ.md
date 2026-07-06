@@ -266,17 +266,19 @@ def cached_action(self):
 # Entry only visible if instance has "redis" capability
 ```
 
-**5. OpenAPIPlugin** - Schema metadata and response schemas
+**5. ChannelPlugin** - Transport-channel visibility filtering
 
 ```python
-self.route.plug("openapi")     # in __init__
+self.route.plug("channel")                     # in __init__
+self.route.channel.configure(channels="*")     # optional default: all channels
 
-@route(openapi_method="post", openapi_tags="users")
-def create_user(self, name: str) -> dict:
-    return {"name": name}
+@route(channel_channels="mcp")                 # or shorthand: channel="mcp"
+def mcp_only(self):
+    return "only reachable from the MCP channel"
 
-# Provides metadata for OpenAPI schema generation
-# Response schemas auto-included from return type annotations
+# Visible only when the request channel matches
+svc.route.node("mcp_only", channel_channel="mcp")()   # OK
+svc.route.node("mcp_only", channel_channel="rest")()  # NotAvailable
 ```
 
 ### How do I configure plugins at runtime?
@@ -438,15 +440,18 @@ nodes = router.nodes()
 # With filters (using AuthPlugin)
 admin_only = router.nodes(auth_tags="admin")
 
-# Generate OpenAPI schema
-schema = router.nodes(mode="openapi")
+# Filter entries by name pattern
+admin_entries = router.nodes(pattern="admin_.*")
 ```
+
+`nodes()` returns the dialect-neutral introspection tree. OpenAPI/MCP schemas are produced by a transport adapter (e.g. genro-asgi) that reads this tree — not by `nodes()` itself.
 
 **`nodes()` parameters**:
 
 - `basepath`: Start from a specific point in the hierarchy
 - `lazy`: Return router references instead of expanding
-- `mode`: Output format (`"openapi"` for OpenAPI schema)
+- `pattern`: Regex pattern to filter entry names
+- `forbidden`: Include blocked entries with their rejection reason
 
 ## Comparisons
 
