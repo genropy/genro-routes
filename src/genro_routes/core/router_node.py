@@ -33,6 +33,23 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = ["RouterNode"]
 
 
+def _mark_coroutine(obj: Any) -> None:
+    """Mark an object so iscoroutinefunction() reports it as a coroutine func.
+
+    Uses inspect.markcoroutinefunction on 3.12+ (both inspect and asyncio
+    report True); on 3.11 it falls back to the asyncio sentinel, which
+    asyncio.iscoroutinefunction reads. The target must expose the matching
+    slot(s).
+    """
+    mark = getattr(inspect, "markcoroutinefunction", None)
+    if mark is not None:
+        mark(obj)
+    else:  # pragma: no cover - exercised only on Python 3.11
+        from asyncio.coroutines import _is_coroutine
+
+        obj._is_coroutine = _is_coroutine
+
+
 class RouterNode:
     """Wrapper for router node information with callable interface.
 
@@ -80,6 +97,11 @@ class RouterNode:
         "_partial",
         "_partial_kwargs",
         "_extra_args",
+        # Coroutine-function markers: markcoroutinefunction (3.12+) writes
+        # _is_coroutine_marker; the 3.11 fallback sets the asyncio sentinel
+        # _is_coroutine. Both are read by iscoroutinefunction.
+        "_is_coroutine_marker",
+        "_is_coroutine",
     )
 
     def __init__(
@@ -127,6 +149,12 @@ class RouterNode:
         entry = router._entries.get(entry_name or router.default_entry)
         if entry and self._assign_partial(entry):
             self._entry = entry
+            # Expose the handler's async-ness so a classification-based
+            # dispatcher (iscoroutinefunction) picks the right execution
+            # vehicle. Mark on entry.func: entry.handler is wrapped by sync
+            # plugin wrappers and would hide the coroutine function.
+            if inspect.iscoroutinefunction(entry.func):
+                _mark_coroutine(self)
 
     @property
     def endpoint_id(self) -> str | None:
