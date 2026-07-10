@@ -18,7 +18,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "genro-routes"
-version = "0.26.1"
+version = "0.26.2"
 description = "Instance-scoped routing engine for Python with hierarchical handlers and composable plugins"
 readme = "README.md"
 license = "Apache-2.0"
@@ -123,6 +123,14 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 files = ["src/genro_routes"]
+
+# router_node marks async nodes via inspect.markcoroutinefunction (3.12+) with a
+# fallback to the asyncio private sentinel asyncio.coroutines._is_coroutine on
+# 3.11; mypy (pinned at 3.10) does not know that symbol. The runtime path is
+# guarded and verified on both 3.11 and 3.12.
+[[tool.mypy.overrides]]
+module = "genro_routes.core.router_node"
+disable_error_code = ["attr-defined"]
 
 [tool.coverage.run]
 source = ["src/genro_routes"]
