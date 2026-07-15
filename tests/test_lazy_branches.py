@@ -460,3 +460,244 @@ def test_nested_lazy_branches_expand_incrementally():
     # Reach inner: now Inner builds.
     assert alfa.route.node("mid/inner/leaf")() == "inner.leaf"
     assert "Inner" in BUILD_LOG
+
+
+# ---------------------------------------------------------------------------
+# Spec validation and defaults
+# ---------------------------------------------------------------------------
+
+
+def test_branch_name_collision_with_branch_raises():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "beta", "lazy": True, "cls": Beta, "params": {}})
+
+    alfa = Alfa()
+    with pytest.raises(ValueError, match="collision"):
+        alfa.add_branches({"name": "beta", "lazy": True, "cls": Gamma, "params": {}})
+
+
+def test_branch_name_collision_with_materialized_child_raises():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "beta", "lazy": True, "cls": Beta, "params": {}})
+
+    alfa = Alfa()
+    alfa.route.node("beta/ping")()  # materialize -> beta now in _children
+    with pytest.raises(ValueError, match="collision"):
+        alfa.add_branches({"name": "beta", "lazy": True, "cls": Gamma, "params": {}})
+
+
+def test_params_defaults_to_empty():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "beta", "lazy": True, "cls": Beta})  # no params
+
+    alfa = Alfa()
+    assert alfa.route.node("beta/ping")() == "beta.ping:beta"
+
+
+def test_lazy_defaults_to_eager_when_omitted():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "gamma", "cls": Gamma, "params": {}})  # no lazy
+
+    alfa = Alfa()
+    alfa.route.nodes()  # eager default -> built at first access
+    assert "Gamma:gamma" in BUILD_LOG
+
+
+# ---------------------------------------------------------------------------
+# remove_branch edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_remove_nonexistent_branch_is_noop():
+    class Alfa(RoutingClass):
+        pass
+
+    alfa = Alfa()
+    alfa.remove_branch("nope")  # must not raise
+
+
+def test_branches_property_drops_spec_after_materialization():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "beta", "lazy": True, "cls": Beta, "params": {}})
+
+    alfa = Alfa()
+    assert "beta" in alfa.branches
+    alfa.route.node("beta/ping")()  # materialize
+    # Spec leaves _branches once materialized (it's now a real child).
+    assert "beta" not in alfa.branches
+
+
+# ---------------------------------------------------------------------------
+# Reaching a branch without a sub-path
+# ---------------------------------------------------------------------------
+
+
+def test_lazy_branch_alone_matches_eager_branch_behavior():
+    # A branch reached without a sub-path has no callable entry of its own
+    # (no default_entry): both eager and lazy resolve the same way.
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches(
+                [
+                    {"name": "lz", "lazy": True, "cls": Beta, "params": {}},
+                    {"name": "eg", "lazy": False, "cls": Beta, "params": {}},
+                ]
+            )
+
+    alfa = Alfa()
+    assert alfa.route.node("lz").error == alfa.route.node("eg").error
+
+
+# ---------------------------------------------------------------------------
+# nodes(basepath=...) opens (materializes) a lazy branch
+# ---------------------------------------------------------------------------
+
+
+def test_nodes_basepath_materializes_lazy_branch():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "beta", "lazy": True, "cls": Beta, "params": {}})
+
+    alfa = Alfa()
+    sub = alfa.route.nodes(basepath="beta")
+    assert set(sub["entries"].keys()) == {"ping", "info"}
+    assert "Beta:beta" in BUILD_LOG  # opening via basepath built it
+
+
+def test_nodes_basepath_deep_into_nested_lazy():
+    class Inner(RoutingClass):
+        @route()
+        def leaf(self):
+            return "inner.leaf"
+
+    class Mid(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "inner", "lazy": True, "cls": Inner, "params": {}})
+
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "mid", "lazy": True, "cls": Mid, "params": {}})
+
+    alfa = Alfa()
+    sub = alfa.route.nodes(basepath="mid/inner")
+    assert set(sub["entries"].keys()) == {"leaf"}
+
+
+# ---------------------------------------------------------------------------
+# @route(name=...) alias shown in lazy nodes() (class-level scan)
+# ---------------------------------------------------------------------------
+
+
+def test_lazy_nodes_shows_route_name_alias():
+    class Aliased(RoutingClass):
+        @route(name="public_name")
+        def internal_name(self):
+            return "x"
+
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "child", "lazy": True, "cls": Aliased, "params": {}})
+
+    alfa = Alfa()
+    tree = alfa.route.nodes()
+    entries = tree["routers"]["child"]["entries"]
+    assert "public_name" in entries
+    assert "internal_name" not in entries
+
+
+# ---------------------------------------------------------------------------
+# Interaction with the existing nodes(lazy=True) introspection flag
+# ---------------------------------------------------------------------------
+
+
+def test_nodes_lazy_flag_still_describes_declared_branches():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "beta", "lazy": True, "cls": Beta, "params": {}})
+
+    alfa = Alfa()
+    tree = alfa.route.nodes(lazy=True)
+    assert "beta" in tree["routers"]
+    assert "Beta:beta" not in BUILD_LOG
+
+
+# ---------------------------------------------------------------------------
+# Double materialization is defended (idempotent per name)
+# ---------------------------------------------------------------------------
+
+
+def test_materialize_branch_idempotent_direct():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "beta", "lazy": True, "cls": Beta, "params": {}})
+
+    alfa = Alfa()
+    r1 = alfa.route._materialize_branch("beta")
+    r2 = alfa.route._materialize_branch("beta")
+    assert r1 is r2
+    assert BUILD_LOG.count("Beta:beta") == 1
+
+
+# ---------------------------------------------------------------------------
+# Inherited @route leaf is scanned from the class (MRO), no duplicates
+# ---------------------------------------------------------------------------
+
+
+def test_lazy_nodes_scans_inherited_route_leaves():
+    class Base(RoutingClass):
+        @route()
+        def base_leaf(self):
+            return "base"
+
+    class Derived(Base):
+        @route()
+        def own_leaf(self):
+            return "own"
+
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "child", "lazy": True, "cls": Derived, "params": {}})
+
+    alfa = Alfa()
+    tree = alfa.route.nodes()
+    entries = tree["routers"]["child"]["entries"]
+    assert set(entries.keys()) == {"base_leaf", "own_leaf"}
+
+
+def test_lazy_nodes_dedups_same_function_under_two_attrs():
+    # Same function object bound to two class attributes must be scanned once.
+    class Aliased(RoutingClass):
+        @route()
+        def real(self):
+            return "r"
+
+        alias = real  # second attribute -> same function id
+
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "child", "lazy": True, "cls": Aliased, "params": {}})
+
+    alfa = Alfa()
+    entries = alfa.route.nodes()["routers"]["child"]["entries"]
+    assert list(entries.keys()) == ["real"]
+
+
+def test_lazy_nodes_branch_with_no_leaves():
+    # A lazy branch whose class declares no @route leaves: described as lazy,
+    # with no "entries" key.
+    class Empty(RoutingClass):
+        """A leaf-less grouping class."""
+
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "child", "lazy": True, "cls": Empty, "params": {}})
+
+    alfa = Alfa()
+    child_info = alfa.route.nodes()["routers"]["child"]
+    assert child_info["lazy"] is True
+    assert "entries" not in child_info

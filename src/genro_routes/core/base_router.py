@@ -898,7 +898,11 @@ class BaseRouter(RouterInterface):
         parts = [p for p in path.strip("/").split("/") if p]
         router: BaseRouter | None = self
         while parts and router:
-            router = router._children.get(parts.pop(0))
+            head = parts.pop(0)
+            # Navigating into a branch materializes it (open the folder).
+            if head not in router._children and head in router._branches:
+                router._materialize_branch(head)
+            router = router._children.get(head)
         return router
 
     def nodes(
