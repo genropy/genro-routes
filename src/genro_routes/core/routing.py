@@ -85,10 +85,9 @@ _RoutingProxy
 -------------
 Bound to the owning ``RoutingClass`` instance.
 
-Router lookup:
-    - ``get_router(path=None)`` returns the owner's router, optionally
-      navigating child routers along ``path`` (e.g. ``"users/detail"``).
-      Raises ``KeyError`` if a path segment does not resolve.
+Router navigation and introspection use the router's own ``node(path)`` (to
+resolve/execute) and ``nodes(basepath=...)`` (to inspect and open a subtree,
+materializing lazy branches on the way).
 
 Configuration entrypoint:
     - ``configure(target, **options)`` accepts string, dict, or list targets.
@@ -382,13 +381,13 @@ class Section(RoutingClass):
 
 
 class _RoutingProxy:
-    """Proxy for accessing and configuring the router of a RoutingClass instance.
+    """Proxy for configuring the router of a RoutingClass instance.
 
-    Provides a unified interface for router lookup and plugin configuration.
-    Access via the ``routing`` property on any RoutingClass instance.
+    Provides plugin configuration for the owner's router. Access via the
+    ``routing`` property on any RoutingClass instance. For navigation and
+    introspection use the router's ``node(path)`` / ``nodes(basepath=...)``.
 
     Main operations:
-        - ``get_router(path=None)``: The owner's router, or a child at path
         - ``configure(target, **options)``: Configure plugin settings
         - ``attach_instance(child, name=...)``: Delegates to owner's attach_instance
 
@@ -409,58 +408,7 @@ class _RoutingProxy:
     def __init__(self, owner: RoutingClass):
         object.__setattr__(self, "_owner", owner)
 
-    def get_router(self, path: str | None = None):
-        """Return the owner's router, optionally navigating child routers.
-
-        Args:
-            path: Optional "child/grandchild" path to navigate.
-
-        Returns:
-            The owner's Router, or the child router at path.
-
-        Raises:
-            KeyError: If child path navigation fails.
-
-        Example:
-            >>> svc.routing.get_router()
-            >>> svc.routing.get_router("users")  # child router
-            >>> svc.routing.get_router("users/detail")
-        """
-        router = self._owner.route
-        if not path:
-            return router
-        return self._navigate_router(router, path)
-
-    def instance(self, path: str) -> RoutingClass:
-        """Return the RoutingClass instance that owns the child router at path.
-
-        Args:
-            path: Router path in "child" or "child/grandchild" notation.
-
-        Returns:
-            The RoutingClass instance owning the resolved child router.
-
-        Raises:
-            KeyError: If child path navigation fails.
-
-        Example:
-            >>> svc.routing.instance("users")  # → UsersModule instance
-            >>> svc.routing.instance("users/detail")  # → nested child instance
-        """
-        router = self.get_router(path)
-        return router.instance  # type: ignore[no-any-return]
-
     # Helpers -------------------------------------------------
-    def _navigate_router(self, root, path: str):
-        """Walk child routers following the path segments."""
-        node = root
-        for segment in path.split("/"):
-            segment = segment.strip()
-            if not segment:
-                continue
-            node = node._children[segment]
-        return node
-
     def _parse_target(self, target: str) -> tuple[str, str]:
         """Parse 'plugin/selector' into (plugin, selector)."""
         if "/" in target:

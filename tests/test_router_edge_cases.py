@@ -352,49 +352,6 @@ def test_routing_proxy_attach_instance():
     assert parent.route.node("child/hello")() == "hello from child"
 
 
-def test_routing_proxy_instance():
-    """Test routing.instance() returns child RoutingClass instance."""
-
-    class UsersModule(RoutingClass):
-        @route()
-        def list(self):
-            return "users:list"
-
-    class OrdersModule(RoutingClass):
-        @route()
-        def list(self):
-            return "orders:list"
-
-    class App(RoutingClass):
-        def __init__(self):
-            self.attach_instance(UsersModule(), name="users")
-            self.attach_instance(OrdersModule(), name="orders")
-
-    app = App()
-
-    # Retrieve child instances via routing.instance()
-    users = app.routing.instance("users")
-    orders = app.routing.instance("orders")
-
-    assert isinstance(users, UsersModule)
-    assert isinstance(orders, OrdersModule)
-
-    # Routing still works
-    assert app.route.node("users/list")() == "users:list"
-    assert app.route.node("orders/list")() == "orders:list"
-
-
-def test_routing_proxy_instance_not_found():
-    """Test routing.instance() raises KeyError for non-existent child."""
-
-    class App(RoutingClass):
-        pass
-
-    app = App()
-    with pytest.raises(KeyError):
-        app.routing.instance("nonexistent")
-
-
 def test_endpoint_id_basic_lookup():
     """Test @endpoint_id resolution via node()."""
 
@@ -1095,21 +1052,6 @@ def test_router_get_config_paths():
     assert merged["mode"] == "x" and merged["trace"] is True
     with pytest.raises(AttributeError):
         svc.route.get_config("missing")
-
-
-def test_routed_proxy_get_router_handles_dotted_path():
-    class Leaf(RoutingClass):
-        pass
-
-    class Parent(RoutingClass):
-        def __init__(self):
-            self.child = Leaf()
-            self.route._children["child"] = self.child.route  # direct attach for test
-
-    svc = Parent()
-    router = svc.routing.get_router("child")
-    assert router is svc.child.route
-    assert router.name == "route"
 
 
 def test_routed_configure_updates_plugins_global_and_local():
