@@ -604,10 +604,17 @@ class BaseRouter(RouterInterface):
             self._add_branch_spec(spec)
 
     def _add_branch_spec(self, spec: dict[str, Any]) -> None:
-        """Validate and store a single branch spec."""
+        """Validate and store a single branch spec (factory or alias)."""
         name = spec["name"]
         if name in self._branches or name in self._children:
             raise ValueError(f"Branch name collision: {name}")
+        if "alias" in spec:
+            if "cls" in spec:
+                raise ValueError(f"Branch '{name}': 'alias' and 'cls' are mutually exclusive")
+            # Alias branch: a symlink to an absolute path from the tree root.
+            # No instance is ever built for it; navigation rewrites the path.
+            self._branches[name] = {"name": name, "alias": spec["alias"]}
+            return
         self._branches[name] = {
             "name": name,
             "lazy": bool(spec.get("lazy", False)),
@@ -650,9 +657,27 @@ class BaseRouter(RouterInterface):
         if self._eager_done:
             return
         self._eager_done = True
-        eager = [n for n, s in self._branches.items() if not s["lazy"]]
+        eager = [n for n, s in self._branches.items() if not s.get("lazy") and "alias" not in s]
         for name in eager:
             self._materialize_branch(name)
+
+    def _root_router(self) -> BaseRouter:
+        """Return the tree's root router by walking up the _routing_parent chain."""
+        router = self
+        instance = router.instance
+        parent = getattr(instance, "_routing_parent", None)
+        while parent is not None:
+            router = parent.route
+            instance = parent
+            parent = getattr(instance, "_routing_parent", None)
+        return router
+
+    def _alias_spec(self, name: str) -> dict[str, Any] | None:
+        """Return the branch spec for ``name`` if it is an alias, else None."""
+        spec = self._branches.get(name)
+        if spec is not None and "alias" in spec:
+            return spec
+        return None
 
     def _lazy_branch_node_info(self, spec: dict[str, Any]) -> dict[str, Any]:
         """Build the ``nodes()`` description of a non-materialized lazy branch."""
@@ -794,7 +819,9 @@ class BaseRouter(RouterInterface):
     # ------------------------------------------------------------------
     # Node resolution
     # ------------------------------------------------------------------
-    def _find_candidate_node(self, path: str) -> RouterNode:
+    def _find_candidate_node(
+        self, path: str, _alias_seen: frozenset[int] | None = None
+    ) -> RouterNode:
         """Resolve path to a candidate RouterNode without permission checks.
 
         Pure path resolution: walks through children, finds entry or falls back
@@ -827,6 +854,11 @@ class BaseRouter(RouterInterface):
             if not router._eager_done:
                 router._materialize_eager()
             head = parts.pop(0)
+            # Alias branch: rewrite the path to the target (absolute, from root)
+            # and resolve from there. Guard against alias cycles.
+            alias_spec = router._alias_spec(head)
+            if alias_spec is not None:
+                return router._resolve_alias(alias_spec, parts, _alias_seen)
             pathlist.append(head)
             if head in router._entries:
                 return RouterNode(router, entry_name=head, partial=parts, path="/".join(pathlist))
@@ -838,6 +870,22 @@ class BaseRouter(RouterInterface):
             return RouterNode(router, path="/".join(pathlist))
 
         return RouterNode(last_router, partial=[head] + parts, path="/".join(pathlist[:-1]))
+
+    def _resolve_alias(
+        self, spec: dict[str, Any], rest: list[str], seen: frozenset[int] | None
+    ) -> RouterNode:
+        """Resolve an alias branch: rewrite to its absolute target + rest, from root.
+
+        ``seen`` tracks alias spec ids already followed in this resolution to
+        detect cycles (a -> b -> a).
+        """
+        spec_id = id(spec)
+        seen = seen or frozenset()
+        if spec_id in seen:
+            raise ValueError(f"Alias cycle detected at '{spec['name']}' -> '{spec['alias']}'")
+        target = spec["alias"].strip("/")
+        full = "/".join([target, *rest]) if rest else target
+        return self._root_router()._find_candidate_node(full, _alias_seen=seen | {spec_id})
 
     def _find_by_endpoint_id(self, endpoint_id: str) -> RouterNode:
         """Resolve an endpoint_id to a RouterNode by recursive search.
@@ -899,7 +947,13 @@ class BaseRouter(RouterInterface):
         router: BaseRouter | None = self
         while parts and router:
             head = parts.pop(0)
-            # Navigating into a branch materializes it (open the folder).
+            # Alias branch: rewrite to the absolute target + rest, from root.
+            alias_spec = router._alias_spec(head)
+            if alias_spec is not None:
+                target = alias_spec["alias"].strip("/")
+                full = "/".join([target, *parts]) if parts else target
+                return router._root_router().router_at_path(full)
+            # Navigating into a real branch materializes it (open the folder).
             if head not in router._children and head in router._branches:
                 router._materialize_branch(head)
             router = router._children.get(head)
@@ -985,10 +1039,22 @@ class BaseRouter(RouterInterface):
             if not forbidden:
                 routers = {k: v for k, v in routers.items() if v}
 
-        # Describe still-lazy branches WITHOUT materializing them: name, lazy
-        # flag, and the class-declared @route leaves read from the class alone.
+        # Describe declared branches not yet in _children:
+        # - alias branches: resolve the target and show its subtree + marker
+        # - lazy factory branches: name/lazy flag + class-declared @route leaves
         for branch_name, spec in self._branches.items():
-            routers[branch_name] = self._lazy_branch_node_info(spec)
+            if "alias" in spec:
+                target_router = self.router_at_path(spec["alias"])
+                info = (
+                    target_router.nodes(pattern=pattern, forbidden=forbidden, **kwargs)
+                    if target_router is not None
+                    else {}
+                )
+                info["alias"] = spec["alias"]
+                info["name"] = branch_name
+                routers[branch_name] = info
+            else:
+                routers[branch_name] = self._lazy_branch_node_info(spec)
 
         # If nothing, return empty dict
         if not entries and not routers:

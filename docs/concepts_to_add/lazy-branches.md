@@ -93,30 +93,41 @@ only `cls = type(self.instance)` (line 424) depends on the instance; the whole
 scan operates on the class via `cls.__mro__` / `vars(base)` /
 `_route_decorator_kw` ([decorators.py:90](../../src/genro_routes/core/decorators.py)).
 
-### Sharing — callable reuse, not object sharing
+### Sharing a whole branch — alias branch (symlink) — IMPLEMENTED
 
 The old "secondary link" (same router object under two names, built on
-object-identity `is` / `_routing_parent` primary-vs-secondary in
-`_include_router` [base_router.py:571-585]) is **removed** — incompatible with
-factory-only.
-
-Sharing becomes an ordinary route method that takes another node's **callable**
-and registers it as its own:
+object-identity) is replaced by an **alias branch**: a symlink to another branch,
+addressed by an **absolute path** from the tree root.
 
 ```python
-class Alfa(RoutingClass):
-    @route()          # 'sales' is a normal entry, with ITS OWN plugins
-    def sales(self, ...):
-        ...           # its callable is child's, taken via get_node("child")
+self.add_branches([
+    {"name": "real", "cls": Leaf},
+    {"name": "fake", "alias": "real"},          # symlink to the 'real' branch
+])
 ```
 
-- **Common factor = only the callable.** Plugins are NOT shared: `sales` runs its
-  own plugins, then executes child's method.
-- The reused callable is a **bound method** ([base_router.py:407]) — stays bound
-  to child's instance (operates on child's data); only the plugin context is
-  sales's.
-- Reusing the callable of a **lazy** branch **forces its materialization** at that
-  moment. Accepted.
+- Spec: `{"name", "alias": "<absolute path>"}`; `alias` and `cls` are mutually
+  exclusive (ValueError otherwise).
+- Navigating into an alias **rewrites the path** to the target and resolves from
+  the root: `node("fake/x")` → `real/x`. The whole subtree (branches + leaves,
+  recursive) is reachable through it.
+- **Plugins are the target's** — a transparent symlink; the alias adds none and
+  they are not redefinable. (This is the old `include(router)` semantics, not the
+  "own plugins" idea once discussed.)
+- Resolution is lazy: the alias is a string; navigating it materializes lazy
+  branches along the target path.
+- `nodes()` shows the target's subtree under the alias name with an `alias` marker.
+- Broken alias → `not_found`; alias cycle → `ValueError`. Reached from the **root**
+  (absolute), not from the declaring router.
+
+Implementation: `_find_candidate_node` / `router_at_path` / `nodes()` detect an
+alias spec and rewrite via `_root_router()` + `_resolve_alias` (cycle-guarded).
+
+### Sharing a single leaf — deferred
+
+Reusing a single leaf under a new name *with its own plugins* (own plugins +
+delegated body) is a separate case, deferred. It is a normal `@route` def whose
+body delegates to another node's callable — not an alias branch.
 
 ## Separation of responsibility
 

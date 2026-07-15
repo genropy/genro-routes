@@ -57,9 +57,22 @@ building it, including the class-declared ``@route`` leaves read from the class
 (no instance). Reverse lookup (``node("@endpoint_id")``) searches only eager and
 already-materialized branches; it skips non-materialized lazy branches.
 
-Sharing a handler across paths is NOT a framework feature: it is an ordinary
-route method that reuses another node's callable (its own plugins, child's
-callable). Reusing a lazy branch's callable forces that branch's materialization.
+Alias branches (symlink to a branch)
+------------------------------------
+A branch spec may be an **alias** instead of a factory::
+
+    {"name": "fake_sales", "alias": "alfa/beta/gamma"}
+
+An alias branch is a symlink to another branch, addressed by an **absolute path**
+from the tree root. It has ``alias`` and no ``cls``/``params`` (mutually
+exclusive). Navigating into it rewrites the path to the target and resolves from
+the root — ``node("fake_sales/x")`` resolves ``alfa/beta/gamma/x`` — so the
+target's whole subtree (branches + leaves, recursive) is reachable through the
+alias, with the **target's** plugins (a transparent symlink; the alias adds
+none). ``nodes()`` shows the target's subtree under the alias name with an
+``alias`` marker. Resolution is lazy: the alias is just a string; navigating it
+materializes lazy branches along the target path. A broken alias resolves to
+``not_found``; an alias cycle raises ``ValueError``.
 
 Router configuration happens on the existing router in ``__init__`` (binding
 is lazy, so this is race-free)::
