@@ -10,12 +10,56 @@ RoutingClass
 A mixin class providing:
     - ``route`` property: the instance's Router, created lazily on first
       access. Assigning to it raises ``AttributeError`` (read-only).
-    - ``attach_instance(child, name=...)``: attaches a child RoutingClass
-      instance. Sets ``child._routing_parent = self`` and, when ``name`` is
-      given, links ``child.route`` into ``self.route`` under that alias.
+    - ``add_branches(specs)``: declare child subrouters as factory specs
+      (see Branches below). Accepts one dict, a list of dicts, or a generator.
+    - ``remove_branch(name)``: drop a declared branch; if already materialized,
+      detach its router.
+    - ``branches`` property: read-only view of the declared branch specs.
     - ``routing`` property: cached ``_RoutingProxy`` for configuration/lookup.
     - ``ctx`` property: execution context, walking up the parent chain.
     - ``capabilities`` property: CapabilitiesSet for runtime feature flags.
+
+Branches (declarative, factory-based subrouters)
+------------------------------------------------
+A branch is a child subrouter declared as a **factory spec** and materialized
+(constructed) only when needed. This lets trees with thousands of leaves start
+cheaply — nothing is instantiated until walked.
+
+A branch spec is a self-describing dict::
+
+    {"name": "beta", "lazy": True, "cls": Beta, "params": {"x": 56}}
+
+    name   -- alias under which the child is reachable (path segment)
+    lazy   -- True: materialize on first traversal; False (eager): materialize
+              at first tree access
+    cls    -- the RoutingClass subclass to instantiate
+    params -- kwargs applied as cls(**params) at materialization
+
+``add_branches`` populates the router's ``_branches`` dict; no instance is
+constructed at declaration time. Materialization is the single point where an
+instance is built: construct ``cls(**params)``, set ``_routing_parent``, link
+into ``_children`` (which triggers plugin inheritance), then drop the spec from
+``_branches``. Two timing policies share this one mechanism:
+
+    - eager  -- all eager branches materialize at first tree access
+                (idempotent guard on the router: runs once)
+    - lazy   -- a lazy branch materializes on-demand when a path first
+                traverses its segment
+
+Two distinct laziness levels must not be conflated:
+
+    - spec enumeration happens at the ``add_branches`` call (a generator is
+      consumed immediately). Light metadata only.
+    - instance construction happens at materialization. This is the real saving.
+
+Introspection (``nodes()``) describes a non-materialized lazy branch WITHOUT
+building it, including the class-declared ``@route`` leaves read from the class
+(no instance). Reverse lookup (``node("@endpoint_id")``) searches only eager and
+already-materialized branches; it skips non-materialized lazy branches.
+
+Sharing a handler across paths is NOT a framework feature: it is an ordinary
+route method that reuses another node's callable (its own plugins, child's
+callable). Reusing a lazy branch's callable forces that branch's materialization.
 
 Router configuration happens on the existing router in ``__init__`` (binding
 is lazy, so this is race-free)::
@@ -152,6 +196,24 @@ class RoutingClass:
         if router is None:
             router = Router(self)
         return router
+
+    def add_branches(self, specs: Any) -> None:
+        """Declare child branches (factory specs) on this instance's router.
+
+        Accepts one spec dict, a list of dicts, or a generator. Each spec is
+        ``{"name", "lazy", "cls", "params"}``. Delegates to the router; nothing
+        is constructed until materialization (see the Branches section above).
+        """
+        self.route.add_branches(specs)
+
+    def remove_branch(self, name: str) -> None:
+        """Remove a declared branch; detach its child if already materialized."""
+        self.route.remove_branch(name)
+
+    @property
+    def branches(self) -> dict[str, dict[str, Any]]:
+        """Read-only view of declared (not-yet-materialized) branch specs."""
+        return self.route.branches
 
     def _register_router(self, router: Router) -> None:
         """Register the router with this instance.
