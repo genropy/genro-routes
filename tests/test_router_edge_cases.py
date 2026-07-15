@@ -389,7 +389,7 @@ def test_endpoint_id_in_child_router():
 
     class App(RoutingClass):
         def __init__(self):
-            self.attach_instance(UsersModule(), name="users")
+            self.add_branches({"name": "users", "cls": UsersModule})
 
     app = App()
 
@@ -1140,7 +1140,7 @@ def test_attach_then_plug_propagates_to_child():
 
     class Api(RoutingClass):
         def __init__(self):
-            self.attach_instance(_LeafChild(), name="srv")
+            self.add_branches({"name": "srv", "cls": _LeafChild})
 
     api = Api()
     api.route.plug("pydantic")
@@ -1156,7 +1156,7 @@ def test_plug_then_attach_still_ok():
     class Api(RoutingClass):
         def __init__(self):
             self.route.plug("pydantic")
-            self.attach_instance(_LeafChild(), name="srv")
+            self.add_branches({"name": "srv", "cls": _LeafChild})
 
     fields = Api().route.node("srv/health").params.get("fields")
     assert fields is not None
@@ -1173,11 +1173,11 @@ def test_attach_then_plug_multilevel():
 
     class Mid(RoutingClass):
         def __init__(self):
-            self.attach_instance(GrandChild(), name="gc")
+            self.add_branches({"name": "gc", "cls": GrandChild})
 
     class Top(RoutingClass):
         def __init__(self):
-            self.attach_instance(Mid(), name="mid")
+            self.add_branches({"name": "mid", "cls": Mid})
 
     top = Top()
     top.route.plug("pydantic")
