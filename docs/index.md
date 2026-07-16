@@ -82,6 +82,7 @@ guide/basic-usage
 guide/plugins
 guide/plugin-configuration
 guide/hierarchies
+guide/branches
 guide/best-practices
 ```
 

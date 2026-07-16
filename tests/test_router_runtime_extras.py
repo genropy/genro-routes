@@ -346,30 +346,12 @@ def test_configure_validates_inputs_and_targets():
     assert result["updated"] == ["_all_"]
 
 
-def test_configure_question_success_and_router_proxy_errors():
+def test_configure_question_success():
     svc = LoggingService()
     description = svc.routing.configure("?")
     assert description["name"] == "route"
     assert "hello" in description["entries"]
     assert any(plugin["name"] == "logging" for plugin in description["plugins"])
-    with pytest.raises(KeyError):
-        svc.routing.get_router("missing")
-    router = svc.routing.get_router()
-    assert router is svc.route
-
-
-def test_get_router_skips_empty_segments():
-    class Leaf(RoutingClass):
-        pass
-
-    class Parent(RoutingClass):
-        def __init__(self):
-            self.child = Leaf()
-            self.route._children["child"] = self.child.route  # direct attach for test
-
-    svc = Parent()
-    router = svc.routing.get_router("child//")
-    assert router is svc.child.route
 
 
 def test_is_routing_class_helper():

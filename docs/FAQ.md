@@ -114,8 +114,9 @@ def handle_create(self): ...  # Registered as "create" (strips prefix)
 **Answer**: **Yes**. `RoutingClass` is the mixin that binds a class to its router:
 
 - `obj.route` — the instance's single router, created lazily (read-only property)
-- `obj.routing` — proxy for configuration and lookup (`configure()`, `get_router()`, `instance()`)
+- `obj.routing` — proxy for plugin configuration (`configure()`)
 - `obj.attach_instance(child, name=...)` — connects child instances into a hierarchy
+- `obj.add_branches(specs)` — declares child subtrees as factory specs (eager/lazy/alias)
 - `obj.ctx` — execution context with parent-chain lookup
 
 A `Router` can only be owned by a `RoutingClass` instance.

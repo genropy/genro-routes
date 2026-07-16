@@ -104,6 +104,42 @@ info = app.route.nodes()
 print(info["routers"].keys())  # dict_keys(['users'])
 ```
 
+## Branches: Lazy Subtrees and Aliases
+
+On large trees (thousands of leaves), building every child instance at startup
+is wasteful. **Branches** declare subtrees as factory specs — nothing is
+constructed until actually needed:
+
+```python
+class Application(RoutingClass):
+    def __init__(self):
+        self.add_branches([
+            {"name": "users",  "cls": UsersAPI},                    # eager: built at first tree access
+            {"name": "sales",  "cls": SalesAPI,  "lazy": True},     # lazy: built at first traversal
+            {"name": "shop",   "alias": "sales"},                   # alias: symlink to another branch
+        ])
+
+app = Application()
+app.route.node("sales/report")()   # first traversal builds SalesAPI here
+app.route.node("shop/report")()    # same subtree via the alias (target's plugins)
+```
+
+- **Eager** branches materialize at the first tree access; **lazy** ones only
+  when a path first traverses them. Constructor errors surface at that moment.
+- `add_branches` accepts one dict, a list, or a generator — so a discovery
+  function can `yield` thousands of specs with zero construction cost.
+- **Aliases** are transparent symlinks by absolute path from the tree root:
+  the whole target subtree is reachable, with the *target's* plugins.
+- Introspection never builds implicitly: `nodes()` shows lazy branches and
+  aliases as unresolved markers (with their class-declared `@route` leaves,
+  read without instantiating). Use `nodes(_eager=True)` to expand everything
+  (e.g. to generate a full OpenAPI document) or `nodes(basepath="sales")` to
+  open one branch explicitly.
+- `attach_instance(child, name=...)` remains supported for attaching an
+  already-built instance; `add_branches` is the recommended declarative form.
+
+See the [Branches Guide](docs/guide/branches.md) for the full lifecycle.
+
 ## Learn by Example
 
 We provide a comprehensive gallery of examples in the [examples/](https://github.com/genropy/genro-routes/tree/main/examples) directory:
@@ -226,7 +262,7 @@ Supported types: `TypedDict`, `dict[str, int]`, `list[...]`, `str`, `int`, `bool
 - **`Section`** - Empty `RoutingClass` used as a grouping node: `svc.attach_instance(Section("Admin area"), name="admin")`
 - **`RoutingContext`** - Extensible execution context with parent chain delegation. Attach any attribute (`ctx.db`, `ctx.user`, `ctx.session`); missing lookups walk up `RoutingContext(parent=...)`. Stored in a `_ctx` slot on each instance — children inherit via `_routing_parent` chain. See [Execution Context Guide](docs/guide/context.md).
 - **`BasePlugin`** - Base class for creating plugins with `on_decore` and `wrap_handler` hooks
-- **`obj.routing`** - Proxy exposed by every RoutingClass that provides helpers like `get_router(...)` and `configure(...)` for managing routers/plugins without polluting the instance namespace.
+- **`obj.routing`** - Proxy exposed by every RoutingClass that provides `configure(...)` for managing plugin settings without polluting the instance namespace.
 - **`RouterNode`** - Callable wrapper returned by `node()`, with `path`, `error`, `doc`, `metadata` properties.
 - **`NotFound` / `NotAuthenticated` / `NotAuthorized` / `NotAvailable`** - Exceptions for routing errors (not found, auth required, auth denied, capabilities missing)
 
@@ -241,7 +277,9 @@ See [Why One Name Per Operation](docs/guide/why-one-name-per-operation.md) for t
 ## Pattern Highlights
 
 - **Explicit naming + prefixes** - `@route(name="detail")` and `self.route.prefix = "handle_"` separate method names from public route names.
-- **Explicit instance hierarchies** - `self.attach_instance(child, name="alias")` connects RoutingClass instances. Retrieve children later with `routing.instance("alias")`.
+- **Explicit instance hierarchies** - `self.attach_instance(child, name="alias")` connects RoutingClass instances. Navigate with `route.node("alias/handler")` or inspect with `route.nodes(basepath="alias")`.
+- **Declarative branches (lazy/eager)** - `self.add_branches({"name": "sales", "cls": Sales, "lazy": True})` declares subtrees as factory specs, built only when traversed. See [Branches](#branches-lazy-subtrees-and-aliases).
+- **Branch aliases** - `{"name": "fake", "alias": "real/path"}` exposes an existing subtree under a second name, like a filesystem symlink.
 - **Endpoint ID** - `@route(endpoint_id="USR-001")` assigns a stable identifier for reverse lookup via `router.node("@USR-001")`.
 - **Grouping nodes** - `attach_instance(Section("Admin area"), name="admin")` creates pure organizational nodes without handlers.
 - **Built-in and custom plugins** - `self.route.plug("logging")`, `self.route.plug("pydantic")`, or custom plugins.
