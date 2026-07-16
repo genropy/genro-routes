@@ -123,11 +123,13 @@ self.add_branches([
 Implementation: `_find_candidate_node` / `router_at_path` / `nodes()` detect an
 alias spec and rewrite via `_root_router()` + `_resolve_alias` (cycle-guarded).
 
-### Sharing a single leaf — deferred
+### Sharing a single leaf — NOT SUPPORTED (decided)
 
 Reusing a single leaf under a new name *with its own plugins* (own plugins +
-delegated body) is a separate case, deferred. It is a normal `@route` def whose
-body delegates to another node's callable — not an alias branch.
+delegated body) is **explicitly out of scope** — it will not be implemented.
+Sharing is only a whole-branch alias (above). If a caller needs to expose one
+handler elsewhere, they write a normal `@route` method and call the target
+themselves in its body; the framework offers no dedicated leaf-alias mechanism.
 
 ## Separation of responsibility
 
