@@ -53,8 +53,8 @@ assert parent.route.node("sales/list")() == "child:list"
 child_node = parent.route.node("sales")
 assert child_node.path == "sales"
 
-# Retrieve the child instance later via routing.instance()
-child = parent.routing.instance("sales")
+# Retrieve the child instance later via nodes(basepath=...)
+child = parent.route.nodes(basepath="sales")["instance"]
 assert child._routing_parent is parent
 ```
 
@@ -62,7 +62,7 @@ assert child._routing_parent is parent
 
 - The `name` parameter provides the alias under which the child's router is linked into the parent's router
 - Storing the child as an attribute is **optional** — the router tree keeps a strong reference to the child instance via `router.instance`
-- Use `routing.instance("child")` to retrieve a child instance at any time
+- `nodes(basepath="child")` returns the child subtree; its `"instance"` key is the child RoutingClass instance
 - Parent tracking is handled automatically
 
 **`node()` return values**:
@@ -351,9 +351,8 @@ result = app.service.route.node("process")()
 
 ## Path Navigation
 
-<!-- test: test_router_edge_cases.py::test_routed_proxy_get_router_handles_dotted_path -->
-
-Navigate the hierarchy with path separator `/` via `routing.get_router()`:
+Navigate the hierarchy with path separator `/` directly on the router, using
+`router_at_path()`:
 
 ```python
 class Child(RoutingClass):
@@ -366,39 +365,19 @@ class Parent(RoutingClass):
 
 parent = Parent()
 
-# The instance's own router
-assert parent.routing.get_router() is parent.route
-
-# Get child router directly
-child_router = parent.routing.get_router("child")
-assert child_router.name == "route"
+# Find a child router by path
+child_router = parent.route.router_at_path("child")
 assert child_router.instance is parent.child
 ```
 
 **Navigation features**:
 
-- `get_router()` with no arguments returns the instance's own router
-- `get_router("child/grandchild")` traverses the hierarchy
-- Returns the target router instance
-- Enables programmatic router access
-- Useful for dynamic configuration
-
-### Direct Router Lookup with `router_at_path`
-
-You can also navigate the hierarchy directly from any router using `router_at_path()`:
-
-```python
-# From a router, find a child router by path
-child_router = parent.route.router_at_path("child/grandchild")
-if child_router is not None:
-    print(child_router.name)
-```
-
-**Differences from `routing.get_router()`**:
-
-- `router_at_path(path)` is called directly on a `Router` instance and navigates its children
-- Returns `None` if the path doesn't resolve (instead of raising `KeyError`)
-- Does not require `RoutingClass` — works on any `BaseRouter`
+- `router_at_path("child/grandchild")` traverses the hierarchy
+- Returns `None` if the path doesn't resolve
+- Opens declared branches along the way (lazy branches materialize, aliases
+  are followed) — see the [Branches Guide](branches.md)
+- For handler resolution use `node(path)`; for subtree inspection use
+  `nodes(basepath=path)`
 
 ## Introspection
 
@@ -682,8 +661,8 @@ admin.attach_instance(report_admin, name="reports")
 ### Retrieve Child Instances
 
 ```python
-# Retrieve attached child instances via routing.instance()
-child = parent.routing.instance("child")  # returns the RoutingClass instance
+# Retrieve attached child instances via nodes(basepath=...)
+child = parent.route.nodes(basepath="child")["instance"]  # the RoutingClass instance
 ```
 
 ### Explicit Detachment
@@ -748,12 +727,15 @@ class AdminOrders(RoutingClass):
         return "admin data"
 
 # Compose: one class per surface, attached where needed
-app.routing.instance("api").attach_instance(PublicOrders(), name="orders")
-app.routing.instance("admin").attach_instance(AdminOrders(), name="orders")
+api = app.route.nodes(basepath="api")["instance"]
+admin = app.route.nodes(basepath="admin")["instance"]
+api.attach_instance(PublicOrders(), name="orders")
+admin.attach_instance(AdminOrders(), name="orders")
 ```
 
 ## Next Steps
 
+- **[Branches Guide](branches.md)** - Lazy/eager subtrees and aliases (declarative hierarchies)
 - **[Visual Guide](attach-instance-visual-guide.md)** - Mermaid diagrams for all connection scenarios
 - **[Plugin Configuration](plugin-configuration.md)** - Configure plugins across hierarchies
 - **[Best Practices](best-practices.md)** - Production-ready patterns

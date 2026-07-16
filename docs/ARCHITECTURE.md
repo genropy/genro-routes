@@ -20,10 +20,44 @@ graph TD
 ```
 
 - Every `RoutingClass` owns exactly one `Router`, created lazily on first access of the read-only `route` property. User code never instantiates `Router` directly; router options (`description`, `prefix`, `default_entry`) are set on `self.route` in `__init__`.
-- Hierarchies are built via `attach_instance(child, name=alias)` (method on `RoutingClass`), which links `child.route` into the parent's router under the alias, and torn down via `detach_instance` (method on `Router`).
+- Hierarchies are built via `attach_instance(child, name=alias)` (method on `RoutingClass`), which links `child.route` into the parent's router under the alias, and torn down via `detach_instance` (method on `Router`). The declarative equivalent is `add_branches` (see Branches below).
 - `Section` (an empty `RoutingClass`) provides pure grouping nodes without handlers: `svc.attach_instance(Section("Admin area"), name="admin")`.
 - `default_entry` (default: `"index"`) specifies which handler to use for catch-all routing (best-match resolution).
 - Introspection: `nodes()` is the sole API; it returns router/instance, handlers (with metadata, doc, signature, plugins, params), children, and `plugin_info`.
+
+## Branches (declarative subtrees: eager, lazy, alias)
+
+A **branch** is a child subtree declared as a factory spec and materialized on
+demand. Specs live in `router._branches`; materialized children move to
+`router._children`. One mechanism, two timing policies, plus symlinks:
+
+```mermaid
+graph LR
+  Spec["branch spec {name, lazy, cls, params}"] -->|"first tree access (eager) / first traversal (lazy)"| Child["child router in _children"]
+  Alias["alias spec {name, alias: path}"] -->|"path rewrite from root"| Target["target subtree"]
+```
+
+- `add_branches(spec | list | generator)` stores specs — nothing is constructed
+  at declaration. `remove_branch(name)` drops a spec (detaching the child if
+  already materialized). The `branches` property lists declared, not-yet-built
+  specs only.
+- **Materialization** (single point): construct `cls(**params)`, wire
+  `_routing_parent`, `include()` the child router (triggering plugin
+  inheritance), then drop the spec. The spec is popped only after a successful
+  build: a failing constructor is repeatable, never silently lost.
+- **Eager** specs materialize at the first tree access (guard set after a fully
+  successful pass); **lazy** specs at the first path traversal through their
+  segment (`_find_candidate_node` / `router_at_path`).
+- **Alias** specs are transparent symlinks by absolute path from the tree root:
+  navigation rewrites the path and resolves from the root, so the target's
+  whole subtree is served with the target's plugins. Cycle-guarded
+  (`ValueError`); broken targets resolve to `not_found`. A node reached through
+  an alias reports the target's path (realpath semantics).
+- **Introspection never builds**: `nodes()` shows lazy branches with their
+  class-declared `@route` leaves (scanned from the class MRO, no instance) and
+  aliases as unresolved markers. `nodes(_eager=True)` expands everything;
+  `nodes(basepath=...)` opens one subtree. `node("@endpoint_id")` skips
+  non-materialized lazy branches.
 
 ## Plugin store
 

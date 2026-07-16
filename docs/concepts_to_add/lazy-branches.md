@@ -1,8 +1,8 @@
 # Lazy Branches — declarative subrouters, materialized on demand
 
-**Status**: 🔴 DA REVISIONARE
-**Version**: 0.1
-**Last Updated**: 2026-07-15
+**Status**: 🟢 IMPLEMENTED (0.27) — kept as design record
+**Version**: 1.0
+**Last Updated**: 2026-07-16
 
 ## Summary
 
@@ -12,10 +12,15 @@ dictionary of self-describing entries; each branch is **eager** (built at first
 tree access) or **lazy** (built on-demand at first traversal). This lets trees
 with thousands of leaves start cheaply — nothing is instantiated until walked.
 
-This proposal also **removes** two things: the `attach_instance` API (replaced by
-a single factory-based `add_branches`) and the object-identity "secondary link"
-sharing mechanism (replaced by an ordinary route method that reuses another
-node's callable).
+**Transition note (0.27)**: this release is **additive**. `attach_instance`
+(attaching an already-built instance) and `include()` remain fully supported;
+`add_branches` is the recommended declarative form. The removal of
+`attach_instance` and of the object-identity "secondary link" is deferred to a
+later, breaking release. Whole-branch sharing is covered today by **alias
+branches** (below); single-leaf sharing is explicitly out of scope.
+
+User documentation: [Branches Guide](../guide/branches.md) and the Branches
+section of [ARCHITECTURE](../ARCHITECTURE.md).
 
 ## Rationale
 
@@ -158,23 +163,17 @@ class Alfa(RoutingClass):
             yield {"name": name, "lazy": True, "cls": cls, "params": params}
 ```
 
-## Scope — files to modify (implementation phase)
+## Implemented (0.27)
 
 | File | Change |
 |------|--------|
-| `core/routing.py` | `RoutingClass`: `_branches` slot, `add_branches`, `remove_branch`, `branches` property; **remove** `attach_instance`; eager-materialization guard |
-| `core/base_router.py` | `_find_candidate_node` (lazy materialization on descent); `nodes()` (describe lazy branches + class leaves); `_search_endpoint_id` (skip lazy); **remove** secondary-link logic in `_include_router`; callable-reuse helper |
-| `core/router.py` | materialization applies plugins (reuse existing hooks) |
-| `tests/` | migrate ~89 `attach_instance` call-sites to `add_branches`; new exhaustive suite for lazy/eager, materialization, `nodes()`, `@endpoint_id`, add/remove runtime, callable reuse, deferred errors, guard idempotency |
-| `docs/` | update guides referencing `attach_instance` (e.g. `guide/attach-instance-visual-guide.md`) |
+| `core/base_router.py` | `_branches`/`_eager_done` slots; `add_branches`, `remove_branch`, `branches`; materialization (`_materialize_branch`/`_materialize_eager`, spec popped after successful build); lazy descent in `_find_candidate_node`/`router_at_path`; alias resolution (`_root_router`/`_resolve_alias`, cycle-guarded); `nodes()` markers + `_eager=True` expansion + class-leaf scan; `_search_endpoint_id` skips lazy |
+| `core/routing.py` | `RoutingClass.add_branches`/`remove_branch`/`branches` delegating to the router; module docstring (Branches + Alias sections); proxy `get_router`/`instance`/`_navigate_router` removed |
+| `tests/` | `test_lazy_branches.py` + `test_branch_alias.py` (exhaustive, behavioral); Pattern-A call-sites migrated to `add_branches` |
+| `docs/` | `guide/branches.md`; README, ARCHITECTURE, FAQ, hierarchies/best-practices updated |
 
-## Open questions
+## Deferred to a later breaking release
 
-- Exact API for the callable-reuse helper (argument / `ctx` forwarding semantics).
-- Slot count on `RoutingClass` `__slots__` ([routing.py:116]): new slot(s) for
-  `_branches` and the eager-materialization idempotent guard.
-
-## Out of scope
-
-- This document is a **proposal**, not source of truth, until approved.
-- Implementation follows tests-first, one block at a time, suite green at each step.
+- Removal of `attach_instance` and of the secondary-link logic in
+  `_include_router`; migration of the remaining instance-based test call-sites.
+- Single-leaf sharing stays out of scope (see above).
