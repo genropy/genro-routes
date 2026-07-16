@@ -116,7 +116,9 @@ self.add_branches([
   "own plugins" idea once discussed.)
 - Resolution is lazy: the alias is a string; navigating it materializes lazy
   branches along the target path.
-- `nodes()` shows the target's subtree under the alias name with an `alias` marker.
+- `nodes()` shows the alias as an unresolved marker `{"name", "alias": target}`
+  without building anything; `nodes(_eager=True)` expands everything (materializes
+  lazy branches, resolves aliases); `nodes(basepath=alias)` opens one explicitly.
 - Broken alias → `not_found`; alias cycle → `ValueError`. Reached from the **root**
   (absolute), not from the declaring router.
 

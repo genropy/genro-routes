@@ -369,6 +369,36 @@ def test_lazy_constructor_error_deferred_to_traversal():
     assert "Boom" not in BUILD_LOG
     with pytest.raises(RuntimeError, match="boom in __init__"):
         alfa.route.node("boom/ping")()
+    # The failing spec is NOT lost: the branch stays declared and the error
+    # is repeatable on the next traversal (no silent disappearance).
+    assert "boom" in alfa.branches
+    with pytest.raises(RuntimeError, match="boom in __init__"):
+        alfa.route.node("boom/ping")()
+
+
+def test_eager_constructor_error_is_repeatable_not_lost():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches(
+                [
+                    {"name": "boom", "cls": Boom, "params": {}},  # eager, raises
+                    {"name": "ok", "cls": Gamma, "params": {}},  # eager, after boom
+                ]
+            )
+
+    alfa = Alfa()
+    with pytest.raises(RuntimeError, match="boom in __init__"):
+        alfa.route.nodes()  # first tree access: eager pass hits the error
+    # The failing branch is still declared (spec not lost) and the error
+    # repeats on the next tree access — the tree is loudly broken until fixed.
+    assert "boom" in alfa.branches
+    with pytest.raises(RuntimeError, match="boom in __init__"):
+        alfa.route.nodes()
+    # Removing the broken branch unblocks the tree; 'ok' materializes eagerly.
+    alfa.remove_branch("boom")
+    tree = alfa.route.nodes()
+    assert "ok" in tree["routers"]
+    assert alfa.route.node("ok/ping")() == "gamma.ping:gamma"
 
 
 # ---------------------------------------------------------------------------

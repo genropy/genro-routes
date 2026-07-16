@@ -69,10 +69,13 @@ exclusive). Navigating into it rewrites the path to the target and resolves from
 the root — ``node("fake_sales/x")`` resolves ``alfa/beta/gamma/x`` — so the
 target's whole subtree (branches + leaves, recursive) is reachable through the
 alias, with the **target's** plugins (a transparent symlink; the alias adds
-none). ``nodes()`` shows the target's subtree under the alias name with an
-``alias`` marker. Resolution is lazy: the alias is just a string; navigating it
-materializes lazy branches along the target path. A broken alias resolves to
-``not_found``; an alias cycle raises ``ValueError``.
+none). ``nodes()`` shows the alias as an unresolved marker
+``{"name": ..., "alias": target}`` without building anything; pass
+``_eager=True`` to expand everything (materialize lazy branches and resolve
+aliases), or use ``nodes(basepath=alias)`` to open one branch explicitly.
+Resolution is lazy: the alias is just a string; navigating it materializes lazy
+branches along the target path. A broken alias resolves to ``not_found``; an
+alias cycle raises ``ValueError``.
 
 Router configuration happens on the existing router in ``__init__`` (binding
 is lazy, so this is race-free)::

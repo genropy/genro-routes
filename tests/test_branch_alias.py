@@ -156,11 +156,12 @@ def test_alias_uses_target_plugins():
 
 
 # ---------------------------------------------------------------------------
-# 5-6. nodes() shows target subtree under the alias name, with a marker
+# 5-6. nodes() shows the alias as an UNRESOLVED marker (closed symlink);
+#      _eager=True expands everything; basepath opens one branch explicitly
 # ---------------------------------------------------------------------------
 
 
-def test_nodes_shows_alias_target_subtree():
+def test_nodes_shows_alias_as_marker():
     class Alfa(RoutingClass):
         def __init__(self):
             self.add_branches(
@@ -172,10 +173,106 @@ def test_nodes_shows_alias_target_subtree():
 
     alfa = Alfa()
     tree = alfa.route.nodes()
-    assert "fake" in tree["routers"]
     fake = tree["routers"]["fake"]
-    assert fake.get("alias") == "real"
+    assert fake == {"name": "fake", "alias": "real"}  # marker only, not expanded
+
+
+def test_nodes_alias_to_lazy_target_does_not_build(  # regression: B1 crash
+):
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches(
+                [
+                    {"name": "real", "lazy": True, "cls": Leaf, "params": {"tag": "lz"}},
+                    {"name": "fake", "alias": "real"},
+                ]
+            )
+
+    alfa = Alfa()
+    tree = alfa.route.nodes()  # must not crash, must not build
+    assert tree["routers"]["fake"] == {"name": "fake", "alias": "real"}
+    assert "Leaf:lz" not in BUILD_LOG
+    tree_lazy = alfa.route.nodes(lazy=True)  # same in lazy introspection mode
+    assert tree_lazy["routers"]["fake"] == {"name": "fake", "alias": "real"}
+    assert "Leaf:lz" not in BUILD_LOG
+
+
+def test_nodes_eager_expands_lazy_and_alias():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches(
+                [
+                    {"name": "real", "lazy": True, "cls": Leaf, "params": {"tag": "lz"}},
+                    {"name": "fake", "alias": "real"},
+                ]
+            )
+
+    alfa = Alfa()
+    tree = alfa.route.nodes(_eager=True)
+    # Lazy branch materialized and fully expanded.
+    assert set(tree["routers"]["real"]["entries"].keys()) == {"ping", "info"}
+    # Alias resolved and expanded, keeping the marker.
+    fake = tree["routers"]["fake"]
+    assert fake["alias"] == "real"
     assert set(fake["entries"].keys()) == {"ping", "info"}
+    assert "Leaf:lz" in BUILD_LOG
+
+
+def test_nodes_eager_expands_nested_lazy():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "sub", "lazy": True, "cls": Sub})
+
+    alfa = Alfa()
+    tree = alfa.route.nodes(_eager=True)
+    # Nested lazy branch inside the materialized subtree is expanded too.
+    assert set(tree["routers"]["sub"]["routers"]["leaf"]["entries"].keys()) == {"ping", "info"}
+
+
+def test_nodes_eager_alias_cycle_raises():
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches(
+                [
+                    {"name": "a", "alias": "b"},
+                    {"name": "b", "alias": "a"},
+                ]
+            )
+
+    alfa = Alfa()
+    with pytest.raises(ValueError, match="cycle"):
+        alfa.route.nodes(_eager=True)
+
+
+def test_nodes_with_alias_cycle_markers_only_no_crash():  # regression: B2
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches(
+                [
+                    {"name": "a", "alias": "b"},
+                    {"name": "b", "alias": "a"},
+                ]
+            )
+
+    alfa = Alfa()
+    tree = alfa.route.nodes()  # markers only: no resolution, no RecursionError
+    assert tree["routers"]["a"] == {"name": "a", "alias": "b"}
+    assert tree["routers"]["b"] == {"name": "b", "alias": "a"}
+
+
+def test_router_at_path_alias_cycle_raises():  # regression: B2
+    class Alfa(RoutingClass):
+        def __init__(self):
+            self.add_branches(
+                [
+                    {"name": "a", "alias": "b"},
+                    {"name": "b", "alias": "a"},
+                ]
+            )
+
+    alfa = Alfa()
+    with pytest.raises(ValueError, match="cycle"):
+        alfa.route.router_at_path("a")
 
 
 def test_nodes_basepath_into_alias():
