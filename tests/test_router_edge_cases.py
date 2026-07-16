@@ -352,49 +352,6 @@ def test_routing_proxy_attach_instance():
     assert parent.route.node("child/hello")() == "hello from child"
 
 
-def test_routing_proxy_instance():
-    """Test routing.instance() returns child RoutingClass instance."""
-
-    class UsersModule(RoutingClass):
-        @route()
-        def list(self):
-            return "users:list"
-
-    class OrdersModule(RoutingClass):
-        @route()
-        def list(self):
-            return "orders:list"
-
-    class App(RoutingClass):
-        def __init__(self):
-            self.attach_instance(UsersModule(), name="users")
-            self.attach_instance(OrdersModule(), name="orders")
-
-    app = App()
-
-    # Retrieve child instances via routing.instance()
-    users = app.routing.instance("users")
-    orders = app.routing.instance("orders")
-
-    assert isinstance(users, UsersModule)
-    assert isinstance(orders, OrdersModule)
-
-    # Routing still works
-    assert app.route.node("users/list")() == "users:list"
-    assert app.route.node("orders/list")() == "orders:list"
-
-
-def test_routing_proxy_instance_not_found():
-    """Test routing.instance() raises KeyError for non-existent child."""
-
-    class App(RoutingClass):
-        pass
-
-    app = App()
-    with pytest.raises(KeyError):
-        app.routing.instance("nonexistent")
-
-
 def test_endpoint_id_basic_lookup():
     """Test @endpoint_id resolution via node()."""
 
@@ -432,7 +389,7 @@ def test_endpoint_id_in_child_router():
 
     class App(RoutingClass):
         def __init__(self):
-            self.attach_instance(UsersModule(), name="users")
+            self.add_branches({"name": "users", "cls": UsersModule})
 
     app = App()
 
@@ -1097,21 +1054,6 @@ def test_router_get_config_paths():
         svc.route.get_config("missing")
 
 
-def test_routed_proxy_get_router_handles_dotted_path():
-    class Leaf(RoutingClass):
-        pass
-
-    class Parent(RoutingClass):
-        def __init__(self):
-            self.child = Leaf()
-            self.route._children["child"] = self.child.route  # direct attach for test
-
-    svc = Parent()
-    router = svc.routing.get_router("child")
-    assert router is svc.child.route
-    assert router.name == "route"
-
-
 def test_routed_configure_updates_plugins_global_and_local():
     ensure_plugin(SimplePlugin)
 
@@ -1198,7 +1140,7 @@ def test_attach_then_plug_propagates_to_child():
 
     class Api(RoutingClass):
         def __init__(self):
-            self.attach_instance(_LeafChild(), name="srv")
+            self.add_branches({"name": "srv", "cls": _LeafChild})
 
     api = Api()
     api.route.plug("pydantic")
@@ -1214,7 +1156,7 @@ def test_plug_then_attach_still_ok():
     class Api(RoutingClass):
         def __init__(self):
             self.route.plug("pydantic")
-            self.attach_instance(_LeafChild(), name="srv")
+            self.add_branches({"name": "srv", "cls": _LeafChild})
 
     fields = Api().route.node("srv/health").params.get("fields")
     assert fields is not None
@@ -1231,11 +1173,11 @@ def test_attach_then_plug_multilevel():
 
     class Mid(RoutingClass):
         def __init__(self):
-            self.attach_instance(GrandChild(), name="gc")
+            self.add_branches({"name": "gc", "cls": GrandChild})
 
     class Top(RoutingClass):
         def __init__(self):
-            self.attach_instance(Mid(), name="mid")
+            self.add_branches({"name": "mid", "cls": Mid})
 
     top = Top()
     top.route.plug("pydantic")

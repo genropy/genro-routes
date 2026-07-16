@@ -123,7 +123,7 @@ class Parent(RoutingClass):
         self.attach_instance(ChildService(), name="child")
 
 # Retrieve the child instance later if needed
-child = parent.routing.instance("child")
+child = parent.route.nodes(basepath="child")["instance"]
 ```
 
 ## Plugin Usage
@@ -369,7 +369,7 @@ svc.routing.configure("logging/debug_*", print=True)
 |----|-------|
 | Keep services focused | Mix unrelated handlers |
 | Use meaningful names | Use vague names |
-| Use `routing.instance()` to retrieve children | Rely on global variables for child access |
+| Use `nodes(basepath=...)` to retrieve children | Rely on global variables for child access |
 | Apply plugins at right level | Over-apply plugins |
 | Let errors propagate | Swallow exceptions |
 | Test handlers in isolation | Only test via HTTP |

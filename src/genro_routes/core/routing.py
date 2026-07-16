@@ -10,12 +10,72 @@ RoutingClass
 A mixin class providing:
     - ``route`` property: the instance's Router, created lazily on first
       access. Assigning to it raises ``AttributeError`` (read-only).
-    - ``attach_instance(child, name=...)``: attaches a child RoutingClass
-      instance. Sets ``child._routing_parent = self`` and, when ``name`` is
-      given, links ``child.route`` into ``self.route`` under that alias.
+    - ``add_branches(specs)``: declare child subrouters as factory specs
+      (see Branches below). Accepts one dict, a list of dicts, or a generator.
+    - ``remove_branch(name)``: drop a declared branch; if already materialized,
+      detach its router.
+    - ``branches`` property: read-only view of the declared branch specs.
     - ``routing`` property: cached ``_RoutingProxy`` for configuration/lookup.
     - ``ctx`` property: execution context, walking up the parent chain.
     - ``capabilities`` property: CapabilitiesSet for runtime feature flags.
+
+Branches (declarative, factory-based subrouters)
+------------------------------------------------
+A branch is a child subrouter declared as a **factory spec** and materialized
+(constructed) only when needed. This lets trees with thousands of leaves start
+cheaply — nothing is instantiated until walked.
+
+A branch spec is a self-describing dict::
+
+    {"name": "beta", "lazy": True, "cls": Beta, "params": {"x": 56}}
+
+    name   -- alias under which the child is reachable (path segment)
+    lazy   -- True: materialize on first traversal; False (eager): materialize
+              at first tree access
+    cls    -- the RoutingClass subclass to instantiate
+    params -- kwargs applied as cls(**params) at materialization
+
+``add_branches`` populates the router's ``_branches`` dict; no instance is
+constructed at declaration time. Materialization is the single point where an
+instance is built: construct ``cls(**params)``, set ``_routing_parent``, link
+into ``_children`` (which triggers plugin inheritance), then drop the spec from
+``_branches``. Two timing policies share this one mechanism:
+
+    - eager  -- all eager branches materialize at first tree access
+                (idempotent guard on the router: runs once)
+    - lazy   -- a lazy branch materializes on-demand when a path first
+                traverses its segment
+
+Two distinct laziness levels must not be conflated:
+
+    - spec enumeration happens at the ``add_branches`` call (a generator is
+      consumed immediately). Light metadata only.
+    - instance construction happens at materialization. This is the real saving.
+
+Introspection (``nodes()``) describes a non-materialized lazy branch WITHOUT
+building it, including the class-declared ``@route`` leaves read from the class
+(no instance). Reverse lookup (``node("@endpoint_id")``) searches only eager and
+already-materialized branches; it skips non-materialized lazy branches.
+
+Alias branches (symlink to a branch)
+------------------------------------
+A branch spec may be an **alias** instead of a factory::
+
+    {"name": "fake_sales", "alias": "alfa/beta/gamma"}
+
+An alias branch is a symlink to another branch, addressed by an **absolute path**
+from the tree root. It has ``alias`` and no ``cls``/``params`` (mutually
+exclusive). Navigating into it rewrites the path to the target and resolves from
+the root — ``node("fake_sales/x")`` resolves ``alfa/beta/gamma/x`` — so the
+target's whole subtree (branches + leaves, recursive) is reachable through the
+alias, with the **target's** plugins (a transparent symlink; the alias adds
+none). ``nodes()`` shows the alias as an unresolved marker
+``{"name": ..., "alias": target}`` without building anything; pass
+``_eager=True`` to expand everything (materialize lazy branches and resolve
+aliases), or use ``nodes(basepath=alias)`` to open one branch explicitly.
+Resolution is lazy: the alias is just a string; navigating it materializes lazy
+branches along the target path. A broken alias resolves to ``not_found``; an
+alias cycle raises ``ValueError``.
 
 Router configuration happens on the existing router in ``__init__`` (binding
 is lazy, so this is race-free)::
@@ -41,10 +101,9 @@ _RoutingProxy
 -------------
 Bound to the owning ``RoutingClass`` instance.
 
-Router lookup:
-    - ``get_router(path=None)`` returns the owner's router, optionally
-      navigating child routers along ``path`` (e.g. ``"users/detail"``).
-      Raises ``KeyError`` if a path segment does not resolve.
+Router navigation and introspection use the router's own ``node(path)`` (to
+resolve/execute) and ``nodes(basepath=...)`` (to inspect and open a subtree,
+materializing lazy branches on the way).
 
 Configuration entrypoint:
     - ``configure(target, **options)`` accepts string, dict, or list targets.
@@ -152,6 +211,24 @@ class RoutingClass:
         if router is None:
             router = Router(self)
         return router
+
+    def add_branches(self, specs: Any) -> None:
+        """Declare child branches (factory specs) on this instance's router.
+
+        Accepts one spec dict, a list of dicts, or a generator. Each spec is
+        ``{"name", "lazy", "cls", "params"}``. Delegates to the router; nothing
+        is constructed until materialization (see the Branches section above).
+        """
+        self.route.add_branches(specs)
+
+    def remove_branch(self, name: str) -> None:
+        """Remove a declared branch; detach its child if already materialized."""
+        self.route.remove_branch(name)
+
+    @property
+    def branches(self) -> dict[str, dict[str, Any]]:
+        """Read-only view of declared (not-yet-materialized) branch specs."""
+        return self.route.branches
 
     def _register_router(self, router: Router) -> None:
         """Register the router with this instance.
@@ -320,13 +397,13 @@ class Section(RoutingClass):
 
 
 class _RoutingProxy:
-    """Proxy for accessing and configuring the router of a RoutingClass instance.
+    """Proxy for configuring the router of a RoutingClass instance.
 
-    Provides a unified interface for router lookup and plugin configuration.
-    Access via the ``routing`` property on any RoutingClass instance.
+    Provides plugin configuration for the owner's router. Access via the
+    ``routing`` property on any RoutingClass instance. For navigation and
+    introspection use the router's ``node(path)`` / ``nodes(basepath=...)``.
 
     Main operations:
-        - ``get_router(path=None)``: The owner's router, or a child at path
         - ``configure(target, **options)``: Configure plugin settings
         - ``attach_instance(child, name=...)``: Delegates to owner's attach_instance
 
@@ -347,58 +424,7 @@ class _RoutingProxy:
     def __init__(self, owner: RoutingClass):
         object.__setattr__(self, "_owner", owner)
 
-    def get_router(self, path: str | None = None):
-        """Return the owner's router, optionally navigating child routers.
-
-        Args:
-            path: Optional "child/grandchild" path to navigate.
-
-        Returns:
-            The owner's Router, or the child router at path.
-
-        Raises:
-            KeyError: If child path navigation fails.
-
-        Example:
-            >>> svc.routing.get_router()
-            >>> svc.routing.get_router("users")  # child router
-            >>> svc.routing.get_router("users/detail")
-        """
-        router = self._owner.route
-        if not path:
-            return router
-        return self._navigate_router(router, path)
-
-    def instance(self, path: str) -> RoutingClass:
-        """Return the RoutingClass instance that owns the child router at path.
-
-        Args:
-            path: Router path in "child" or "child/grandchild" notation.
-
-        Returns:
-            The RoutingClass instance owning the resolved child router.
-
-        Raises:
-            KeyError: If child path navigation fails.
-
-        Example:
-            >>> svc.routing.instance("users")  # → UsersModule instance
-            >>> svc.routing.instance("users/detail")  # → nested child instance
-        """
-        router = self.get_router(path)
-        return router.instance  # type: ignore[no-any-return]
-
     # Helpers -------------------------------------------------
-    def _navigate_router(self, root, path: str):
-        """Walk child routers following the path segments."""
-        node = root
-        for segment in path.split("/"):
-            segment = segment.strip()
-            if not segment:
-                continue
-            node = node._children[segment]
-        return node
-
     def _parse_target(self, target: str) -> tuple[str, str]:
         """Parse 'plugin/selector' into (plugin, selector)."""
         if "/" in target:

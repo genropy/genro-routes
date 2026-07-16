@@ -524,11 +524,13 @@ without polluting the class namespace:
 
 | Proxy method | Purpose |
 |--------------|---------|
-| `get_router(path=None)` | The owner's router, or a child router at path |
-| `instance(path)` | The RoutingClass instance owning the child router at path |
 | `configure(target, **opts)` | Plugin configuration via target syntax |
 | `configure("?")` | Introspection: returns the router description dict |
 | `attach_instance(child, name=...)` | Delegates to the owner's `attach_instance` |
+
+For navigation and introspection use the router directly: `route.node(path)`
+resolves (and executes) a path, `route.nodes(basepath=...)` inspects and opens
+a subtree.
 
 **Target syntax for configure**: `"plugin/selector"`
 

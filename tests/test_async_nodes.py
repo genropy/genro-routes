@@ -85,7 +85,7 @@ def test_async_child_node_classified_through_hierarchy():
 
     class Parent(RoutingClass):
         def __init__(self):
-            self.attach_instance(Child(), name="c")
+            self.add_branches({"name": "c", "cls": Child})
 
     node = Parent().route.node("c/ping")
     assert asyncio.iscoroutinefunction(node) is True
