@@ -146,20 +146,39 @@ class Router(BaseRouter):
         """Return a copy of the global plugin registry."""
         return dict(_PLUGIN_REGISTRY)
 
-    def plug(self, plugin: str, **config: Any) -> Router:
-        """Attach a plugin by name (previously registered globally).
+    def plug(self, plugin: str | list[dict[str, Any]], **config: Any) -> Router:
+        """Attach one or more plugins by name (previously registered globally).
 
         Args:
-            plugin: Name of the plugin to attach.
-            **config: Configuration options passed to the plugin.
+            plugin: Either a plugin name (single attach) or a list of plugin
+                dicts ``{"name": ..., <options>}`` (batch attach). Each dict
+                carries the plugin name plus its own options; shared kwargs are
+                not allowed with a list.
+            **config: Configuration options passed to the plugin (single form only).
 
         Returns:
             self (for method chaining).
 
         Raises:
-            TypeError: If plugin is not a string.
-            ValueError: If plugin is not registered or already attached.
+            TypeError: If plugin is not a string or a list of dicts.
+            ValueError: If a plugin is not registered, already attached, a list
+                is mixed with shared kwargs, or a dict lacks 'name'.
         """
+        if isinstance(plugin, (list, tuple)):
+            if config:
+                raise ValueError("Do not mix shared kwargs with a list of plugins")
+            for item in plugin:
+                if not isinstance(item, dict):
+                    raise TypeError(
+                        f"Each plugin spec must be a dict, got {type(item).__name__}"
+                    )
+                options = dict(item)
+                try:
+                    name = options.pop("name")
+                except KeyError as err:
+                    raise ValueError("Plugin dict must include 'name'") from err
+                self.plug(name, **options)
+            return self
         if not isinstance(plugin, str):
             raise TypeError(
                 f"Plugin must be referenced by name string, got {type(plugin).__name__}"
