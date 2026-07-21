@@ -1044,13 +1044,12 @@ class BaseRouter(RouterInterface):
                 self._materialize_branch(branch_name)
         # Compile pattern once if provided
         pattern_re = re.compile(pattern) if pattern else None
-        router_caps = self.current_capabilities
 
         entries: dict[str, Any] = {}
         for entry in self._entries.values():
             if pattern_re is not None and not pattern_re.search(entry.name):
                 continue
-            allow_result = self._entry_invalid_reason(entry, env_router_capabilities=router_caps, **kwargs)
+            allow_result = self._entry_invalid_reason(entry, **kwargs)
             if allow_result == "":
                 entries[entry.name] = self._entry_node_info(entry)
             elif forbidden:
