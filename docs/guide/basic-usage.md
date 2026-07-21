@@ -398,7 +398,7 @@ except HTTPForbidden:
 | `not_authenticated` | `NotAuthenticated` | 401 | Auth required, none provided |
 | `not_authorized` | `NotAuthorized` | 403 | Auth provided, insufficient |
 | `not_available` | `NotAvailable` | 501 | Capability missing |
-| `validation_error` | `ValidationError` | 422 | Pydantic validation failed |
+| `validation_error` | `ValidationError` | 422 | Bad arguments: pydantic validation failed or arguments unbindable (`TypeError`) |
 
 **Use cases**:
 
