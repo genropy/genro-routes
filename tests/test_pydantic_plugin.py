@@ -124,3 +124,48 @@ def test_pydantic_plugin_config_merge_base_and_handler():
         svc.route.node("handler_a")(123, "oops")
 
     assert svc.route.node("handler_b")(123, "oops") == "123:oops"
+
+
+class BadArgError(Exception):
+    """Custom exception used to check the unified bad-argument contract."""
+
+    def __init__(self, selector: str) -> None:
+        self.selector = selector
+        super().__init__(selector)
+
+
+def test_binding_error_maps_to_validation_error_with_pydantic():
+    """Extra positional args (TypeError from sig.bind) map to validation_error."""
+    svc = ValidateService()
+    node = svc.route.node("concat", errors={"validation_error": BadArgError})
+    with pytest.raises(BadArgError):
+        node("a", 1, "extra")  # too many positional args for concat(text, number)
+
+
+def test_binding_error_unknown_keyword_maps_to_validation_error():
+    """An unexpected keyword (TypeError from sig.bind) maps to validation_error."""
+    svc = ValidateService()
+    node = svc.route.node("concat", errors={"validation_error": BadArgError})
+    with pytest.raises(BadArgError):
+        node("a", nope=1)  # 'nope' is not a parameter of concat
+
+
+def test_binding_error_maps_without_pydantic():
+    """Without the pydantic plugin, the native TypeError maps too."""
+
+    class PlainService(RoutingClass):
+        @route()
+        def concat(self, text: str, number: int = 1) -> str:
+            return f"{text}:{number}"
+
+    svc = PlainService()
+    node = svc.route.node("concat", errors={"validation_error": BadArgError})
+    with pytest.raises(BadArgError):
+        node("a", 1, "extra")
+
+
+def test_binding_error_propagates_typeerror_without_custom():
+    """With no custom exception registered, the TypeError propagates unchanged."""
+    svc = ValidateService()
+    with pytest.raises(TypeError):
+        svc.route.node("concat")("a", 1, "extra")

@@ -177,15 +177,15 @@ class EnvPlugin(BasePlugin):
         """Filter entries based on capability requirements.
 
         Capabilities are accumulated from:
-        1. Router capabilities (``router_capabilities`` if pre-computed, else from router)
+        1. Router capabilities (walked from the router's parent chain)
         2. Request capabilities (``capabilities`` parameter)
 
         The combined set is checked against the entry's ``env_requires``.
 
         Args:
             entry: MethodEntry being checked.
-            **filters: May contain ``router_capabilities`` (pre-computed) and/or
-                      ``capabilities`` (from request).
+            **filters: May contain ``capabilities`` (from request), the only
+                      public env filter key.
 
         Returns:
             "": Access allowed (no reason to deny).
@@ -198,10 +198,7 @@ class EnvPlugin(BasePlugin):
         if not entry_rule:
             return ""
 
-        # Use pre-computed router capabilities or compute them
-        router_caps = filters.get("router_capabilities")
-        if router_caps is None:
-            router_caps = self._router.current_capabilities
+        router_caps = self._router.current_capabilities
 
         # Parse request capabilities
         request_caps_str = filters.get("capabilities")

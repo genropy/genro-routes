@@ -1044,13 +1044,12 @@ class BaseRouter(RouterInterface):
                 self._materialize_branch(branch_name)
         # Compile pattern once if provided
         pattern_re = re.compile(pattern) if pattern else None
-        router_caps = self.current_capabilities
 
         entries: dict[str, Any] = {}
         for entry in self._entries.values():
             if pattern_re is not None and not pattern_re.search(entry.name):
                 continue
-            allow_result = self._entry_invalid_reason(entry, env_router_capabilities=router_caps, **kwargs)
+            allow_result = self._entry_invalid_reason(entry, **kwargs)
             if allow_result == "":
                 entries[entry.name] = self._entry_node_info(entry)
             elif forbidden:
@@ -1151,7 +1150,8 @@ class BaseRouter(RouterInterface):
                     - ``not_found``: Path not found or varargs_required
                     - ``not_authorized``: Auth tags don't match (403)
                     - ``not_authenticated``: Auth required but not provided (401)
-                    - ``validation_error``: Pydantic validation failed
+                    - ``validation_error``: Bad arguments - pydantic validation
+                      failed or arguments were unbindable (TypeError)
 
                     Example::
 

@@ -120,6 +120,48 @@ def test_plug_rejects_duplicate_plugin():
         svc.route.plug("logging")
 
 
+def test_plug_list_of_dicts_attaches_all():
+    """A list of plugin dicts attaches every plugin in one call."""
+    svc = ManualService()
+    result = svc.route.plug([
+        {"name": "stamp_extra"},
+        {"name": "logging", "before": False},
+    ])
+    assert result is svc.route  # returns self for chaining
+    assert "stamp_extra" in svc.route._plugins_by_name
+    assert "logging" in svc.route._plugins_by_name
+    # per-plugin option reached the logging plugin config
+    assert svc.route.logging.configuration()["before"] is False
+
+
+def test_plug_list_rejects_shared_kwargs():
+    """Mixing shared kwargs with a list of plugins raises ValueError."""
+    svc = ManualService()
+    with pytest.raises(ValueError, match="shared kwargs"):
+        svc.route.plug([{"name": "logging"}], level="debug")
+
+
+def test_plug_list_dict_requires_name():
+    """A plugin dict without 'name' raises ValueError."""
+    svc = ManualService()
+    with pytest.raises(ValueError, match="must include 'name'"):
+        svc.route.plug([{"level": "debug"}])
+
+
+def test_plug_list_rejects_non_dict_element():
+    """A non-dict element in the list raises TypeError."""
+    svc = ManualService()
+    with pytest.raises(TypeError, match="must be a dict"):
+        svc.route.plug(["logging"])  # type: ignore[list-item]
+
+
+def test_plug_list_rejects_duplicate():
+    """A duplicate plugin inside the batch raises 'already attached'."""
+    svc = ManualService()
+    with pytest.raises(ValueError, match="already attached"):
+        svc.route.plug([{"name": "logging"}, {"name": "logging"}])
+
+
 def test_add_entry_variants_and_wildcards():
     svc = ManualService()
     svc.route.add_entry(["first", "second"])

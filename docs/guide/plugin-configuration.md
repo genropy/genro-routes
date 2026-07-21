@@ -4,8 +4,10 @@ Configure plugins at runtime through a unified API with support for global setti
 
 ## Overview
 
-Genro Routes provides `routing.configure()` for runtime plugin configuration with:
+Genro Routes provides `route.plug()` to attach plugins (single or in batch)
+and `routing.configure()` for runtime plugin configuration with:
 
+- **Batch attach**: Attach several plugins from a list of `{"name", ...}` dicts
 - **Target syntax**: `<plugin>/<selector>` format
 - **Global configuration**: Apply to all handlers with `_all_`
 - **Handler-specific overrides**: Target individual handlers
@@ -139,6 +141,38 @@ assert svc.route.logging.configuration("bar")["before"] is False
 - `enabled` - Enable/disable plugin for handler(s)
 - `flags` - Boolean options as comma-separated string
 - `before`, `after`, `print` - Plugin-specific settings (here: LoggingPlugin)
+
+## Attaching Plugins in Batch
+
+<!-- test: test_router_runtime_extras.py::test_plug_list_of_dicts_attaches_all -->
+
+`route.plug()` attaches a plugin. Besides the single form `plug("logging")`,
+it accepts a **list of plugin dicts** to attach several plugins in one call —
+the natural shape for a config-driven arming layer:
+
+```python
+route.plug([
+    {"name": "logging", "before": False},   # attach with options
+    {"name": "pydantic"},                    # attach with defaults
+])
+```
+
+**Each dictionary must have**:
+
+- `name` key - the plugin name (validated against `Router.available_plugins()`)
+- Additional keys - options passed to that plugin
+
+Notes:
+
+- Shared kwargs are **not** allowed with a list (`plug([...], x=1)` raises
+  `ValueError`) — options live inside each dict.
+- Attaching an already-attached plugin raises `ValueError` (use
+  `routing.configure()` to change a live plugin's settings) — the batch form
+  does not soften this.
+
+Attaching (`plug`) and configuring (`routing.configure`) stay distinct:
+`plug` brings a plugin onto the router; `configure` tunes a plugin already
+attached, down to individual handlers.
 
 ## Batch Updates
 

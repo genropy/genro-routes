@@ -120,6 +120,8 @@ class RouterNode:
             errors: Optional dict mapping error codes to custom exception classes.
                     Available codes: 'not_found', 'not_authorized', 'not_authenticated',
                     'validation_error'. Custom exceptions override the defaults.
+                    'validation_error' covers every bad-argument path: pydantic
+                    validation failures and unbindable arguments (TypeError).
             entry_name: Name of the entry to resolve (if this is an entry node).
             path: Full path to this node.
             partial: Path segments not yet resolved.
@@ -254,7 +256,11 @@ class RouterNode:
         Raises:
             Exception mapped to error code: If error is set (not_found,
                 not_authenticated, not_authorized, not_available).
-            Exception mapped to 'validation_error': If pydantic validation fails.
+            Exception mapped to 'validation_error': For any bad-argument error
+                raised while calling the handler - both pydantic validation
+                failures and unbindable arguments (TypeError from signature
+                binding). Note: a TypeError raised inside the handler body is
+                indistinguishable from a binding error and is mapped too.
         """
         path = self.path or ""
 
@@ -272,7 +278,8 @@ class RouterNode:
         try:
             return self._entry.handler(*all_args, **merged_kwargs)  # type: ignore[attr-defined, union-attr]
         except Exception as e:
-            if ValidationError is not None and isinstance(e, ValidationError):
+            is_validation = ValidationError is not None and isinstance(e, ValidationError)
+            if is_validation or isinstance(e, TypeError):
                 custom_exc = self._exceptions.get("validation_error")
                 if custom_exc is not None and custom_exc is not ValidationError:
                     selector = f"{self._router.name}:{path}" if path else self._router.name
