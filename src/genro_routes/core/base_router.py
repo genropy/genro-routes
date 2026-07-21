@@ -1150,7 +1150,8 @@ class BaseRouter(RouterInterface):
                     - ``not_found``: Path not found or varargs_required
                     - ``not_authorized``: Auth tags don't match (403)
                     - ``not_authenticated``: Auth required but not provided (401)
-                    - ``validation_error``: Pydantic validation failed
+                    - ``validation_error``: Bad arguments - pydantic validation
+                      failed or arguments were unbindable (TypeError)
 
                     Example::
 
