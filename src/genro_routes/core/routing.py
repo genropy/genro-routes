@@ -21,30 +21,29 @@ A mixin class providing:
 
 Branches (declarative, factory-based subrouters)
 ------------------------------------------------
-A branch is a child subrouter declared as a **factory spec** and materialized
-(constructed) only when needed. This lets trees with thousands of leaves start
-cheaply — nothing is instantiated until walked.
+A branch is a child subrouter declared through ``add_branches``, the single
+entry point. Declaring builds nothing at declaration time; this lets trees with
+thousands of leaves start cheaply. A spec is one of three mutually exclusive
+forms::
 
-A branch spec is a self-describing dict::
+    {"name": "beta",  "cls": Beta, "params": {"x": 56}}   # factory  (lazy)
+    {"name": "gamma", "instance": gamma_obj}              # instance (eager)
+    {"name": "fake",  "alias": "alfa/beta"}               # alias    (symlink)
 
-    {"name": "beta", "lazy": True, "cls": Beta, "params": {"x": 56}}
+    name     -- alias under which the child is reachable (path segment)
+    cls      -- the RoutingClass subclass to instantiate; ALWAYS lazy — built
+                on first traversal of the branch
+    params   -- kwargs applied as cls(**params) at materialization (factory only)
+    instance -- an already-built RoutingClass instance; EAGER — linked as a
+                child immediately (it lands in _children, not _branches)
+    alias    -- absolute path from the tree root (symlink, see below)
 
-    name   -- alias under which the child is reachable (path segment)
-    lazy   -- True: materialize on first traversal; False (eager): materialize
-              at first tree access
-    cls    -- the RoutingClass subclass to instantiate
-    params -- kwargs applied as cls(**params) at materialization
-
-``add_branches`` populates the router's ``_branches`` dict; no instance is
-constructed at declaration time. Materialization is the single point where an
-instance is built: construct ``cls(**params)``, set ``_routing_parent``, link
-into ``_children`` (which triggers plugin inheritance), then drop the spec from
-``_branches``. Two timing policies share this one mechanism:
-
-    - eager  -- all eager branches materialize at first tree access
-                (idempotent guard on the router: runs once)
-    - lazy   -- a lazy branch materializes on-demand when a path first
-                traverses its segment
+The timing is derived from the form (``cls`` → lazy, ``instance`` → eager);
+there is no ``lazy`` flag. A factory populates the router's ``_branches`` dict;
+materialization is the single point where its instance is built: construct
+``cls(**params)``, set ``_routing_parent``, link into ``_children`` (which
+triggers plugin inheritance), then drop the spec from ``_branches``. An instance
+skips that path — it is linked into ``_children`` at declaration.
 
 Two distinct laziness levels must not be conflated:
 
@@ -54,8 +53,8 @@ Two distinct laziness levels must not be conflated:
 
 Introspection (``nodes()``) describes a non-materialized lazy branch WITHOUT
 building it, including the class-declared ``@route`` leaves read from the class
-(no instance). Reverse lookup (``node("@endpoint_id")``) searches only eager and
-already-materialized branches; it skips non-materialized lazy branches.
+(no instance). Reverse lookup (``node("@endpoint_id")``) searches only instances
+and already-traversed factories; it skips non-materialized lazy factories.
 
 Alias branches (symlink to a branch)
 ------------------------------------
@@ -95,7 +94,7 @@ Minimal concrete RoutingClass used as a grouping node. A Section carries an
 empty router; children are attached under it to build intermediate levels of
 a routing tree (including dynamically discovered trees)::
 
-    svc.attach_instance(Section("Admin area"), name="admin")
+    svc.add_branches({"name": "admin", "instance": Section("Admin area")})
 
 _RoutingProxy
 -------------
@@ -213,11 +212,13 @@ class RoutingClass:
         return router
 
     def add_branches(self, specs: Any) -> None:
-        """Declare child branches (factory specs) on this instance's router.
+        """Declare child branches on this instance's router. Single entry point.
 
         Accepts one spec dict, a list of dicts, or a generator. Each spec is
-        ``{"name", "lazy", "cls", "params"}``. Delegates to the router; nothing
-        is constructed until materialization (see the Branches section above).
+        one of three mutually exclusive forms: factory ``{"name", "cls",
+        "params"}`` (lazy — built on first traversal), instance ``{"name",
+        "instance"}`` (eager — linked now), or alias ``{"name", "alias"}``.
+        Delegates to the router.
         """
         self.route.add_branches(specs)
 
@@ -242,40 +243,6 @@ class RoutingClass:
         if existing is not None and existing is not router:
             raise ValueError(f"{type(self).__name__} already has a router")
         object.__setattr__(self, _ROUTER_ATTR_NAME, router)
-
-    def attach_instance(self, child: RoutingClass, *, name: str | None = None) -> None:
-        """Attach a child RoutingClass instance.
-
-        Sets ``child._routing_parent = self``. When ``name`` is given,
-        ``child.route`` is linked into ``self.route`` under that alias
-        (plugin inheritance is triggered by the link).
-
-        Args:
-            child: The RoutingClass instance to attach.
-            name: Alias under which the child's router is reachable from
-                this instance's router. If omitted, only the parent
-                relationship is set (no routing link).
-
-        Raises:
-            TypeError: If child is not a RoutingClass instance.
-            ValueError: If child is already bound to another parent.
-            ValueError: If the alias collides with an existing child.
-
-        Example::
-
-            self.attach_instance(child, name="sales")
-        """
-        if not safe_is_instance(child, "genro_routes.core.routing.RoutingClass"):
-            raise TypeError("attach_instance() requires a RoutingClass instance")
-        existing_parent = getattr(child, "_routing_parent", None)
-        if existing_parent is not None and existing_parent is not self:
-            raise ValueError("attach_instance() rejected: child already bound to another parent")
-
-        if name is not None:
-            self.route.include(child.route, name=name)
-
-        if getattr(child, "_routing_parent", None) is not self:
-            object.__setattr__(child, "_routing_parent", self)
 
     @property
     def routing(self) -> _RoutingProxy:
@@ -388,7 +355,7 @@ class Section(RoutingClass):
     defining a dedicated class — e.g. namespacing or dynamically discovered
     hierarchies::
 
-        svc.attach_instance(Section("Admin area"), name="admin")
+        svc.add_branches({"name": "admin", "instance": Section("Admin area")})
     """
 
     def __init__(self, description: str | None = None) -> None:
@@ -405,7 +372,6 @@ class _RoutingProxy:
 
     Main operations:
         - ``configure(target, **options)``: Configure plugin settings
-        - ``attach_instance(child, name=...)``: Delegates to owner's attach_instance
 
     Target syntax for configure():
         - ``"plugin"`` - Global plugin config
@@ -469,18 +435,6 @@ class _RoutingProxy:
                 for child_name, child in router._children.items()
             },
         }
-
-    def attach_instance(self, child: RoutingClass, *, name: str | None = None) -> None:
-        """Attach a child instance. Delegates to owner's attach_instance.
-
-        Args:
-            child: The RoutingClass instance to attach.
-            name: Alias under which the child's router is linked.
-
-        Example:
-            >>> svc.routing.attach_instance(child, name="sales")
-        """
-        self._owner.attach_instance(child, name=name)
 
     def configure(self, target: Any, **options: Any):
         """Configure router plugins.
