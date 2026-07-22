@@ -1,8 +1,9 @@
 # Lazy Branches — declarative subrouters, materialized on demand
 
-**Status**: 🟢 IMPLEMENTED (0.27) — kept as design record
-**Version**: 1.0
-**Last Updated**: 2026-07-16
+**Status**: 🟢 IMPLEMENTED (0.27) — kept as design record.
+Section "Phase B — instance form (0.29)" below is 🔴 DA REVISIONARE.
+**Version**: 1.1
+**Last Updated**: 2026-07-22
 
 ## Summary
 
@@ -172,8 +173,48 @@ class Alfa(RoutingClass):
 | `tests/` | `test_lazy_branches.py` + `test_branch_alias.py` (exhaustive, behavioral); Pattern-A call-sites migrated to `add_branches` |
 | `docs/` | `guide/branches.md`; README, ARCHITECTURE, FAQ, hierarchies/best-practices updated |
 
-## Deferred to a later breaking release
+## Phase B — instance form (0.29) 🔴 DA REVISIONARE
 
-- Removal of `attach_instance` and of the secondary-link logic in
-  `_include_router`; migration of the remaining instance-based test call-sites.
-- Single-leaf sharing stays out of scope (see above).
+Phase B makes `add_branches` the **single entry point** for declaring a
+subtree, in three mutually exclusive spec forms, and **removes**
+`attach_instance`. The timing is derived from *what you pass*, so the `lazy`
+flag is dropped:
+
+| Form | Keys | Timing |
+|------|------|--------|
+| factory | `cls` (+ `params`) | **lazy** — built on first traversal |
+| instance | `instance` | **eager** — already built, linked as a child now |
+| alias | `alias` | never (symlink) |
+
+Rules:
+
+- **`cls` ⇒ always lazy.** A class is a promise: it is constructed on first
+  traversal. The 0.27 eager-factory (a class built at first tree access) is
+  gone — to build a subtree up front, pass a pre-built **instance** instead.
+- **`instance` ⇒ always eager.** An instance already exists; it is linked
+  immediately via the same `_include_router` path a factory uses at
+  materialization, and lands directly in `_children` — it never appears in the
+  `branches` view (that view lists declared-not-built specs only).
+- The three key groups are **mutually exclusive**: `cls`/`params`, `instance`,
+  `alias`. Any mix (e.g. `instance` + `cls`, `instance` + `lazy`) is a
+  `ValueError`.
+- **`lazy` flag removed** everywhere. Timing is `cls`→lazy, `instance`→eager.
+
+This resolves the "child as attribute" friction: instead of
+`self.commander = Commander(self)` + `attach_instance`, write
+
+```python
+self.commander = Commander(self)
+self.add_branches({"name": "commander", "instance": self.commander})
+```
+
+`attach_instance` (owner and proxy) is removed. `detach_instance` stays as the
+internal inverse of "remove a child" (used by `remove_branch`), not as a public
+attach counterpart.
+
+**Breaking, by design.** The project is in prototyping: no compatibility shim,
+no deprecation. Existing `add_branches({"cls": ...})` call-sites change timing
+silently (eager → lazy); every `lazy=` is removed; every `attach_instance(...)`
+becomes `add_branches({"name": ..., "instance": ...})`.
+
+Single-leaf sharing stays out of scope (see above).

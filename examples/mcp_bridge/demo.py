@@ -26,7 +26,7 @@ class MathService(RoutingClass):
 class RootApp(RoutingClass):
     def __init__(self):
         self.math = MathService()
-        self.attach_instance(self.math, name="math")
+        self.add_branches({"name": "math", "instance": self.math})
 
 # 2. Run the Demo
 if __name__ == "__main__":

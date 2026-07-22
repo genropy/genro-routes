@@ -14,50 +14,59 @@ graph TD
   RC -->|route property| Router
   RC -->|attribute| ChildRC
   ChildRC -->|route property| ChildRouter
-  RC -->|attach_instance(name)| ChildRC
+  RC -->|add_branches name+instance| ChildRC
   Router -->|include(child.route, name)| ChildRouter
   Router -->|nodes| M[Nodes tree]
 ```
 
 - Every `RoutingClass` owns exactly one `Router`, created lazily on first access of the read-only `route` property. User code never instantiates `Router` directly; router options (`description`, `prefix`, `default_entry`) are set on `self.route` in `__init__`.
-- Hierarchies are built via `attach_instance(child, name=alias)` (method on `RoutingClass`), which links `child.route` into the parent's router under the alias, and torn down via `detach_instance` (method on `Router`). The declarative equivalent is `add_branches` (see Branches below).
-- `Section` (an empty `RoutingClass`) provides pure grouping nodes without handlers: `svc.attach_instance(Section("Admin area"), name="admin")`.
+- Hierarchies are built via `add_branches` (method on `RoutingClass`): the instance form `{"name": alias, "instance": child}` links `child.route` into the parent's router under the alias eagerly, the factory form `{"name": alias, "cls": Child}` does so lazily at first traversal. Children are torn down via `detach_instance` (method on `Router`). See Branches below.
+- `Section` (an empty `RoutingClass`) provides pure grouping nodes without handlers: `svc.add_branches({"name": "admin", "instance": Section("Admin area")})`.
 - `default_entry` (default: `"index"`) specifies which handler to use for catch-all routing (best-match resolution).
 - Introspection: `nodes()` is the sole API; it returns router/instance, handlers (with metadata, doc, signature, plugins, params), children, and `plugin_info`.
 
-## Branches (declarative subtrees: eager, lazy, alias)
+## Branches (declarative subtrees: factory, instance, alias)
 
-A **branch** is a child subtree declared as a factory spec and materialized on
-demand. Specs live in `router._branches`; materialized children move to
-`router._children`. One mechanism, two timing policies, plus symlinks:
+`add_branches` is the single entry point for declaring a child subtree. Each
+spec is one of three mutually exclusive forms (`cls` / `instance` / `alias`
+cannot coexist). A **factory** spec is a self-describing subtree materialized
+on demand: it lives in `router._branches` until built, then moves to
+`router._children`. An **instance** spec attaches an already-built child
+directly. Timing is derived from the form, not from a flag:
 
 ```mermaid
 graph LR
-  Spec["branch spec {name, lazy, cls, params}"] -->|"first tree access (eager) / first traversal (lazy)"| Child["child router in _children"]
+  Factory["factory spec {name, cls, params}"] -->|"first traversal (lazy)"| Child["child router in _children"]
+  Instance["instance spec {name, instance}"] -->|"immediately (eager)"| Child
   Alias["alias spec {name, alias: path}"] -->|"path rewrite from root"| Target["target subtree"]
 ```
 
-- `add_branches(spec | list | generator)` stores specs — nothing is constructed
-  at declaration. `remove_branch(name)` drops a spec (detaching the child if
-  already materialized). The `branches` property lists declared, not-yet-built
-  specs only.
-- **Materialization** (single point): construct `cls(**params)`, wire
-  `_routing_parent`, `include()` the child router (triggering plugin
-  inheritance), then drop the spec. The spec is popped only after a successful
-  build: a failing constructor is repeatable, never silently lost.
-- **Eager** specs materialize at the first tree access (guard set after a fully
-  successful pass); **lazy** specs at the first path traversal through their
-  segment (`_find_candidate_node` / `router_at_path`).
+- `add_branches(spec | list | generator)` accepts all three forms. A factory
+  spec is stored — nothing is constructed at declaration; an instance spec is
+  linked as a child at once. `remove_branch(name)` drops a spec (detaching the
+  child if already materialized). The `branches` property lists declared
+  factory specs not yet built; instances (already children) do not appear.
+- **Factory** (lazy): materialized at the first path traversal through their
+  segment (`_find_candidate_node` / `router_at_path`). Materialization (single
+  point): construct `cls(**params)`, wire `_routing_parent`, `include()` the
+  child router (triggering plugin inheritance), then drop the spec. The spec is
+  popped only after a successful build: a failing constructor is repeatable,
+  never silently lost.
+- **Instance** (eager): the caller built the instance, so it is wired
+  immediately at declaration — `_routing_parent` set, child `include()`d,
+  plugin inheritance applied. `params` is rejected with an instance
+  (`ValueError`); the instance must be a `RoutingClass` (`TypeError`); an
+  instance already bound to another parent raises `ValueError`.
 - **Alias** specs are transparent symlinks by absolute path from the tree root:
   navigation rewrites the path and resolves from the root, so the target's
   whole subtree is served with the target's plugins. Cycle-guarded
   (`ValueError`); broken targets resolve to `not_found`. A node reached through
   an alias reports the target's path (realpath semantics).
-- **Introspection never builds**: `nodes()` shows lazy branches with their
-  class-declared `@route` leaves (scanned from the class MRO, no instance) and
-  aliases as unresolved markers. `nodes(_eager=True)` expands everything;
-  `nodes(basepath=...)` opens one subtree. `node("@endpoint_id")` skips
-  non-materialized lazy branches.
+- **Introspection never builds**: `nodes()` shows lazy factory branches with
+  their class-declared `@route` leaves (scanned from the class MRO, no
+  instance) and aliases as unresolved markers. `nodes(_eager=True)` expands
+  everything; `nodes(basepath=...)` opens one subtree. `node("@endpoint_id")`
+  skips non-traversed factory branches.
 
 ## Plugin store
 
@@ -103,7 +112,7 @@ plugin_info
 
 ## Plugin Inheritance
 
-When a child instance is attached to a parent via `attach_instance()` (on `RoutingClass`), plugins may be inherited.
+When a child is attached to a parent via `add_branches` (on `RoutingClass`) — at declaration for an instance spec, at first traversal for a factory spec — plugins may be inherited.
 The inheritance behavior is **delegated to the plugin** via hooks, allowing each plugin to
 decide how to handle parent-child relationships.
 

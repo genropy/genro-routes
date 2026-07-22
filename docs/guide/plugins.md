@@ -353,7 +353,7 @@ The router automatically collects capabilities from the instance and its entire 
 parent.capabilities = ParentCapabilities()   # has "redis"
 child.capabilities = ChildCapabilities()     # has "email"
 
-parent.attach_instance(child, name="child")
+parent.add_branches({"name": "child", "instance": child})
 
 # child.route.current_capabilities returns {"redis", "email"}
 # (accumulated from parent + child)
@@ -984,7 +984,7 @@ def on_parent_config_changed(self, old_config, new_config):
 
 ## Plugin Inheritance
 
-When a child router is attached to a parent via `attach_instance()`, plugins are inherited
+When a child router is attached to a parent via `add_branches()` (instance form), plugins are inherited
 based on what the child already has.
 
 ### Inheritance Rules
@@ -1026,7 +1026,7 @@ class Parent(RoutingClass):
     def __init__(self):
         self.route.plug("auth", rule="corporate")
         self.child = Child()
-        self.attach_instance(self.child, name="child")
+        self.add_branches({"name": "child", "instance": self.child})
 
 parent = Parent()
 

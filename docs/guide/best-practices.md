@@ -105,11 +105,11 @@ class Application(RoutingClass):
     def __init__(self):
         # Section as a namespace container
         admin = Section("Admin area")
-        self.attach_instance(admin, name="admin")
+        self.add_branches({"name": "admin", "instance": admin})
 
         # Attach actual services under the section
-        admin.attach_instance(UserAdmin(), name="users")
-        admin.attach_instance(OrderAdmin(), name="orders")
+        admin.add_branches({"name": "users", "instance": UserAdmin()})
+        admin.add_branches({"name": "orders", "instance": OrderAdmin()})
 ```
 
 ### Attaching Child Instances
@@ -120,7 +120,7 @@ Child instances can be attached directly — storing as an attribute is optional
 class Parent(RoutingClass):
     def __init__(self):
         # Both approaches work — the router tree keeps a strong reference
-        self.attach_instance(ChildService(), name="child")
+        self.add_branches({"name": "child", "instance": ChildService()})
 
 # Retrieve the child instance later if needed
 child = parent.route.nodes(basepath="child")["instance"]
@@ -141,8 +141,8 @@ class Application(RoutingClass):
         self.public = PublicAPI()  # No validation needed
         self.admin = AdminAPI()    # Has its own pydantic plugin
 
-        self.attach_instance(self.public, name="public")
-        self.attach_instance(self.admin, name="admin")
+        self.add_branches({"name": "public", "instance": self.public})
+        self.add_branches({"name": "admin", "instance": self.admin})
 
 
 class AdminAPI(RoutingClass):
@@ -339,12 +339,12 @@ Avoid circular attachments:
 class A(RoutingClass):
     def __init__(self, b):
         self.b = b
-        self.attach_instance(b, name="b")
+        self.add_branches({"name": "b", "instance": b})
 
 class B(RoutingClass):
     def __init__(self, a):
         self.a = a
-        self.attach_instance(a, name="a")  # Circular!
+        self.add_branches({"name": "a", "instance": a})  # Circular!
 ```
 
 ### Over-Configuration

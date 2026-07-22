@@ -47,8 +47,8 @@ class FakerService(RoutingClass):
         self.address = AddressService(self.fake)
 
         # Different instances are mounted under the main router
-        self.attach_instance(self.person, name="person")
-        self.attach_instance(self.address, name="address")
+        self.add_branches({"name": "person", "instance": self.person})
+        self.add_branches({"name": "address", "instance": self.address})
 
 # -----------------------------------------------------------------------------
 # 3. Usage Example (Developer Experience)

@@ -37,7 +37,7 @@ orders.route.node("create")({"name": "order-3"})  # Calls create()
 **Answer**: Genro Routes offers:
 
 - **Plugin system**: add logging, validation, audit without touching handlers
-- **Hierarchies**: organize routers in trees with `attach_instance()` (method on `RoutingClass`)
+- **Hierarchies**: organize routers in trees with `add_branches()` (instance form, method on `RoutingClass`)
 - **Metadata**: each handler can have tags, channels, configurations
 - **Introspection**: `router.nodes()` to explore structure
 - **Isolation**: each instance has its own router with independent plugins
@@ -115,8 +115,7 @@ def handle_create(self): ...  # Registered as "create" (strips prefix)
 
 - `obj.route` — the instance's single router, created lazily (read-only property)
 - `obj.routing` — proxy for plugin configuration (`configure()`)
-- `obj.attach_instance(child, name=...)` — connects child instances into a hierarchy
-- `obj.add_branches(specs)` — declares child subtrees as factory specs (eager/lazy/alias)
+- `obj.add_branches(specs)` — declares child subtrees; the instance form `{"name": ..., "instance": child}` connects an already-built child instance eagerly, other forms declare factory specs (lazy/alias)
 - `obj.ctx` — execution context with parent-chain lookup
 
 A `Router` can only be owned by a `RoutingClass` instance.
@@ -127,7 +126,7 @@ A `Router` can only be owned by a `RoutingClass` instance.
 
 **Question**: I have an application with modules (sales, finance, admin) that I want to organize hierarchically. How?
 
-**Answer**: Use `attach_instance()` (a method on `RoutingClass`) to connect child instances:
+**Answer**: Use the instance form of `add_branches()` (a method on `RoutingClass`) to connect an already-built child instance eagerly:
 
 ```python
 class Dashboard(RoutingClass):
@@ -136,8 +135,8 @@ class Dashboard(RoutingClass):
         self.finance = FinanceModule()
 
         # Attach child instances — each child's router is linked under the alias
-        self.attach_instance(self.sales, name="sales")
-        self.attach_instance(self.finance, name="finance")
+        self.add_branches({"name": "sales", "instance": self.sales})
+        self.add_branches({"name": "finance", "instance": self.finance})
 
 dashboard = Dashboard()
 # Access with path separator
@@ -150,7 +149,7 @@ For a pure grouping level without a dedicated class, attach a `Section`:
 ```python
 from genro_routes import Section
 
-dashboard.attach_instance(Section("Admin area"), name="admin")
+dashboard.add_branches({"name": "admin", "instance": Section("Admin area")})
 ```
 
 ### How do I access child routers?
@@ -187,7 +186,7 @@ class Parent(RoutingClass):
     def __init__(self):
         self.route.plug("logging")
         self.child_obj = Child()
-        self.attach_instance(self.child_obj, name="child")
+        self.add_branches({"name": "child", "instance": self.child_obj})
 
 # Child automatically inherits logging plugin
 parent = Parent()
@@ -499,10 +498,10 @@ def handle_create_order(self): ...
 ```python
 # CORRECT
 self.route.plug("logging")
-self.attach_instance(child, name="child")  # Child inherits logging
+self.add_branches({"name": "child", "instance": child})  # Child inherits logging
 
 # WRONG
-self.attach_instance(child, name="child")
+self.add_branches({"name": "child", "instance": child})
 self.route.plug("logging")  # Child does NOT inherit
 ```
 

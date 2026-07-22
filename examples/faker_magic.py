@@ -41,9 +41,9 @@ class FullFakerService(RoutingClass):
         self.address = MagicFakerRouter(self.fake)
         self.company = MagicFakerRouter(self.fake)
 
-        self.attach_instance(self.person, name="person")
-        self.attach_instance(self.address, name="address")
-        self.attach_instance(self.company, name="company")
+        self.add_branches({"name": "person", "instance": self.person})
+        self.add_branches({"name": "address", "instance": self.address})
+        self.add_branches({"name": "company", "instance": self.company})
 
 if __name__ == "__main__":
     service = FullFakerService()
