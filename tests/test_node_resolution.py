@@ -23,7 +23,7 @@ class RootService(RoutingClass):
 
     def __init__(self):
         self.admin = AdminService()
-        self.attach_instance(self.admin, name="admin")
+        self.add_branches({"name": "admin", "instance": self.admin})
 
     @route()
     def index(self):

@@ -58,7 +58,7 @@ Two fundamental consequences:
 - **One class, one router.** Every `RoutingClass` owns exactly one `Router`,
   created lazily and exposed as the read-only property `route`. Hierarchy and
   multiple "surfaces" are expressed by **composing instances**
-  (`attach_instance`), never by adding routers to a class.
+  (`add_branches`), never by adding routers to a class.
 
 ---
 
@@ -325,7 +325,7 @@ that match the handler's positional parameters as path segments.
 `detach_instance(child)` removes every alias whose router belongs to the child
 instance and clears `child._routing_parent`.
 
-User code normally calls neither directly: `RoutingClass.attach_instance`
+User code normally calls neither directly: `RoutingClass.add_branches`
 (chapter 7) sets the parent relation and delegates the link to `include()`.
 
 ### 5.6 Introspection — `nodes()`
@@ -480,26 +480,30 @@ without a manual `detach_instance()` call.
 custom `__setattr__` when the auto-detach check is not wanted (e.g. during
 internal initialization).
 
-### 7.4 `attach_instance` — hierarchical composition
+### 7.4 `add_branches` — hierarchical composition
 
-`attach_instance` is a method of **RoutingClass** (not of Router or the proxy).
-There is a single calling style:
+`add_branches` is a method of **RoutingClass** (not of Router or the proxy).
+Each branch is a dict; two forms are accepted:
 
 ```python
-self.attach_instance(child, name="sales")
+# instance form — eager: attach an already-built child instance now
+self.add_branches({"name": "sales", "instance": child})
+
+# factory form — lazy: the child is created on first access
+self.add_branches({"name": "sales", "cls": SalesService, "params": {...}})
 ```
 
-It sets `child._routing_parent = self` and, when `name` is given, delegates the
-routing link to `self.route.include(child.route, name=name)` (which triggers
-plugin inheritance on the primary attachment). Without `name`, only the parent
-relationship is set — useful for `ctx` propagation without routing.
+The instance form sets `child._routing_parent = self` and delegates the routing
+link to `self.route.include(child.route, name=name)` (which triggers plugin
+inheritance on the primary attachment). The factory form records the class and
+params and materializes the child lazily on first resolution of the branch.
 
 `detach_instance` stays on **Router**.
 
 ### 7.5 `Section` — the grouping node
 
 ```python
-svc.attach_instance(Section("Admin area"), name="admin")
+svc.add_branches({"name": "admin", "instance": Section("Admin area")})
 ```
 
 `Section` is a minimal concrete RoutingClass carrying an empty router. It is
@@ -526,7 +530,7 @@ without polluting the class namespace:
 |--------------|---------|
 | `configure(target, **opts)` | Plugin configuration via target syntax |
 | `configure("?")` | Introspection: returns the router description dict |
-| `attach_instance(child, name=...)` | Delegates to the owner's `attach_instance` |
+| `add_branches(*branches)` | Delegates to the owner's `add_branches` |
 
 For navigation and introspection use the router directly: `route.node(path)`
 resolves (and executes) a path, `route.nodes(basepath=...)` inspects and opens
@@ -961,7 +965,7 @@ The `selector` has the format `"router_name:path"` (e.g. `"route:admin/create"`)
 
 Used to **bypass** RoutingClass's custom `__setattr__` when setting internal
 attributes that must not trigger the auto-detach. You will see it in:
-`attach_instance`, `_register_router`, the `ctx` and `capabilities` setters,
+`add_branches`, `_register_router`, the `ctx` and `capabilities` setters,
 `_RoutingProxy.__init__`, and in `base_router.py` inside `_include_router` and
 `detach_instance` (which set/clear `_routing_parent` on the owner).
 

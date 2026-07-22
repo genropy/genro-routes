@@ -34,7 +34,7 @@ The routing logic lives in your application objects - the transport adapter (lik
 ## Key Features
 
 - **One class, one router** - Every `RoutingClass` owns exactly one isolated router with its own plugin stack, exposed as the `route` property
-- **Hierarchical organization** - Build router trees with `attach_instance()` and `/` path traversal
+- **Hierarchical organization** - Build router trees with `add_branches()` and `/` path traversal
 - **Composable plugins** - Hook into decoration and handler execution with `BasePlugin`
 - **Plugin inheritance** - Plugins propagate automatically from parent to child routers
 - **Flexible registration** - Use `@route` decorator with prefixes, metadata, and explicit names

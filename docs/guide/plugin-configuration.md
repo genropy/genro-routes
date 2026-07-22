@@ -225,7 +225,7 @@ class Root(RoutingClass):
     def __init__(self):
         self.route.plug("logging")
         self.leaf = Leaf()
-        self.attach_instance(self.leaf, name="leaf")
+        self.add_branches({"name": "leaf", "instance": self.leaf})
 
     @route()
     def root_ping(self):

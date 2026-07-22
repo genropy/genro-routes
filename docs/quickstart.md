@@ -84,7 +84,7 @@ t = Table()
 assert t.route.node("add")("x") == "added:x"
 ```
 
-Need more than one routing surface (e.g. `api` and `admin`)? Compose separate `RoutingClass` instances with `attach_instance()` - see [Building Hierarchies](#building-hierarchies) below.
+Need more than one routing surface (e.g. `api` and `admin`)? Compose separate `RoutingClass` instances with `add_branches()` (instance form) - see [Building Hierarchies](#building-hierarchies) below.
 
 ## Building Hierarchies
 
@@ -96,8 +96,8 @@ class RootAPI(RoutingClass):
         self.users = SubService("users")
         self.products = SubService("products")
 
-        self.attach_instance(self.users, name="users")
-        self.attach_instance(self.products, name="products")
+        self.add_branches({"name": "users", "instance": self.users})
+        self.add_branches({"name": "products", "instance": self.products})
 
 root = RootAPI()
 

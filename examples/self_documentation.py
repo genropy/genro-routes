@@ -35,7 +35,7 @@ class GenroInternalService(RoutingClass):
         # This allows us to "remote control" or "query" the router through itself.
         self.router_ctrl = MagicRouter(self.route)
 
-        self.attach_instance(self.router_ctrl, name="router_inspector")
+        self.add_branches({"name": "router_inspector", "instance": self.router_ctrl})
 
 # -----------------------------------------------------------------------------
 # 3. Running the Meta-Demo

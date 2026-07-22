@@ -18,12 +18,12 @@ Genro Routes supports hierarchical router composition where:
 
 Genro Routes provides explicit methods for managing RoutingClass hierarchies:
 
-- **`attach_instance(child, name=...)`** - Attach a RoutingClass instance to create parent-child relationship (method on `RoutingClass`)
+- **`add_branches({"name": ..., "instance": child})`** - Attach a RoutingClass instance (instance form of `add_branches`) to create a parent-child relationship (method on `RoutingClass`)
 - **`detach_instance(child)`** - Remove a RoutingClass instance from the hierarchy (method on `Router`)
 - **Parent tracking** - Children track their parent via `_routing_parent` attribute
 - **Auto-detachment** - Replacing a child attribute automatically detaches the old instance
 
-**Important**: `attach_instance` is a method on `RoutingClass` (the owner), not on `Router`. `detach_instance` remains on `Router`.
+**Important**: `add_branches` (instance form) is a method on `RoutingClass` (the owner), not on `Router`. `detach_instance` remains on `Router`.
 
 ## Basic Instance Attachment
 
@@ -42,7 +42,7 @@ class Child(RoutingClass):
 class Parent(RoutingClass):
     def __init__(self):
         # Attach child directly — no need to store as attribute
-        self.attach_instance(Child(), name="sales")
+        self.add_branches({"name": "sales", "instance": Child()})
 
 parent = Parent()
 
@@ -75,8 +75,8 @@ assert child._routing_parent is parent
 
 A RoutingClass owns exactly one router. When a service must expose more than one
 surface (e.g. a public API and an admin area), define **one class per surface**
-and compose them with `attach_instance`. Grouping levels without handlers are
-`Section` instances:
+and compose them with `add_branches` (instance form). Grouping levels without
+handlers are `Section` instances:
 
 ```python
 from genro_routes import RoutingClass, Section, route
@@ -95,10 +95,10 @@ class Application(RoutingClass):
     def __init__(self):
         api = Section("Public API")
         admin = Section("Admin area")
-        self.attach_instance(api, name="api")
-        self.attach_instance(admin, name="admin")
-        api.attach_instance(OrdersApi(), name="orders")
-        admin.attach_instance(OrdersAdmin(), name="orders")
+        self.add_branches({"name": "api", "instance": api})
+        self.add_branches({"name": "admin", "instance": admin})
+        api.add_branches({"name": "orders", "instance": OrdersApi()})
+        admin.add_branches({"name": "orders", "instance": OrdersAdmin()})
 
 app = Application()
 
@@ -127,11 +127,11 @@ class OrganizedService(RoutingClass):
     def __init__(self):
         # Section: pure container, no handlers
         api = Section("API surface")
-        self.attach_instance(api, name="api")
+        self.add_branches({"name": "api", "instance": api})
 
         # Attach handler services as children of the section
-        api.attach_instance(UserService(), name="users")
-        api.attach_instance(ProductService(), name="products")
+        api.add_branches({"name": "users", "instance": UserService()})
+        api.add_branches({"name": "products", "instance": ProductService()})
 
 service = OrganizedService()
 
@@ -151,9 +151,9 @@ service.route.node("api/products/create")()
 ```python
 # Good: Organize related services under an /api namespace
 api = Section("API")
-self.attach_instance(api, name="api")
-api.attach_instance(self.auth, name="auth")
-api.attach_instance(self.users, name="users")
+self.add_branches({"name": "api", "instance": api})
+api.add_branches({"name": "auth", "instance": self.auth})
+api.add_branches({"name": "users", "instance": self.users})
 # Routes: api/auth/login, api/users/list
 ```
 
@@ -165,14 +165,14 @@ organizational containers:
 ```python
 # DON'T: Section with a single child (unnecessary nesting)
 api = Section()
-self.attach_instance(api, name="api")
-api.attach_instance(UserService(), name="users")
+self.add_branches({"name": "api", "instance": api})
+api.add_branches({"name": "users", "instance": UserService()})
 # Result: api/users/list - the "api" level adds nothing
 
 # DO: attach children directly; root-level handlers live on the class itself
 class Application(RoutingClass):
     def __init__(self):
-        self.attach_instance(UserService(), name="users")
+        self.add_branches({"name": "users", "instance": UserService()})
 
     @route()
     def health(self):  # health - root level handler
@@ -207,8 +207,8 @@ class OrdersService(RoutingClass):
 
 class Service(RoutingClass):
     def __init__(self):
-        self.attach_instance(UsersService(), name="users")
-        self.attach_instance(OrdersService(), name="orders")
+        self.add_branches({"name": "users", "instance": UsersService()})
+        self.add_branches({"name": "orders", "instance": OrdersService()})
 
     @route()
     def health(self):
@@ -239,7 +239,7 @@ Replacing a child attribute automatically detaches the old instance:
 class Parent(RoutingClass):
     def __init__(self):
         self.child = Child()
-        self.attach_instance(self.child, name="child")
+        self.add_branches({"name": "child", "instance": self.child})
 
 parent = Parent()
 assert parent.child._routing_parent is parent
@@ -265,11 +265,11 @@ assert "child" not in parent.route._children
 ```python
 # Replacing a service implementation
 parent.auth_service = OldAuthService()
-parent.attach_instance(parent.auth_service, name="auth")
+parent.add_branches({"name": "auth", "instance": parent.auth_service})
 
 # Later: automatic cleanup
 parent.auth_service = NewAuthService()  # Old service auto-detached
-parent.attach_instance(parent.auth_service, name="auth")
+parent.add_branches({"name": "auth", "instance": parent.auth_service})
 ```
 
 ## Parent Tracking
@@ -292,7 +292,7 @@ assert getattr(child, "_routing_parent", None) is None  # Not attached
 
 parent = Parent()
 parent.child = child
-parent.attach_instance(parent.child, name="child")
+parent.add_branches({"name": "child", "instance": parent.child})
 assert child._routing_parent is parent  # Parent tracked
 
 parent.route.detach_instance(child)
@@ -330,7 +330,7 @@ class Application(RoutingClass):
 app = Application()
 
 # Attach child - plugins inherit automatically
-app.attach_instance(app.service, name="service")
+app.add_branches({"name": "service", "instance": app.service})
 
 # Child router has the logging plugin
 assert hasattr(app.service.route, "logging")
@@ -361,7 +361,7 @@ class Child(RoutingClass):
 class Parent(RoutingClass):
     def __init__(self):
         self.child = Child()
-        self.attach_instance(self.child, name="child")
+        self.add_branches({"name": "child", "instance": self.child})
 
 parent = Parent()
 
@@ -389,7 +389,7 @@ Inspect the full hierarchy structure:
 class Inspectable(RoutingClass):
     def __init__(self):
         self.service = Service("child")
-        self.attach_instance(self.service, name="sub")
+        self.add_branches({"name": "sub", "instance": self.service})
 
     @route()
     def action(self):
@@ -449,7 +449,7 @@ class FileService(RoutingClass):
 class Application(RoutingClass):
     def __init__(self):
         self.files = FileService()
-        self.attach_instance(self.files, name="files")
+        self.add_branches({"name": "files", "instance": self.files})
 
 app = Application()
 
@@ -547,8 +547,8 @@ class Application(RoutingClass):
         self.route.plug("logging")
 
         # Create and attach services
-        self.attach_instance(AuthService(), name="auth")
-        self.attach_instance(UserService(), name="users")
+        self.add_branches({"name": "auth", "instance": AuthService()})
+        self.add_branches({"name": "users", "instance": UserService()})
 
 app = Application()
 
@@ -573,16 +573,16 @@ class ReportsAPI(RoutingClass):
 
 class AdminAPI(RoutingClass):
     def __init__(self):
-        self.attach_instance(UserService(), name="users")
-        self.attach_instance(ReportsAPI(), name="reports")
+        self.add_branches({"name": "users", "instance": UserService()})
+        self.add_branches({"name": "reports", "instance": ReportsAPI()})
 
 class Application(RoutingClass):
     def __init__(self):
         # Public API (simplified interface)
-        self.attach_instance(UserService(), name="public")
+        self.add_branches({"name": "public", "instance": UserService()})
 
         # Admin API (protected, more capabilities)
-        self.attach_instance(AdminAPI(), name="admin")
+        self.add_branches({"name": "admin", "instance": AdminAPI()})
 
 app = Application()
 
@@ -608,12 +608,12 @@ class ServiceV2(RoutingClass):
 class Application(RoutingClass):
     def __init__(self):
         self.service = ServiceV1()
-        self.attach_instance(self.service, name="processor")
+        self.add_branches({"name": "processor", "instance": self.service})
 
     def upgrade_service(self):
         # Auto-detachment happens here
         self.service = ServiceV2()
-        self.attach_instance(self.service, name="processor")
+        self.add_branches({"name": "processor", "instance": self.service})
 
 app = Application()
 assert app.route.node("processor/process")("test") == "v1:test"
@@ -630,9 +630,9 @@ assert app.route.node("processor/process")("test") == "v2:test"
 # Compose related services under the root class
 class API(RoutingClass):
     def __init__(self):
-        self.attach_instance(AuthService(), name="auth")
-        self.attach_instance(UserService(), name="users")
-        self.attach_instance(OrderService(), name="orders")
+        self.add_branches({"name": "auth", "instance": AuthService()})
+        self.add_branches({"name": "users", "instance": UserService()})
+        self.add_branches({"name": "orders", "instance": OrderService()})
 ```
 
 ### Shared Plugins at Root
@@ -642,17 +642,17 @@ class API(RoutingClass):
 self.route.plug("logging").plug("pydantic")
 
 # All children inherit both plugins
-self.attach_instance(self.auth, name="auth")
-self.attach_instance(self.users, name="users")
+self.add_branches({"name": "auth", "instance": self.auth})
+self.add_branches({"name": "users", "instance": self.users})
 ```
 
 ### Deep Hierarchies
 
 ```python
 # Organize by domain and subdomain
-app.attach_instance(admin, name="admin")
-admin.attach_instance(user_admin, name="users")
-admin.attach_instance(report_admin, name="reports")
+app.add_branches({"name": "admin", "instance": admin})
+admin.add_branches({"name": "users", "instance": user_admin})
+admin.add_branches({"name": "reports", "instance": report_admin})
 
 # Access: app.route.node("admin/users/create_user")()
 #         app.route.node("admin/reports/sales_report")()
@@ -678,8 +678,8 @@ if should_remove_service:
 
 ```python
 # Use descriptive aliases
-self.attach_instance(self.auth, name="auth_v1")
-self.attach_instance(self.new_auth, name="auth_v2")
+self.add_branches({"name": "auth_v1", "instance": self.auth})
+self.add_branches({"name": "auth_v2", "instance": self.new_auth})
 
 # Access both versions
 self.route.node("auth_v1/login")()
@@ -707,10 +707,10 @@ class Application(RoutingClass):
     def __init__(self, config):
         # Attach based on configuration
         if config.get("enable_auth"):
-            self.attach_instance(AuthService(), name="auth")
+            self.add_branches({"name": "auth", "instance": AuthService()})
 
         if config.get("enable_admin"):
-            self.attach_instance(AdminService(), name="admin")
+            self.add_branches({"name": "admin", "instance": AdminService()})
 ```
 
 ### Multi-Surface Services
@@ -729,8 +729,8 @@ class AdminOrders(RoutingClass):
 # Compose: one class per surface, attached where needed
 api = app.route.nodes(basepath="api")["instance"]
 admin = app.route.nodes(basepath="admin")["instance"]
-api.attach_instance(PublicOrders(), name="orders")
-admin.attach_instance(AdminOrders(), name="orders")
+api.add_branches({"name": "orders", "instance": PublicOrders()})
+admin.add_branches({"name": "orders", "instance": AdminOrders()})
 ```
 
 ## Next Steps

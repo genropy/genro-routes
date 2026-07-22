@@ -168,7 +168,7 @@ class TestAuthPluginIntegration:
 
         child = Child()
         # Attach child - plugin is inherited from parent
-        parent.attach_instance(child, name="child")
+        parent.add_branches({"name": "child", "instance": child})
 
         # Filter should apply to both parent and child
         result = parent.route.nodes(auth_tags="admin")
@@ -196,7 +196,7 @@ class TestAuthPluginIntegration:
         parent.route.add_entry(lambda: "admin", name="admin_action", auth_rule="admin")
 
         child = Child()
-        parent.attach_instance(child, name="child")
+        parent.add_branches({"name": "child", "instance": child})
 
         # Filter for admin - child has no admin entries
         result = parent.route.nodes(auth_tags="admin")

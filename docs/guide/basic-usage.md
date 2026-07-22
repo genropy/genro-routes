@@ -169,8 +169,8 @@ class App(RoutingClass):
     def __init__(self):
         self.api = PublicAPI()
         self.admin = AdminAPI()
-        self.attach_instance(self.api, name="api")
-        self.attach_instance(self.admin, name="admin")
+        self.add_branches({"name": "api", "instance": self.api})
+        self.add_branches({"name": "admin", "instance": self.admin})
 
 app = App()
 assert app.route.node("api/ping")() == "pong"
@@ -178,7 +178,7 @@ assert app.route.node("admin/reset")() == "reset done"
 ```
 
 For a grouping level without a dedicated class, attach a `Section` (an empty
-`RoutingClass`): `app.attach_instance(Section("Admin area"), name="admin")`.
+`RoutingClass`): `app.add_branches({"name": "admin", "instance": Section("Admin area")})`.
 
 ## Calling Handlers
 
@@ -466,8 +466,8 @@ class RootAPI(RoutingClass):
         self.users = SubService("users")
         self.products = SubService("products")
 
-        self.attach_instance(self.users, name="users")
-        self.attach_instance(self.products, name="products")
+        self.add_branches({"name": "users", "instance": self.users})
+        self.add_branches({"name": "products", "instance": self.products})
 
 root = RootAPI()
 
@@ -478,8 +478,8 @@ assert root.route.node("products/detail")(5) == "products:detail:5"
 
 **Key points**:
 
-- `attach_instance` is a method on `RoutingClass`, not on `Router`
-- `name="alias"` links the child's router into the parent's router under that alias
+- `add_branches` (instance form) is a method on `RoutingClass`, not on `Router`
+- the `"name"` key links the child's router into the parent's router under that alias
 - For grouping levels without handlers, attach a `Section` (see [Hierarchies Guide](hierarchies.md))
 
 **Hierarchies enable**:
@@ -498,7 +498,7 @@ Inspect router structure and registered handlers:
 class Inspectable(RoutingClass):
     def __init__(self):
         self.child_service = SubService("child")
-        self.attach_instance(self.child_service, name="sub")
+        self.add_branches({"name": "sub", "instance": self.child_service})
 
     @route()
     def action(self):

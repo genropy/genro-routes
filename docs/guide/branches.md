@@ -43,14 +43,25 @@ class SalesAPI(RoutingClass):
 class Application(RoutingClass):
     def __init__(self):
         self.add_branches([
-            {"name": "users", "cls": UsersAPI},                              # eager
-            {"name": "sales", "cls": SalesAPI, "params": {"region": "us"},
-             "lazy": True},                                                  # lazy
+            {"name": "sales", "cls": SalesAPI, "params": {"region": "us"}},  # factory (lazy)
+            {"name": "users", "instance": UsersAPI()},                       # instance (eager)
         ])
 
 app = Application()
 assert app.route.node("sales/report")() == "sales:us"
+assert app.route.node("users/list")() == ["alice", "bob"]
 ```
+
+`add_branches` is the **single entry point** for declaring a subtree. Each
+spec is exactly **one of three mutually exclusive forms** — the keys `cls`,
+`instance`, and `alias` cannot coexist (`ValueError` otherwise):
+
+- **factory** `{"name", "cls", "params"}` — always **lazy**: the instance is
+  built at the first traversal of the branch (see below);
+- **instance** `{"name", "instance"}` — **eager**: an already-built instance,
+  linked as a child immediately;
+- **alias** `{"name", "alias"}` — a symlink to an absolute path (see
+  [Aliases](#aliases-symlinks-to-branches)).
 
 A **factory spec** has these fields:
 
@@ -59,7 +70,6 @@ A **factory spec** has these fields:
 | `name` | yes | alias under which the child is reachable (path segment) |
 | `cls` | yes | the `RoutingClass` subclass to instantiate |
 | `params` | no (default `{}`) | kwargs applied as `cls(**params)` at materialization |
-| `lazy` | no (default `False`) | when the instance is built (see below) |
 
 Declaring **never constructs anything** — specs are stored, instances come
 later. A generator can therefore yield thousands of specs at zero cost:
@@ -71,7 +81,7 @@ class Application(RoutingClass):
 
     def discover(self):
         for name, cls, params in self.scan_catalog():
-            yield {"name": name, "lazy": True, "cls": cls, "params": params}
+            yield {"name": name, "cls": cls, "params": params}
 ```
 
 Note the **two distinct laziness levels**: spec *enumeration* happens at the
@@ -79,31 +89,37 @@ Note the **two distinct laziness levels**: spec *enumeration* happens at the
 only); instance *construction* happens at materialization. The real saving on
 large trees is the second one.
 
-## Eager vs Lazy
+## Factory (lazy) vs Instance (eager)
 
-- **Eager** (`lazy: False`, the default): materialized at the **first tree
-  access** (`nodes()`, `node()`, …). Equivalent in effect to attaching the
-  instance up front, but deferred to when the tree is first touched.
-- **Lazy** (`lazy: True`): materialized **on demand**, the first time a path
+The timing is **derived from the form** — there is no flag to set:
+
+- **factory** (`{"cls": ...}`): always **lazy**. Nothing is constructed at
+  declaration; the instance is built **on demand**, the first time a path
   traverses that segment. Once built, the branch is a normal child — the
   folder stays open.
+- **instance** (`{"instance": ...}`): **eager**. You built the instance
+  yourself and pass it in; it is linked as a child **immediately**, at the
+  `add_branches` call.
+
+The rule of thumb: *want it lazy → pass the class; want it eager → build it
+yourself and pass the instance.*
 
 ```python
 class Application(RoutingClass):
     def __init__(self):
-        self.add_branches({"name": "sales", "cls": SalesAPI, "lazy": True})
+        self.add_branches({"name": "sales", "cls": SalesAPI})   # factory: lazy
 
 app = Application()
 app.route.nodes()                  # sales NOT built (introspection never builds)
 app.route.node("sales/report")()   # first traversal: SalesAPI() is built HERE
 ```
 
-**Materialization** is the single point where an instance is born: the
+**Materialization** is the single point where a factory instance is born: the
 framework constructs `cls(**params)`, wires the parent chain
 (`_routing_parent`), links the child router, and applies **plugin
-inheritance** — exactly as an explicit `attach_instance` would have done.
-Plugins plugged on the parent *after* the declaration reach the branch too,
-at materialization time.
+inheritance**. Plugins plugged on the parent *after* the declaration reach the
+branch too, at materialization time. An eager instance is wired the same way,
+but immediately at declaration rather than at first traversal.
 
 ## Aliases: Symlinks to Branches
 
@@ -161,26 +177,27 @@ the expansion.
 
 ## Reverse Lookup and Lazy Branches
 
-`node("@endpoint_id")` searches eager and already-materialized branches only:
-it **skips** lazy branches that were never opened (searching them would force
-the whole tree to build, defeating laziness). An endpoint inside a lazy
-branch becomes findable after the branch materializes.
+`node("@endpoint_id")` searches eager instances and already-traversed factory
+branches only: it **skips** lazy factories that were never opened (searching
+them would force the whole tree to build, defeating laziness). An endpoint
+inside a lazy factory becomes findable after the branch is first traversed.
 
 ## Errors Are Deferred and Repeatable
 
-A constructor that raises does so **when the branch is built**, not at
-declaration:
+A factory constructor that raises does so **when the branch is first
+traversed**, not at declaration:
 
-- **lazy** branch: the error surfaces at the first traversal — and at every
-  retry, until the branch is fixed or removed. The spec is never lost.
-- **eager** branch: the error surfaces at the first tree access and repeats
-  on every access — the tree is loudly broken until the branch is fixed or
-  removed with `remove_branch`.
+- the error surfaces at the first traversal — and at every retry, until the
+  branch is fixed or removed with `remove_branch`. The spec is never lost.
+
+An eager instance has no deferred-construction story: you build it yourself,
+so a failing constructor raises at your own `X(...)` call — outside
+`add_branches` entirely.
 
 ## Runtime Management
 
 ```python
-app.add_branches({"name": "extra", "cls": ExtraAPI, "lazy": True})  # add at runtime
+app.add_branches({"name": "extra", "cls": ExtraAPI})  # add a lazy factory at runtime
 app.remove_branch("extra")     # drop a declared branch; if already
                                # materialized, its child is detached
 app.branches                   # dict of DECLARED specs — a branch leaves this
@@ -191,13 +208,31 @@ Note the `branches` property semantics: it lists what is *declared and not
 yet built*. After materialization the branch appears among the router's
 children (e.g. in `nodes()`), not in `branches`.
 
-## Relation to attach_instance
+## Attaching an existing instance
 
-`attach_instance(child, name=...)` (attaching an already-built instance)
-remains fully supported. `add_branches` is the **recommended declarative
-form**: it enables lazy construction, keeps `__init__` free of instantiation
-order concerns, and scales to generated trees. Both wire the same parent
-chain and plugin inheritance.
+To attach an **already-built** instance, use the **instance form** of
+`add_branches`:
+
+```python
+users = UsersAPI()
+app.add_branches({"name": "users", "instance": users})
+```
+
+This is the eager form: the instance is linked as a child immediately, wiring
+the same parent chain and plugin inheritance a factory would get at
+materialization. Constraints:
+
+- `params` is **not** allowed together with `instance` (`ValueError`) — the
+  instance is already built.
+- `instance` must be a `RoutingClass` (`TypeError` otherwise).
+- an instance already bound to another parent raises `ValueError`
+  (*"already bound to another parent"*).
+- an eager instance does **not** appear in `branches` (it is already a child);
+  it shows up among the router's children in `nodes()`.
+
+`add_branches` is the **single entry point** for building a subtree: pass a
+class for lazy construction, or an instance for eager attachment. It keeps
+`__init__` free of instantiation-order concerns and scales to generated trees.
 
 ## Next Steps
 

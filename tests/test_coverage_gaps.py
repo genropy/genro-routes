@@ -112,7 +112,7 @@ def test_inherited_plugin_config_lookup():
     parent.route.logging.configure(before=False, after=True)
 
     # Attach child to parent
-    parent.attach_instance(parent.child, name="child")
+    parent.add_branches({"name": "child", "instance": parent.child})
 
     # Child should inherit the plugin and config
     assert "logging" in parent.child.route._plugins_by_name
@@ -380,7 +380,7 @@ def test_inherited_plugin_is_separate_instance():
             return "parent"
 
     parent = ParentSvc()
-    parent.attach_instance(parent.child, name="child")
+    parent.add_branches({"name": "child", "instance": parent.child})
 
     # Plugin instances should be DIFFERENT objects
     parent_plugin = parent.route._plugins_by_name["logging"]
@@ -414,7 +414,7 @@ def test_inherited_plugin_copies_parent_config():
     parent.route.logging.configure(before=False, after=True)
 
     # Attach child - should copy config
-    parent.attach_instance(parent.child, name="child")
+    parent.add_branches({"name": "child", "instance": parent.child})
 
     # Child should have same config values
     child_cfg = parent.child.route.logging.configuration()
@@ -441,7 +441,7 @@ def test_child_config_independent_from_parent():
 
     parent = ParentSvc()
     parent.route.logging.configure(before=True, after=False)
-    parent.attach_instance(parent.child, name="child")
+    parent.add_branches({"name": "child", "instance": parent.child})
 
     # Child modifies its own config
     parent.child.route.logging.configure(before=False, after=True)
@@ -490,7 +490,7 @@ def test_parent_config_change_notifies_children():
             return "parent"
 
     parent = ParentSvc()
-    parent.attach_instance(parent.child, name="child")
+    parent.add_branches({"name": "child", "instance": parent.child})
 
     # Clear any notifications from __init__
     notifications.clear()
@@ -545,8 +545,8 @@ def test_cascading_notifications():
             return "parent"
 
     parent = ParentSvc()
-    parent.attach_instance(parent.child, name="child")
-    parent.child.attach_instance(parent.child.grandchild, name="grandchild")
+    parent.add_branches({"name": "child", "instance": parent.child})
+    parent.child.add_branches({"name": "grandchild", "instance": parent.child.grandchild})
 
     # Clear notifications
     notifications.clear()
@@ -601,8 +601,8 @@ def test_child_ignores_parent_config_no_cascade():
             return "parent"
 
     parent = ParentSvc()
-    parent.attach_instance(parent.child, name="child")
-    parent.child.attach_instance(parent.child.grandchild, name="grandchild")
+    parent.add_branches({"name": "child", "instance": parent.child})
+    parent.child.add_branches({"name": "grandchild", "instance": parent.child.grandchild})
 
     # Clear notifications
     notifications.clear()
@@ -675,7 +675,7 @@ def test_auth_deny_reason_with_router_interface():
             return "parent"
 
     parent = ParentSvc()
-    parent.attach_instance(parent.child, name="child")
+    parent.add_branches({"name": "child", "instance": parent.child})
 
     # Get child router via parent
     child_router = parent.route._children["child"]
@@ -708,7 +708,7 @@ def test_auth_deny_reason_router_empty():
             return "parent"
 
     parent = ParentSvc()
-    parent.attach_instance(parent.child, name="child")
+    parent.add_branches({"name": "child", "instance": parent.child})
 
     child_router = parent.route._children["child"]
     auth_plugin = parent.route._plugins_by_name["auth"]
@@ -973,7 +973,7 @@ def test_auth_deny_reason_router_with_accessible_child():
         def __init__(self):
             self.route.plug("auth")
             self.child = Child()
-            self.attach_instance(self.child, name="child")
+            self.add_branches({"name": "child", "instance": self.child})
 
     parent = Parent()
     auth_plugin = parent.route._plugins_by_name["auth"]
@@ -1047,7 +1047,7 @@ def test_routing_class_ctx_parent_chain():
 
     parent = Parent()
     child = Child()
-    parent.attach_instance(child, name="child")
+    parent.add_branches({"name": "child", "instance": child})
 
     ctx = RoutingContext()
     ctx.db = "shared_db"
@@ -1070,7 +1070,7 @@ def test_plugin_on_parent_config_changed_propagates():
         def __init__(self):
             self.route.plug("logging")
             self.child = Child()
-            self.attach_instance(self.child, name="child")
+            self.add_branches({"name": "child", "instance": self.child})
 
         @route()
         def parent_handler(self):
@@ -1160,11 +1160,11 @@ def test_require_bound_when_already_bound():
     assert svc.route._bound is True
 
 
-# --- RoutingClass.attach_instance with explicit alias ---
+# --- instance branch reachable under the given alias ---
 
 
-def test_attach_instance_with_alias():
-    """Test attach_instance links the child router under the given alias."""
+def test_instance_branch_reachable_under_alias():
+    """The instance form links the child router under the given alias."""
 
     class Child(RoutingClass):
         @route()
@@ -1176,18 +1176,18 @@ def test_attach_instance_with_alias():
             self.child = Child()
 
     parent = Parent()
-    parent.attach_instance(parent.child, name="child_api")
+    parent.add_branches({"name": "child_api", "instance": parent.child})
 
-    # Should be attached under the given alias
-    assert "child_api" in parent.route._children
-    assert parent.route._children["child_api"] is parent.child.route
-
-
-# --- attach_instance when _routing_parent already set correctly ---
+    # Reachable under the given alias
+    assert parent.route.node("child_api/api_handler")() == "api"
+    assert "child_api" in parent.route.nodes().get("routers", {})
 
 
-def test_attach_instance_routing_parent_already_correct():
-    """Test attach_instance when _routing_parent is already set to correct parent."""
+# --- instance branch when _routing_parent already set correctly ---
+
+
+def test_instance_branch_routing_parent_already_correct():
+    """Re-linking an instance already bound to the correct parent is a no-op."""
 
     class Child(RoutingClass):
         @route()
@@ -1199,12 +1199,13 @@ def test_attach_instance_routing_parent_already_correct():
             self.child = Child()
 
     parent = Parent()
-    # Manually set _routing_parent to correct parent
+    # Instance already bound to the correct parent
     object.__setattr__(parent.child, "_routing_parent", parent)
 
-    # attach_instance should not try to set it again
-    parent.attach_instance(parent.child, name="child")
+    # Adding it as an instance branch must not fail nor rebind
+    parent.add_branches({"name": "child", "instance": parent.child})
     assert parent.child._routing_parent is parent
+    assert parent.route.node("child/handler")() == "ok"
 
 
 # --- base_router.py - detach_instance with plugin_children cleanup ---
@@ -1222,7 +1223,7 @@ def test_detach_instance_cleans_plugin_children():
         def __init__(self):
             self.route.plug("logging")
             self.child = Child()
-            self.attach_instance(self.child, name="child")
+            self.add_branches({"name": "child", "instance": self.child})
 
         @route()
         def parent_handler(self):
@@ -1375,7 +1376,7 @@ def test_on_attached_to_parent_child_has_same_plugin():
             self.child = Child()
 
     parent = Parent()
-    parent.attach_instance(parent.child, name="child")
+    parent.add_branches({"name": "child", "instance": parent.child})
 
     # Child should still have exactly one logging plugin
     assert len([p for p in parent.child.route._plugins if p.name == "logging"]) == 1

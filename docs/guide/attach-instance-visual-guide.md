@@ -1,11 +1,14 @@
-# attach_instance Visual Guide
+# Instance Attachment Visual Guide
 
-How to connect RoutingClass instances into hierarchies.
+How to connect RoutingClass instances into hierarchies with the instance form
+of `add_branches`.
 
 ## Core Concept
 
-`attach_instance` lives on **RoutingClass** (not on Router). Every RoutingClass
-owns exactly one router (`self.route`). Attaching does two things:
+`add_branches` lives on **RoutingClass** (not on Router). Every RoutingClass
+owns exactly one router (`self.route`). Its **instance form**
+(`{"name": alias, "instance": child}`) attaches an already-built child eagerly
+and does two things:
 
 1. Sets the parent-child relationship (`child._routing_parent = self`)
 2. Links the child's router into the parent's router (`parent.route._children[alias] = child.route`, via `include()`)
@@ -57,7 +60,7 @@ graph TB
 **Syntax:**
 
 ```python
-self.attach_instance(vendite, name="sales")
+self.add_branches({"name": "sales", "instance": vendite})
 ```
 
 **Access paths:**
@@ -68,8 +71,8 @@ self.route.node("sales/ordini")()   # child entry
 self.route.node("sales/fatture")()  # child entry
 ```
 
-**Rule:** `name=` is the alias in the parent's router. This is the only calling
-style — every RoutingClass has exactly one router, so there is nothing else to map.
+**Rule:** the `"name"` key is the alias in the parent's router. Every
+RoutingClass has exactly one router, so there is nothing else to map.
 
 ---
 
@@ -108,8 +111,8 @@ graph TB
 **Syntax:**
 
 ```python
-vendite.attach_instance(statistiche, name="statistiche")
-self.attach_instance(vendite, name="sales")
+vendite.add_branches({"name": "statistiche", "instance": statistiche})
+self.add_branches({"name": "sales", "instance": vendite})
 ```
 
 **Access paths:**
@@ -172,10 +175,10 @@ from genro_routes import Section
 
 api = Section("Public API")
 admin = Section("Admin area")
-self.attach_instance(api, name="api")
-self.attach_instance(admin, name="admin")
-api.attach_instance(OrdersApi(), name="orders")
-admin.attach_instance(OrdersAdmin(), name="orders")
+self.add_branches({"name": "api", "instance": api})
+self.add_branches({"name": "admin", "instance": admin})
+api.add_branches({"name": "orders", "instance": OrdersApi()})
+admin.add_branches({"name": "orders", "instance": OrdersAdmin()})
 ```
 
 **Access paths:**
@@ -186,33 +189,25 @@ self.route.node("admin/orders/manage")()   # admin surface
 ```
 
 > **Note:** earlier versions supported multiple routers per class with a
-> `router_*` cross-mapping DSL in `attach_instance`. That feature was removed:
-> composition (one class per surface, `Section` for grouping) covers the same
-> use cases with a single calling style.
+> `router_*` cross-mapping DSL. That feature was removed: composition (one
+> class per surface, `Section` for grouping) covers the same use cases with a
+> single calling style.
 
 ---
 
 ## Syntax Reference
 
-### `attach_instance(child, name=...)`
+### `add_branches({"name": alias, "instance": child})`
 
 ```python
-self.attach_instance(child, name="alias")
+self.add_branches({"name": "alias", "instance": child})
 ```
 
-- The child's router is linked under `alias` in the parent's router
+- The child's router is linked under `alias` in the parent's router (eager: at the call)
 - Sets `child._routing_parent = self`
+- `params` is not allowed together with `instance` (`ValueError`)
+- `instance` must be a `RoutingClass` (`TypeError` otherwise)
 - Raises `ValueError` on alias collision or if the child is already bound to another parent
-
-### Attach only (no routing)
-
-```python
-self.attach_instance(child)
-```
-
-- Sets `child._routing_parent = self` only
-- No routers are linked
-- Useful when you plan to link routers later or only need the parent chain for `ctx` propagation
 
 ### `include` (on Router — low level)
 
@@ -304,9 +299,9 @@ flowchart TD
     A --> D["Several surfaces\n(api, admin, ...)"]
     A --> E["Make one entry visible\nfrom another tree"]
 
-    B --> F["attach_instance(child, name='alias')"]
-    C --> G["attach_instance(Section('...'), name='group')"]
-    D --> H["One RoutingClass per surface,\ncomposed with attach_instance"]
+    B --> F["add_branches(name='alias', instance=child)"]
+    C --> G["add_branches(name='group', instance=Section('...'))"]
+    D --> H["One RoutingClass per surface,\ncomposed with add_branches"]
     E --> I["router.include(node, name='alias')"]
 
     style F fill:#c8e6c9,stroke:#2e7d32
@@ -338,8 +333,8 @@ class Application(RoutingClass):
         self.auth = AuthService()
         self.users = UserService()
 
-        self.attach_instance(self.auth, name="auth")
-        self.attach_instance(self.users, name="users")
+        self.add_branches({"name": "auth", "instance": self.auth})
+        self.add_branches({"name": "users", "instance": self.users})
 
 app = Application()
 

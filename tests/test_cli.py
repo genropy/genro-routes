@@ -92,7 +92,7 @@ class ParentService(RoutingClass):
 
     def __init__(self):
         self.child = ChildService()
-        self.attach_instance(self.child, name="items")
+        self.add_branches({"name": "items", "instance": self.child})
 
     @route()
     def index(self):
