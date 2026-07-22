@@ -222,7 +222,7 @@ def test_attach_and_detach_instance_single_router_with_alias():
             self.child = Child()
 
     parent = Parent()
-    parent.attach_instance(parent.child, name="sales")
+    parent.add_branches({"name": "sales", "instance": parent.child})
     # Verify child is accessible via nodes()
     info = parent.route.nodes()
     assert "sales" in info.get("routers", {})
@@ -235,7 +235,7 @@ def test_attach_and_detach_instance_single_router_with_alias():
     assert "sales" not in info.get("routers", {})
 
 
-def test_attach_instance_name_collision():
+def test_instance_branch_name_collision():
     class Child(RoutingClass):
         pass
 
@@ -245,9 +245,9 @@ def test_attach_instance_name_collision():
             self.child2 = Child()
 
     parent = Parent()
-    parent.attach_instance(parent.child1, name="sales")
+    parent.add_branches({"name": "sales", "instance": parent.child1})
     with pytest.raises(ValueError):
-        parent.attach_instance(parent.child2, name="sales")
+        parent.add_branches({"name": "sales", "instance": parent.child2})
 
 
 def test_detach_instance_removes_all_aliases():
@@ -263,7 +263,7 @@ def test_detach_instance_removes_all_aliases():
 
     parent = Parent()
     child = Child()
-    parent.attach_instance(child, name="first")
+    parent.add_branches({"name": "first", "instance": child})
     # Secondary navigation link to the same child router
     parent.route.include(child.route, name="second")
     info = parent.route.nodes()
@@ -275,13 +275,13 @@ def test_detach_instance_removes_all_aliases():
     assert info.get("routers", {}) == {}
 
 
-def test_attach_instance_requires_routing_class():
+def test_instance_branch_requires_routing_class():
     class Parent(RoutingClass):
         pass
 
     parent = Parent()
     with pytest.raises(TypeError):
-        parent.attach_instance(object(), name="x")
+        parent.add_branches({"name": "x", "instance": object()})
     with pytest.raises(TypeError):
         parent.route.detach_instance(object())
 
@@ -295,7 +295,7 @@ def test_auto_detach_on_attribute_replacement():
     class Parent(RoutingClass):
         def __init__(self):
             self.child = Child()
-            self.attach_instance(self.child, name="child")
+            self.add_branches({"name": "child", "instance": self.child})
 
     parent = Parent()
     # Verify child is attached via nodes()
@@ -310,7 +310,7 @@ def test_auto_detach_on_attribute_replacement():
     assert parent.child is None
 
 
-def test_attach_instance_rejects_other_parent_when_already_bound():
+def test_instance_branch_rejects_other_parent_when_already_bound():
     class Child(RoutingClass):
         pass
 
@@ -323,17 +323,17 @@ def test_attach_instance_rejects_other_parent_when_already_bound():
     second = Parent("second")
 
     # Bind to first parent
-    first.attach_instance(first.child, name="child")
+    first.add_branches({"name": "child", "instance": first.child})
     # Verify child is attached via node()
     assert first.route.node("child")
 
     # Attempt to bind same child to another parent should fail
     with pytest.raises(ValueError):
-        second.attach_instance(first.child, name="child")
+        second.add_branches({"name": "child", "instance": first.child})
 
 
-def test_routing_proxy_attach_instance():
-    """Test routing.attach_instance delegates to the owner's attach_instance."""
+def test_instance_branch_via_add_branches():
+    """An already-built instance is attached through add_branches({instance})."""
 
     class Child(RoutingClass):
         @route()
@@ -345,8 +345,7 @@ def test_routing_proxy_attach_instance():
             self.child = Child()
 
     parent = Parent()
-    # Use routing.attach_instance proxy (delegates to owner)
-    parent.routing.attach_instance(parent.child, name="child")
+    parent.add_branches({"name": "child", "instance": parent.child})
 
     # Verify child is accessible
     assert parent.route.node("child/hello")() == "hello from child"
@@ -389,7 +388,9 @@ def test_endpoint_id_in_child_router():
 
     class App(RoutingClass):
         def __init__(self):
-            self.add_branches({"name": "users", "cls": UsersModule})
+            # instance form: eager child, reachable by @endpoint_id without
+            # traversal (a lazy factory would be skipped until first walked).
+            self.add_branches({"name": "users", "instance": UsersModule()})
 
     app = App()
 
@@ -451,8 +452,8 @@ def test_section_creates_hierarchy():
         def __init__(self):
             self.users = Users()
             self.orders = Orders()
-            self.attach_instance(self.users, name="users")
-            self.attach_instance(self.orders, name="orders")
+            self.add_branches({"name": "users", "instance": self.users})
+            self.add_branches({"name": "orders", "instance": self.orders})
 
     svc = Service()
 
@@ -477,7 +478,7 @@ def test_include_router_on_nested_router():
     class Server(RoutingClass):
         def __init__(self):
             self._sys = Section()
-            self.attach_instance(self._sys, name="_sys")
+            self.add_branches({"name": "_sys", "instance": self._sys})
             self.swagger = SysApp()
             self._sys.route.include(self.swagger.route, name="swagger")
 
@@ -749,12 +750,12 @@ def test_include_entry_from_deep_path():
     class Mid(RoutingClass):
         def __init__(self):
             self.deep = Deep()
-            self.attach_instance(self.deep, name="deep")
+            self.add_branches({"name": "deep", "instance": self.deep})
 
     class Root(RoutingClass):
         def __init__(self):
             self.mid = Mid()
-            self.attach_instance(self.mid, name="mid")
+            self.add_branches({"name": "mid", "instance": self.mid})
 
     class Other(RoutingClass):
         @route()
@@ -798,7 +799,7 @@ def test_get_url_with_endpoint_id():
     class App(RoutingClass):
         def __init__(self):
             self.invoices = Invoices()
-            self.attach_instance(self.invoices, name="invoices")
+            self.add_branches({"name": "invoices", "instance": self.invoices})
 
     app = App()
 
@@ -820,7 +821,7 @@ def test_get_url_with_path():
     class App(RoutingClass):
         def __init__(self):
             self.svc = Svc()
-            self.attach_instance(self.svc, name="svc")
+            self.add_branches({"name": "svc", "instance": self.svc})
 
     app = App()
     assert app.route.get_url("svc/action", xx=23, yy="abc") == "svc/action/23/abc"
@@ -887,12 +888,12 @@ def test_get_url_deep_hierarchy():
     class Mid(RoutingClass):
         def __init__(self):
             self.deep = Deep()
-            self.attach_instance(self.deep, name="deep")
+            self.add_branches({"name": "deep", "instance": self.deep})
 
     class Root(RoutingClass):
         def __init__(self):
             self.mid = Mid()
-            self.attach_instance(self.mid, name="mid")
+            self.add_branches({"name": "mid", "instance": self.mid})
 
     root = Root()
 
@@ -1202,7 +1203,7 @@ def test_plug_not_duplicated_on_child_with_own_plugin():
 
     class Api(RoutingClass):
         def __init__(self):
-            self.attach_instance(ChildOwn(), name="c")
+            self.add_branches({"name": "c", "instance": ChildOwn()})
 
     api = Api()
     api.route.plug("pydantic")
@@ -1224,7 +1225,7 @@ def test_config_copied_to_inherited_child_via_plug():
 
     class Api(RoutingClass):
         def __init__(self):
-            self.attach_instance(Child(), name="c")
+            self.add_branches({"name": "c", "instance": Child()})
 
     api = Api()
     api.route.plug("strict")
@@ -1252,7 +1253,7 @@ def test_inherit_strict_signature_plugin_no_enabled_crash():
         def __init__(self):
             self.route.plug("strict")
             self.route.strict.configure(mode="special")  # non-default parent config
-            self.attach_instance(Child(), name="c")  # must not raise
+            self.add_branches({"name": "c", "instance": Child()})  # must not raise
 
     api = Api()
     child_plugin = api.route._children["c"]._plugins_by_name["strict"]

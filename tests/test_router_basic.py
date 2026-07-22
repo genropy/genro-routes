@@ -200,7 +200,7 @@ def test_dotted_path_and_nodes_with_attached_child():
     class Parent(RoutingClass):
         def __init__(self):
             self.child = Child()
-            self.attach_instance(self.child, name="child")
+            self.add_branches({"name": "child", "instance": self.child})
 
     parent = Parent()
     assert parent.route.node("child/ping")() == "pong"
@@ -389,7 +389,7 @@ class TestDefaultEntry:
         class Root(RoutingClass):
             def __init__(self):
                 self.child = Child()
-                self.attach_instance(self.child, name="child")
+                self.add_branches({"name": "child", "instance": self.child})
 
         root = Root()
 

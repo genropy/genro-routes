@@ -291,8 +291,8 @@ def test_router_nodes_with_basepath():
         def __init__(self):
             self.child = Child()
             self.child.grandchild = Grandchild()
-            self.attach_instance(self.child, name="child")
-            self.child.attach_instance(self.child.grandchild, name="grandchild")
+            self.add_branches({"name": "child", "instance": self.child})
+            self.child.add_branches({"name": "grandchild", "instance": self.child.grandchild})
 
         @route()
         def root_action(self):
@@ -338,7 +338,7 @@ def test_nodes_lazy_returns_router_references():
     class Root(RoutingClass):
         def __init__(self):
             self.child = Child()
-            self.attach_instance(self.child, name="child")
+            self.add_branches({"name": "child", "instance": self.child})
 
         @route()
         def root_action(self):

@@ -319,7 +319,7 @@ class TestEnvPluginHierarchyAccumulation:
                 self.route.plug("env")
                 self.capabilities = RedisCapabilities()
                 self.child = ChildService()
-                self.attach_instance(self.child, name="child")
+                self.add_branches({"name": "child", "instance": self.child})
 
         parent = ParentService()
 
@@ -344,14 +344,14 @@ class TestEnvPluginHierarchyAccumulation:
             def __init__(self):
                 self.capabilities = Level2Capabilities()
                 self.level3 = Level3()
-                self.attach_instance(self.level3, name="level3")
+                self.add_branches({"name": "level3", "instance": self.level3})
 
         class Level1(RoutingClass):
             def __init__(self):
                 self.route.plug("env")
                 self.capabilities = Level1Capabilities()
                 self.level2 = Level2()
-                self.attach_instance(self.level2, name="level2")
+                self.add_branches({"name": "level2", "instance": self.level2})
 
         root = Level1()
 
@@ -376,7 +376,7 @@ class TestEnvPluginHierarchyAccumulation:
                 self.route.plug("env")
                 self.capabilities = ParentCapCapabilities()
                 self.child = Child()
-                self.attach_instance(self.child, name="child")
+                self.add_branches({"name": "child", "instance": self.child})
 
         root = Parent()
 
@@ -495,7 +495,7 @@ class TestEnvPluginSubRouterFiltering:
             def __init__(self):
                 self.route.plug("env")
                 self.child = Child()
-                self.attach_instance(self.child, name="child")
+                self.add_branches({"name": "child", "instance": self.child})
 
         parent = Parent()
 
@@ -516,7 +516,7 @@ class TestEnvPluginSubRouterFiltering:
             def __init__(self):
                 self.route.plug("env")
                 self.child = Child()
-                self.attach_instance(self.child, name="child")
+                self.add_branches({"name": "child", "instance": self.child})
 
         parent = Parent()
 
@@ -667,7 +667,7 @@ class TestNodesForbiddenParameter:
             def __init__(self):
                 self.route.plug("env")
                 self.child = Child()
-                self.attach_instance(self.child, name="child")
+                self.add_branches({"name": "child", "instance": self.child})
 
         parent = Parent()
 

@@ -131,7 +131,7 @@ class TestCtxSlot:
 
         parent = Parent()
         child = Child()
-        parent.attach_instance(child, name="child")
+        parent.add_branches({"name": "child", "instance": child})
 
         ctx = RoutingContext()
         ctx.db = "shared_db"
@@ -151,7 +151,7 @@ class TestCtxSlot:
 
         parent = Parent()
         child = Child()
-        parent.attach_instance(child, name="child")
+        parent.add_branches({"name": "child", "instance": child})
 
         parent_ctx = RoutingContext()
         parent_ctx.label = "parent"
@@ -174,7 +174,7 @@ class TestCtxSlot:
 
         parent = Parent()
         child = Child()
-        parent.attach_instance(child, name="child")
+        parent.add_branches({"name": "child", "instance": child})
 
         parent_ctx = RoutingContext()
         parent_ctx.label = "parent"

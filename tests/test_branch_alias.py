@@ -113,7 +113,7 @@ def test_alias_to_lazy_target_materializes_on_navigation():
         def __init__(self):
             self.add_branches(
                 [
-                    {"name": "real", "lazy": True, "cls": Leaf, "params": {"tag": "lz"}},
+                    {"name": "real", "cls": Leaf, "params": {"tag": "lz"}},
                     {"name": "fake", "alias": "real"},
                 ]
             )
@@ -183,7 +183,7 @@ def test_nodes_alias_to_lazy_target_does_not_build(  # regression: B1 crash
         def __init__(self):
             self.add_branches(
                 [
-                    {"name": "real", "lazy": True, "cls": Leaf, "params": {"tag": "lz"}},
+                    {"name": "real", "cls": Leaf, "params": {"tag": "lz"}},
                     {"name": "fake", "alias": "real"},
                 ]
             )
@@ -202,7 +202,7 @@ def test_nodes_eager_expands_lazy_and_alias():
         def __init__(self):
             self.add_branches(
                 [
-                    {"name": "real", "lazy": True, "cls": Leaf, "params": {"tag": "lz"}},
+                    {"name": "real", "cls": Leaf, "params": {"tag": "lz"}},
                     {"name": "fake", "alias": "real"},
                 ]
             )
@@ -221,7 +221,7 @@ def test_nodes_eager_expands_lazy_and_alias():
 def test_nodes_eager_expands_nested_lazy():
     class Alfa(RoutingClass):
         def __init__(self):
-            self.add_branches({"name": "sub", "lazy": True, "cls": Sub})
+            self.add_branches({"name": "sub", "cls": Sub})
 
     alfa = Alfa()
     tree = alfa.route.nodes(_eager=True)
@@ -398,7 +398,7 @@ def test_alias_resolves_from_root():
 
 
 # ---------------------------------------------------------------------------
-# 13. @endpoint_id unchanged: found in eager aliased target
+# 13. @endpoint_id unchanged: found in an instance (eager) aliased target
 # ---------------------------------------------------------------------------
 
 
@@ -408,11 +408,15 @@ def test_endpoint_id_still_works_with_alias_present():
         def act(self):
             return "found"
 
+    # The target is an instance branch (eager child), so its endpoint_id is
+    # reachable without traversal even though an alias to it is present.
+    real = WithId()
+
     class Alfa(RoutingClass):
         def __init__(self):
             self.add_branches(
                 [
-                    {"name": "real", "cls": WithId},
+                    {"name": "real", "instance": real},
                     {"name": "fake", "alias": "real"},
                 ]
             )
