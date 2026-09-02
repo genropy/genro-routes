@@ -531,6 +531,10 @@ class Router(BaseRouter):
                 if child_plugin.name not in entry.plugins:
                     entry.plugins.append(child_plugin.name)
                 child_plugin.on_decore(self, entry.func, entry)
+            # Recurse so grandchildren receive the inherited plugin too: a
+            # subtree populated before its root was attached would otherwise
+            # keep nothing below the first level.
+            self._propagate_plugin_to_children(child_plugin)
 
         if inherited_plugins:
             self._rebuild_handlers()
