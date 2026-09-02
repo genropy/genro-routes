@@ -15,13 +15,13 @@ class SecureService(RoutingClass):
         return {"status": "online", "access": "public"}
 
     # This node requires 'user' tag
-    @route(auth_tags="user")
+    @route(auth_rule="user")
     def user_profile(self):
         """Requires a valid user role."""
         return {"profile": "User Data", "access": "restricted"}
 
     # This node requires 'admin' tag
-    @route(auth_tags="admin")
+    @route(auth_rule="admin")
     def admin_settings(self):
         """Requires administrative privileges."""
         return {"settings": "System Config", "access": "admin_only"}
