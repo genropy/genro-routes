@@ -1270,3 +1270,77 @@ def test_double_plug_raises():
     api = Api()
     with pytest.raises(ValueError, match="already attached"):
         api.route.plug("pydantic")
+
+
+def _guarded_tree(populate_before_attach: bool):
+    """Build the same three-level tree in both build orders.
+
+    Root plugs auth; Middle carries a Leaf whose only entry is auth-ruled.
+    ``populate_before_attach`` decides whether Middle acquires its Leaf in its
+    own ``__init__`` (before Root attaches it) or afterwards.
+    """
+
+    class Leaf(RoutingClass):
+        @route(auth_rule="ADMIN")
+        def guarded(self):
+            return "ok"
+
+    class Middle(RoutingClass):
+        def __init__(self):
+            if populate_before_attach:
+                self.add_branches({"name": "leaf", "instance": Leaf()})
+
+    class Root(RoutingClass):
+        def __init__(self):
+            self.route.plug("auth")
+
+    root = Root()
+    middle = Middle()
+    root.add_branches({"name": "mid", "instance": middle})
+    if not populate_before_attach:
+        middle.add_branches({"name": "leaf", "instance": Leaf()})
+
+    leaf_router = root.route._children["mid"]._children["leaf"]
+    return root, leaf_router
+
+
+def test_attach_propagates_plugins_to_grandchildren():
+    """Build order must not decide whether a subtree inherits plugins.
+
+    A Middle router that populated itself before being attached used to keep
+    its own inherited plugins and pass none down, so an auth-ruled entry under
+    it answered as if no rule existed.
+    """
+    for populate_before_attach in (True, False):
+        root, leaf_router = _guarded_tree(populate_before_attach)
+        assert "auth" in leaf_router._plugins_by_name
+        assert root.route.node("mid/leaf/guarded").error == "not_authenticated"
+        assert root.route.node("mid/leaf/guarded", auth_tags="ADMIN").error is None
+
+
+def test_attach_propagates_plugins_at_any_depth():
+    """The propagation is recursive, not one level deep."""
+
+    class Leaf(RoutingClass):
+        @route(auth_rule="ADMIN")
+        def guarded(self):
+            return "ok"
+
+    class Inner(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "leaf", "instance": Leaf()})
+
+    class Outer(RoutingClass):
+        def __init__(self):
+            self.add_branches({"name": "inner", "instance": Inner()})
+
+    class Root(RoutingClass):
+        def __init__(self):
+            self.route.plug("auth")
+
+    root = Root()
+    root.add_branches({"name": "outer", "instance": Outer()})
+
+    leaf_router = root.route._children["outer"]._children["inner"]._children["leaf"]
+    assert "auth" in leaf_router._plugins_by_name
+    assert root.route.node("outer/inner/leaf/guarded").error == "not_authenticated"
