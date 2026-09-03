@@ -237,6 +237,10 @@ def concat(self, text: str, number: int = 1) -> str:
 svc.route.node("concat")("hello", 3)    # OK → "hello:3"
 svc.route.node("concat")(123, "oops")   # ValidationError
 
+# Validation is strict: no conversion unless the call asks for it
+svc.route.node("concat")("hello", "3")                # ValidationError
+svc.route.node("concat")("hello", "3", _coerce=True)  # OK → "hello:3"
+
 # Response schema auto-generated from return type annotation
 svc.route._entries["concat"].metadata["pydantic"]["response_schema"]
 # {"type": "string"}
@@ -514,6 +518,7 @@ self.route.plug("logging")  # Child does NOT inherit
 1. PydanticPlugin attached: `self.route.plug("pydantic")`
 2. Type hint correct: `def method(self, req: MyModel)`
 3. Input is dict or model instance: `svc.route.node("method")({"field": "value"})`
+4. The argument already has the annotated type: validation is strict, so `"12"` for an `int` parameter is refused. Pass `_coerce=True` on the call to convert every argument, or declare the single parameter as `Annotated[int, Field(strict=False)]`.
 
 ## Best Practices
 

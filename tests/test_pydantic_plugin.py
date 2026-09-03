@@ -14,12 +14,15 @@
 
 """Tests for the Pydantic plugin."""
 
+from datetime import date
+from typing import Annotated
+
 import pytest
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 # Import to trigger plugin registration
 import genro_routes.plugins.pydantic  # noqa: F401
-from genro_routes import RoutingClass, route
+from genro_routes import NotAvailable, RoutingClass, route
 
 
 class ValidateService(RoutingClass):
@@ -169,3 +172,148 @@ def test_binding_error_propagates_typeerror_without_custom():
     svc = ValidateService()
     with pytest.raises(TypeError):
         svc.route.node("concat")("a", 1, "extra")
+
+
+# ----------------------------------------------------------------------
+# Strict validation by default, coercion opt-in per call with _coerce
+# ----------------------------------------------------------------------
+
+
+class CoerceService(RoutingClass):
+    def __init__(self):
+        self.route.plug("pydantic")
+
+    @route()
+    def count(self, number: int) -> int:
+        return number
+
+    @route()
+    def when(self, day: date) -> date:
+        return day
+
+    @route()
+    def ratio(self, value: float) -> float:
+        return value
+
+    @route()
+    def lax_number(self, number: Annotated[int, Field(strict=False)]) -> int:
+        return number
+
+    @route()
+    def untyped(self, **kwargs):
+        return kwargs
+
+    @route(pydantic_disabled=True)
+    def unvalidated(self, number: int) -> int:
+        return number
+
+
+class NotAvailableHere(Exception):
+    """Custom exception mapped to the not_available error code."""
+
+    def __init__(self, selector: str) -> None:
+        self.selector = selector
+        super().__init__(selector)
+
+
+def test_strict_by_default_rejects_convertible_string():
+    """A string is not an int: strict mode refuses it instead of converting."""
+    svc = CoerceService()
+    with pytest.raises(ValidationError):
+        svc.route.node("count")("12")
+
+
+def test_strict_by_default_accepts_exact_type():
+    svc = CoerceService()
+    assert svc.route.node("count")(12) == 12
+
+
+def test_strict_error_maps_to_custom_validation_error():
+    """The strict refusal follows the existing validation_error contract."""
+    svc = CoerceService()
+    node = svc.route.node("count", errors={"validation_error": BadArgError})
+    with pytest.raises(BadArgError):
+        node("12")
+
+
+def test_coerce_converts_string_to_int():
+    svc = CoerceService()
+    assert svc.route.node("count")("12", _coerce=True) == 12
+
+
+def test_coerce_converts_string_to_date():
+    svc = CoerceService()
+    assert svc.route.node("when")("2026-09-01", _coerce=True) == date(2026, 9, 1)
+
+
+def test_coerce_without_pydantic_plugin_raises_not_available():
+    """Coercion needs the pydantic plugin: without it the call is refused."""
+
+    class PlainService(RoutingClass):
+        @route()
+        def count(self, number: int) -> int:
+            return number
+
+    svc = PlainService()
+    with pytest.raises(NotAvailable):
+        svc.route.node("count")(12, _coerce=True)
+
+
+def test_coerce_without_pydantic_plugin_uses_custom_exception():
+    class PlainService(RoutingClass):
+        @route()
+        def count(self, number: int) -> int:
+            return number
+
+    svc = PlainService()
+    node = svc.route.node("count", errors={"not_available": NotAvailableHere})
+    with pytest.raises(NotAvailableHere):
+        node(12, _coerce=True)
+
+
+def test_no_coerce_without_pydantic_plugin_is_a_no_op():
+    """_coerce=False and an absent _coerce are honoured with no plugin at all."""
+
+    class PlainService(RoutingClass):
+        @route()
+        def count(self, number: int) -> int:
+            return number
+
+    svc = PlainService()
+    assert svc.route.node("count")(12) == 12
+    assert svc.route.node("count")(12, _coerce=False) == 12
+
+
+def test_coerce_never_reaches_the_handler_without_plugin():
+    """A **kwargs handler must not see the reserved keyword."""
+
+    class PlainService(RoutingClass):
+        @route()
+        def echo(self, **kwargs):
+            return kwargs
+
+    svc = PlainService()
+    assert svc.route.node("echo")(a=1, _coerce=False) == {"a": 1}
+
+
+def test_coerce_ignored_when_entry_has_no_type_hints():
+    """Nothing to convert: _coerce is consumed and the handler runs normally."""
+    svc = CoerceService()
+    assert svc.route.node("untyped")(a=1, _coerce=True) == {"a": 1}
+
+
+def test_coerce_ignored_when_validation_is_disabled():
+    svc = CoerceService()
+    assert svc.route.node("unvalidated")("12", _coerce=True) == "12"
+
+
+def test_field_strict_false_accepts_string_without_coerce():
+    """A per-field Field(strict=False) overrides the model-level strict flag."""
+    svc = CoerceService()
+    assert svc.route.node("lax_number")("12") == 12
+
+
+def test_strict_float_accepts_int():
+    """Pydantic's strict mode still promotes int to float."""
+    svc = CoerceService()
+    assert svc.route.node("ratio")(3) == 3.0

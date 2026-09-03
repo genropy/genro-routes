@@ -222,6 +222,31 @@ cd genro-routes
 pip install -e ".[all]"
 ```
 
+## Strict Input Validation
+
+The `pydantic` plugin validates parameters against their type annotations in **strict mode**: an argument must already have the annotated type. Nothing is converted for you.
+
+```python
+class UsersAPI(RoutingClass):
+    def __init__(self):
+        self.route.plug("pydantic")
+
+    @route()
+    def get_user(self, user_id: int) -> dict:
+        return {"id": user_id}
+
+api = UsersAPI()
+api.route.node("get_user")(user_id=123)                  # OK
+api.route.node("get_user")(user_id="123")                # ValidationError
+api.route.node("get_user")(user_id="123", _coerce=True)  # OK -> 123
+```
+
+`_coerce=True` is a reserved keyword on the node call. It asks for conversion of every parameter of that single call (`"12"` → `12`, `"2026-09-01"` → `date`), which is what a caller decoding a path segment or a query string needs. It is always consumed by the router and never reaches the handler.
+
+- `_coerce=True` on a router without the `pydantic` plugin raises `NotAvailable` (or the class mapped to `not_available` via `node(..., errors=...)`).
+- `_coerce=True` on an entry with no type hints, or with `pydantic_disabled=True`, is silently ignored: there is nothing to convert.
+- `Annotated[int, Field(strict=False)]` opts a single parameter out of strict mode for every call, with no `_coerce`.
+
 ## Typed Response Schemas
 
 Annotate return types to generate response schemas automatically. genro-routes exposes them as dialect-neutral metadata (the per-entry `result` block in `nodes()`, plus `entry.metadata`); external bridges (MCP, or OpenAPI via genro-asgi) consume it without extra work — the routing core does not generate OpenAPI itself:

@@ -131,7 +131,7 @@ result = svc.route.node("do_work")()  # Automatically logged
 
 <!-- test: test_pydantic_plugin.py::test_pydantic_plugin_accepts_valid_input -->
 
-[From test](https://github.com/genropy/genro-routes/blob/main/tests/test_pydantic_plugin.py#L36-L41)
+[From test](https://github.com/genropy/genro-routes/blob/main/tests/test_pydantic_plugin.py#L39-L44)
 
 Use Pydantic for automatic validation:
 
