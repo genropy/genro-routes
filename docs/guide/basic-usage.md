@@ -398,7 +398,21 @@ except HTTPForbidden:
 | `not_authenticated` | `NotAuthenticated` | 401 | Auth required, none provided |
 | `not_authorized` | `NotAuthorized` | 403 | Auth provided, insufficient |
 | `not_available` | `NotAvailable` | 501 | Capability missing |
-| `validation_error` | `ValidationError` | 422 | Bad arguments: pydantic validation failed or arguments unbindable (`TypeError`) |
+| `signature_error` | `TypeError` | — | The call does not fit the handler signature: unknown keyword, missing required argument, too many positionals |
+| `validation_error` | `ValidationError` | 422 | The signature is satisfied and pydantic rejects the values |
+
+A call to a node ends in exactly one of three ways:
+
+1. the arguments do not fit the signature → `signature_error`, raised before
+   the handler runs;
+2. the signature is satisfied and pydantic rejects the values →
+   `validation_error`;
+3. the handler body raises → that exception propagates untouched, `TypeError`
+   included, with no error code and no wrapping.
+
+The default class for `signature_error` is `TypeError`, so a caller that does
+not map the code keeps receiving the plain `TypeError` from the argument bind.
+Mapping only `validation_error` does not cover a signature failure.
 
 **Use cases**:
 

@@ -711,6 +711,12 @@ class MethodEntry:
 `handler` starts equal to `func` and is replaced by the middleware pipeline
 when plugins build the wrappers.
 
+The `signature` property returns `inspect.signature(func)`, computed on first
+access and cached. `RouterNode.__call__` binds the call arguments against it
+before invoking the handler, so a call that does not fit the signature raises
+the `signature_error` class instead of reaching the handler; `_assign_partial`
+reads it to place the unresolved path segments.
+
 ### 9.2 `BasePlugin` — the contract
 
 Every plugin inherits from `BasePlugin` and defines:
