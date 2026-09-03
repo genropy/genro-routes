@@ -60,6 +60,8 @@ class ValidatedService(RoutingClass):
 svc = ValidatedService()
 svc.route.node("concat")("hello", 3)  # Valid
 # svc.route.node("concat")(123, "oops")  # ValidationError
+# svc.route.node("concat")("hello", "3")  # ValidationError: strict, no conversion
+svc.route.node("concat")("hello", "3", _coerce=True)  # OK, "3" becomes 3
 
 # Response schema available in metadata
 entry = svc.route._entries["get_user"]
@@ -426,6 +428,27 @@ The PydanticPlugin provides **automatic input validation and response schema gen
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `pydantic_disabled` | `bool` | Skip validation for this handler (default `False`) |
+
+**Strict validation and per-call coercion**:
+
+Validation runs in strict mode: an argument must already have the annotated type, and `"12"` for an `int` parameter is a `ValidationError` rather than a conversion. Pydantic's own strict-mode allowances still apply — an `int` is accepted for a `float` parameter.
+
+A caller asks for conversion with the reserved keyword `_coerce=True` on the node call. It applies to every parameter of that call (`"12"` → `12`, `"2026-09-01"` → `date`) and is always consumed by the router, so the handler never sees it.
+
+```python
+svc.route.node("get_user")(user_id=123)                  # OK
+svc.route.node("get_user")(user_id="123")                # ValidationError
+svc.route.node("get_user")(user_id="123", _coerce=True)  # OK -> 123
+```
+
+| Situation | Result |
+|-----------|--------|
+| `_coerce=True`, router without the `pydantic` plugin | raises the exception mapped to `not_available` (`NotAvailable` by default) |
+| `_coerce=True`, entry with no type hints | silently ignored: no model, nothing to convert |
+| `_coerce=True`, entry with `pydantic_disabled=True` | silently ignored: validation is off |
+| `_coerce=False` or absent | strict validation, the default |
+
+A single parameter opts out of strict mode for every call with `Annotated[int, Field(strict=False)]`: the per-field setting overrides the model-level strict flag, with no `_coerce`.
 
 **Response schema generation**:
 
