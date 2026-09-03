@@ -11,6 +11,28 @@ At registration time (``on_decore``):
 At call time (``wrap_handler``), validates annotated args/kwargs before calling
 the real handler.
 
+Strict by default
+-----------------
+Validation runs in strict mode: an argument must already have the annotated
+type. ``"12"`` for an ``int`` parameter is a ``ValidationError``, not a
+conversion. Pydantic's own strict-mode allowances still apply (an ``int`` is
+accepted for a ``float`` parameter).
+
+Coercion is opt-in per call, with the reserved keyword ``_coerce=True`` passed
+to ``RouterNode.__call__``. It applies to every parameter of that call:
+``"12"`` becomes ``12``, ``"2026-09-01"`` becomes a ``date``. ``_coerce`` is
+always consumed by the router and by this plugin's wrapper, and never reaches
+the handler.
+
+``_coerce=True`` on a router without the ``pydantic`` plugin raises the
+exception mapped to the ``not_available`` error code. ``_coerce=True`` on an
+entry with no type hints (no model) or with validation disabled is silently
+ignored: there is nothing to convert.
+
+A single parameter can opt out of strict mode regardless of ``_coerce``, with
+``Annotated[int, Field(strict=False)]``: the per-field setting overrides the
+model-level strict flag.
+
 Example::
 
     from typing import TypedDict
@@ -30,6 +52,8 @@ Example::
 
     svc = MyService()
     svc.route.node("get_user")(user_id=123)  # OK, validated
+    svc.route.node("get_user")(user_id="123")  # ValidationError (strict)
+    svc.route.node("get_user")(user_id="123", _coerce=True)  # OK, converted
     svc.route.node("get_user")(user_id="not_an_int")  # ValidationError
 
     # Response schema available in metadata
@@ -52,7 +76,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, get_type_hints
 
 try:
-    from pydantic import TypeAdapter, ValidationError, create_model
+    from pydantic import ConfigDict, TypeAdapter, ValidationError, create_model
 except ImportError as err:  # pragma: no cover - import guard
     raise ImportError(
         "Pydantic plugin requires pydantic. Install with: pip install genro-routes[pydantic]"
@@ -75,6 +99,10 @@ class PydanticPlugin(BasePlugin):
     Behavior:
         - Only annotated parameters are validated
         - Unannotated parameters pass through unchanged
+        - Validation is strict: no type coercion unless the call passes
+          ``_coerce=True``, which converts every parameter of that call
+        - ``Annotated[T, Field(strict=False)]`` opts a single parameter out of
+          strict mode without ``_coerce``
         - ValidationError is raised on invalid input
         - Return type annotations produce ``response_schema`` in metadata
         - Can be disabled per-handler via ``pydantic_disabled=True``
@@ -99,6 +127,8 @@ class PydanticPlugin(BasePlugin):
 
             svc = MyService()
             svc.route.node("get_user")(user_id=123)           # OK
+            svc.route.node("get_user")(user_id="123")         # ValidationError
+            svc.route.node("get_user")(user_id="123", _coerce=True)  # OK -> 123
             svc.route.node("get_user")(user_id="not_an_int")  # ValidationError
 
             # Response schema in metadata
@@ -171,7 +201,13 @@ class PydanticPlugin(BasePlugin):
                 else:
                     fields[param_name] = (hint, param.default)
 
-            pydantic_meta["model"] = create_model(f"{func.__name__}_Model", **fields)  # type: ignore
+            # strict=True on the model config: no coercion unless a call asks
+            # for it. A field declaring Field(strict=False) still overrides it.
+            pydantic_meta["model"] = create_model(  # type: ignore[call-overload]
+                f"{func.__name__}_Model",
+                __config__=ConfigDict(strict=True),
+                **fields,
+            )
 
         # Cache the neutral input-params description once (read by nodes()/node().
         # params). The heavy model_json_schema() must never run per-call.
@@ -217,20 +253,24 @@ class PydanticPlugin(BasePlugin):
         entry.metadata["pydantic"] = pydantic_meta
 
     def wrap_handler(self, route: Router, entry: MethodEntry, call_next: Callable):
-        """Validate annotated parameters with the cached Pydantic model before calling."""
+        """Validate annotated parameters with the cached Pydantic model before calling.
+
+        The wrapper is installed even for an entry without a model, because it
+        owns the reserved ``_coerce`` keyword: it must consume it in every case
+        so the handler never sees it. With a model, ``_coerce`` selects lax
+        validation for this call; without one there is nothing to convert and
+        the keyword is simply dropped.
+        """
         meta = entry.metadata.get("pydantic", {})
         model = meta.get("model")
-        if not model:
-            # No model created (no type hints), passthrough
-            return call_next
-
-        sig = meta["signature"]
-        hints = meta["hints"]
+        sig = meta.get("signature")
+        hints = meta.get("hints", {})
 
         def wrapper(*args, **kwargs):
+            coerce = bool(kwargs.pop("_coerce", False))
             # Check disabled config at runtime (not at wrap time)
             cfg = self.configuration(entry.name)
-            if cfg.get("disabled"):
+            if not model or cfg.get("disabled"):
                 return call_next(*args, **kwargs)
 
             bound = sig.bind(*args, **kwargs)
@@ -238,7 +278,11 @@ class PydanticPlugin(BasePlugin):
             args_to_validate = {k: v for k, v in bound.arguments.items() if k in hints}
             other_args = {k: v for k, v in bound.arguments.items() if k not in hints}
             try:
-                validated = model(**args_to_validate)
+                # strict=None defers to the model config (strict); coercion
+                # opts this single call out of it.
+                validated = model.model_validate(
+                    args_to_validate, strict=False if coerce else None
+                )
             except ValidationError as exc:
                 raise ValidationError.from_exception_data(
                     title=f"Validation error in {entry.name}",

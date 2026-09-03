@@ -249,6 +249,14 @@ class RouterNode:
             *args: Positional arguments passed to the handler.
             **kwargs: Keyword arguments passed to the handler. Note: kwargs that
                 conflict with arguments extracted from the path are ignored - path wins.
+            _coerce: Reserved keyword, always consumed here and never passed to
+                the handler. False (the default) leaves the pydantic plugin in
+                strict mode: an argument must already have the annotated type.
+                True converts every argument of this call to its annotated type
+                ("12" -> 12, "2026-09-01" -> date). It requires the 'pydantic'
+                plugin on the router owning the entry; it is silently ignored
+                when the entry has no type hints or validation is disabled,
+                because there is nothing to convert.
 
         Returns:
             The result of calling the handler.
@@ -256,6 +264,8 @@ class RouterNode:
         Raises:
             Exception mapped to error code: If error is set (not_found,
                 not_authenticated, not_authorized, not_available).
+            Exception mapped to 'not_available': If _coerce=True and the router
+                owning the entry has no 'pydantic' plugin.
             Exception mapped to 'validation_error': For any bad-argument error
                 raised while calling the handler - both pydantic validation
                 failures and unbindable arguments (TypeError from signature
@@ -264,6 +274,9 @@ class RouterNode:
         """
         path = self.path or ""
 
+        # Reserved keyword: always consumed here, never forwarded as-is.
+        coerce = bool(kwargs.pop("_coerce", False))
+
         # Check for error or missing entry
         error_code = self.error or ("not_found" if self._entry is None else None)
         if error_code:
@@ -271,8 +284,18 @@ class RouterNode:
             selector = f"{self._router.name}:{path}" if path else self._router.name
             raise exc_class(selector)
 
+        # Coercion is the pydantic plugin's job: without it there is no answer
+        # to give, so the call is refused rather than silently left strict.
+        if coerce and "pydantic" not in getattr(self._router, "_plugins_by_name", {}):
+            exc_class = self._exceptions.get("not_available", NotAvailable)
+            selector = f"{self._router.name}:{path}" if path else self._router.name
+            raise exc_class(selector)
+
         filtered_kwargs = {k: v for k, v in kwargs.items() if k not in self._partial_kwargs}
         merged_kwargs = {**self._partial_kwargs, **filtered_kwargs}
+        if coerce:
+            # Re-injected for the plugin wrapper, which pops it again.
+            merged_kwargs["_coerce"] = True
         all_args = (*self._extra_args, *args)
 
         try:
