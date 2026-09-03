@@ -43,9 +43,9 @@ Maps Python files as routers, introspecting classes and functions at runtime. Co
 
 ## Running the Examples
 
-Ensure you have `faker` installed:
+Install the example dependencies — `faker`, `pygments`, `qrcode[pil]` and `anthropic`:
 ```bash
-pip install faker
+pip install "genro-routes[examples]"
 ```
 
 Then run the examples directly:

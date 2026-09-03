@@ -84,5 +84,5 @@ Maps Python files as routing services, introspecting classes and functions at ru
 You can find all these files in the `examples/` directory of the repository. To run them:
 
 1. Clone the repository.
-2. Install dependencies: `pip install faker pygments qrcode[pil]`.
+2. Install the example dependencies: `pip install "genro-routes[examples]"` — this pulls in `faker`, `pygments`, `qrcode[pil]` and `anthropic`.
 3. Run any example directly: `python examples/faker_standard.py`.

@@ -20,9 +20,9 @@ By leveraging the library's built-in introspection and plugin system, you can tr
 ## Getting Started
 
 ### 1. Prerequisites
-Install the required dependencies:
+Install the example dependencies — this pulls in `faker`, `pygments`, `qrcode[pil]` and `anthropic`, while `pydantic` already comes with `genro-routes`:
 ```bash
-pip install genro-routes faker anthropic pydantic
+pip install "genro-routes[examples]"
 ```
 
 ### 2. View the Schemas
