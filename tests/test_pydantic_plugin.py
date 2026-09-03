@@ -137,24 +137,24 @@ class BadArgError(Exception):
         super().__init__(selector)
 
 
-def test_binding_error_maps_to_validation_error_with_pydantic():
-    """Extra positional args (TypeError from sig.bind) map to validation_error."""
+def test_binding_error_maps_to_signature_error_with_pydantic():
+    """Extra positional args (TypeError from sig.bind) map to signature_error."""
     svc = ValidateService()
-    node = svc.route.node("concat", errors={"validation_error": BadArgError})
+    node = svc.route.node("concat", errors={"signature_error": BadArgError})
     with pytest.raises(BadArgError):
         node("a", 1, "extra")  # too many positional args for concat(text, number)
 
 
-def test_binding_error_unknown_keyword_maps_to_validation_error():
-    """An unexpected keyword (TypeError from sig.bind) maps to validation_error."""
+def test_binding_error_unknown_keyword_maps_to_signature_error():
+    """An unexpected keyword (TypeError from sig.bind) maps to signature_error."""
     svc = ValidateService()
-    node = svc.route.node("concat", errors={"validation_error": BadArgError})
+    node = svc.route.node("concat", errors={"signature_error": BadArgError})
     with pytest.raises(BadArgError):
         node("a", nope=1)  # 'nope' is not a parameter of concat
 
 
 def test_binding_error_maps_without_pydantic():
-    """Without the pydantic plugin, the native TypeError maps too."""
+    """Without the pydantic plugin, the binding failure maps too."""
 
     class PlainService(RoutingClass):
         @route()
@@ -162,8 +162,16 @@ def test_binding_error_maps_without_pydantic():
             return f"{text}:{number}"
 
     svc = PlainService()
-    node = svc.route.node("concat", errors={"validation_error": BadArgError})
+    node = svc.route.node("concat", errors={"signature_error": BadArgError})
     with pytest.raises(BadArgError):
+        node("a", 1, "extra")
+
+
+def test_binding_error_ignores_validation_error_mapping():
+    """A binding failure is not a validation_error: mapping only that code is inert."""
+    svc = ValidateService()
+    node = svc.route.node("concat", errors={"validation_error": BadArgError})
+    with pytest.raises(TypeError):
         node("a", 1, "extra")
 
 

@@ -89,6 +89,7 @@ class RouterNode:
         "not_authorized",
         "not_authenticated",
         "not_available",
+        "signature_error",
         "validation_error",
     }
 
@@ -97,6 +98,7 @@ class RouterNode:
         "not_authorized": NotAuthorized,
         "not_authenticated": NotAuthenticated,
         "not_available": NotAvailable,
+        "signature_error": TypeError,
     }
     if ValidationError is not None:
         DEFAULT_EXCEPTIONS["validation_error"] = ValidationError
@@ -133,9 +135,13 @@ class RouterNode:
             router: Reference to the router.
             errors: Optional dict mapping error codes to custom exception classes.
                     Available codes: 'not_found', 'not_authorized', 'not_authenticated',
-                    'validation_error'. Custom exceptions override the defaults.
-                    'validation_error' covers every bad-argument path: pydantic
-                    validation failures and unbindable arguments (TypeError).
+                    'not_available', 'signature_error', 'validation_error'. Custom
+                    exceptions override the defaults. 'signature_error' is the call
+                    not fitting the handler signature (unknown keyword, missing
+                    required argument, too many positionals); 'validation_error' is
+                    the signature being satisfied and pydantic rejecting the values.
+                    An exception raised by the handler body always propagates
+                    untouched, TypeError included.
             entry_name: Name of the entry to resolve (if this is an entry node).
             path: Full path to this node.
             partial: Path segments not yet resolved.
@@ -217,7 +223,7 @@ class RouterNode:
             return True
 
         pydantic_meta = entry.metadata.get("pydantic", {})
-        sig = pydantic_meta.get("signature") or inspect.signature(entry.func)
+        sig = entry.signature
 
         param_names = [
             name
@@ -280,11 +286,17 @@ class RouterNode:
                 not_authenticated, not_authorized, not_available).
             Exception mapped to 'not_available': If _coerce=True and the router
                 owning the entry has no 'pydantic' plugin.
-            Exception mapped to 'validation_error': For any bad-argument error
-                raised while calling the handler - both pydantic validation
-                failures and unbindable arguments (TypeError from signature
-                binding). Note: a TypeError raised inside the handler body is
-                indistinguishable from a binding error and is mapped too.
+            Exception mapped to 'signature_error': If the call does not fit the
+                handler signature - unknown keyword, missing required argument,
+                too many positionals. Checked before the handler runs, by
+                binding the arguments against the entry signature. The default
+                class is TypeError, so without a custom class the plain
+                TypeError from the bind propagates.
+            Exception mapped to 'validation_error': If the signature is
+                satisfied and pydantic rejects the values. Only a pydantic
+                ValidationError reaches this mapping.
+            Any exception raised by the handler body: Propagated untouched,
+                TypeError included. The body is never mapped to an error code.
         """
         path = self.path or ""
 
@@ -307,16 +319,28 @@ class RouterNode:
 
         filtered_kwargs = {k: v for k, v in kwargs.items() if k not in self._partial_kwargs}
         merged_kwargs = {**self._partial_kwargs, **filtered_kwargs}
+        all_args = (*self._extra_args, *args)
+
+        # Bind before calling, so a call that does not fit the signature is
+        # told apart from the handler body failing. Runs on the arguments
+        # without _coerce: the reserved keyword is not part of the signature.
+        try:
+            self._entry.signature.bind(*all_args, **merged_kwargs)  # type: ignore[attr-defined, union-attr]
+        except TypeError as e:
+            custom_exc = self._exceptions.get("signature_error")
+            if custom_exc is not None and custom_exc is not TypeError:
+                selector = f"{self._router.name}:{path}" if path else self._router.name
+                raise custom_exc(selector) from e
+            raise
+
         if coerce:
             # Re-injected for the plugin wrapper, which pops it again.
             merged_kwargs["_coerce"] = True
-        all_args = (*self._extra_args, *args)
 
         try:
             return self._entry.handler(*all_args, **merged_kwargs)  # type: ignore[attr-defined, union-attr]
         except Exception as e:
-            is_validation = ValidationError is not None and isinstance(e, ValidationError)
-            if is_validation or isinstance(e, TypeError):
+            if ValidationError is not None and isinstance(e, ValidationError):
                 custom_exc = self._exceptions.get("validation_error")
                 if custom_exc is not None and custom_exc is not ValidationError:
                     selector = f"{self._router.name}:{path}" if path else self._router.name

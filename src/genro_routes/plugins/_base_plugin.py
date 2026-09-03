@@ -26,6 +26,7 @@ Objects
         - ``router``: Router instance that owns the handler
         - ``plugins``: list of plugin names applied to the handler
         - ``metadata``: mutable dict used by plugins to store annotations
+        - ``signature``: ``inspect.Signature`` of ``func``, cached on first access
 
 ``BasePlugin``
     Abstract base class that every plugin must subclass. Provides:
@@ -91,6 +92,8 @@ class MethodEntry:
         plugins: List of plugin names applied to this handler.
         metadata: Mutable dict for plugins to store annotations.
         endpoint_id: Optional globally unique identifier for reverse lookup.
+        signature: Signature of ``func``, computed on first access and reused
+            by every caller that needs to bind arguments.
     """
 
     name: str
@@ -100,11 +103,19 @@ class MethodEntry:
     metadata: dict[str, Any] = field(default_factory=dict)
     handler: Callable = field(default=None)  # type: ignore[assignment]
     endpoint_id: str | None = field(default=None)
+    _signature: inspect.Signature | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Set handler to func if not provided."""
         if self.handler is None:
             self.handler = self.func
+
+    @property
+    def signature(self) -> inspect.Signature:
+        """Signature of func, computed on first access and cached."""
+        if self._signature is None:
+            self._signature = inspect.signature(self.func)
+        return self._signature
 
 
 def _wrap_configure(original_configure: Callable) -> Callable:
